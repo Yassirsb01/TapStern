@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tapstern — Danke</title>
+<link rel="icon" type="image/png" href="tapstern-favicon.png">
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=space-grotesk:600,700|inter:400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#fafbfe; --card:#ffffff; --ink:#171923; --ink-soft:#5a6072;
+    --primary:#4f46e5; --accent:#06b6d4; --line: rgba(23,25,35,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+    font-family:'Inter',sans-serif; display:flex; align-items:center; justify-content:center;
+    padding:28px;
+  }
+  .card{width:100%; max-width:400px; text-align:center;}
+  h1{font-family:'Space Grotesk',sans-serif; font-size:1.5rem; font-weight:600; margin:0 0 8px;}
+  p.sub{color:var(--ink-soft); font-size:0.95rem; margin:0 0 28px;}
+  .btn-primary{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    width:100%; padding:16px 20px; border-radius:12px; text-decoration:none;
+    font-size:1.02rem; font-weight:600; margin-bottom:20px;
+    background:var(--primary); color:#fff; border:none;
+    box-shadow:0 10px 24px -12px rgba(79,70,229,0.5);
+  }
+  .thanks-card{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:22px 20px; text-align:left;
+  }
+  .thanks-card .eyebrow{
+    font-size:0.72rem; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--accent); font-weight:600; margin-bottom:8px; display:block;
+  }
+  .thanks-card p{font-size:0.92rem; color:var(--ink-soft); margin:0 0 14px; line-height:1.5;}
+  .code-box{
+    background:var(--bg); border:1px dashed var(--line); border-radius:10px;
+    padding:12px; text-align:center; font-family:'Space Grotesk',sans-serif;
+    font-size:1.2rem; font-weight:700; letter-spacing:0.08em; color:var(--primary);
+  }
+  footer{margin-top:28px; font-size:0.8rem; color:var(--ink-soft);}
+  footer a{color:var(--accent); text-decoration:none;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="bizName">Vielen Dank für deinen Besuch</h1>
+    <p class="sub" id="subtext">Wir freuen uns über deine Bewertung.</p>
+
+    <a href="#" id="reviewBtn" class="btn-primary" style="display:none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+      Jetzt bewerten
+    </a>
+
+    <div class="thanks-card" id="thanksCard" style="display:none;">
+      <span class="eyebrow">Als Dankeschön</span>
+      <p id="thanksText">Zeig diese Seite bei deinem nächsten Besuch vor.</p>
+      <div class="code-box" id="codeBox"></div>
+    </div>
+
+    <footer>Bereitgestellt von <a href="https://tapstern.de">Tapstern</a></footer>
+  </div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const name = params.get('name');
+  const review = params.get('review');
+  const discount = params.get('discount');
+  const code = params.get('code');
+
+  if (name) {
+    document.getElementById('bizName').textContent = 'Danke für deinen Besuch bei ' + name;
+  }
+
+  if (review) {
+    const btn = document.getElementById('reviewBtn');
+    btn.href = review;
+    btn.style.display = 'flex';
+  } else {
+    document.getElementById('subtext').textContent = 'Für diese Karte wurde noch kein Bewertungslink eingerichtet.';
+  }
+
+  if (discount && code) {
+    document.getElementById('thanksText').textContent = discount;
+    document.getElementById('codeBox').textContent = code;
+    document.getElementById('thanksCard').style.display = 'block';
+  }
+</script>
+</body>
+</html>

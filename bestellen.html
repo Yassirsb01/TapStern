@@ -151,13 +151,13 @@
         document.getElementById('formSection').classList.add('hide');
         document.getElementById('confirmation').classList.add('show');
       } else {
-        errorEl.textContent = 'Etwas ist schiefgelaufen. Bitte versuch es erneut oder schreib uns direkt an anfrage@tapstern.de.';
+        errorEl.textContent = 'Fehler: ' + (result.message || 'Unbekannter Fehler') + ' — bitte schreib uns direkt an webmaster@tapstern.de.';
         errorEl.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Bestellung absenden';
       }
     } catch (err) {
-      errorEl.textContent = 'Etwas ist schiefgelaufen. Bitte versuch es erneut oder schreib uns direkt an anfrage@tapstern.de.';
+      errorEl.textContent = 'Technischer Fehler: ' + err.message + ' — bitte schreib uns direkt an webmaster@tapstern.de.';
       errorEl.style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Bestellung absenden';

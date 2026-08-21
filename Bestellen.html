@@ -113,6 +113,16 @@
   </div>
 
 <script>
+  const packageMap = {
+    'Basis-Karte': 'Basis-Karte (30€)',
+    'Theken-Set': 'Theken-Set (35€)',
+    'Eigenes-Branding': 'Eigenes Branding (45€)'
+  };
+  const urlPaket = new URLSearchParams(window.location.search).get('paket');
+  if (urlPaket && packageMap[urlPaket]) {
+    document.getElementById('paket').value = packageMap[urlPaket];
+  }
+
   document.getElementById('orderForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const form = e.target;

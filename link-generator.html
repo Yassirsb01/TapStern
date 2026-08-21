@@ -84,7 +84,10 @@
 <script>
   function generateLink() {
     const name = document.getElementById('name').value.trim();
-    const review = document.getElementById('review').value.trim();
+    let review = document.getElementById('review').value.trim();
+    if (review && !/^https?:\/\//i.test(review)) {
+      review = 'https://' + review;
+    }
     const discount = document.getElementById('discount').value.trim();
     const code = document.getElementById('code').value.trim();
     const errorEl = document.getElementById('error');

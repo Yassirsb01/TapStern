@@ -78,7 +78,8 @@
 
   if (review) {
     const btn = document.getElementById('reviewBtn');
-    btn.href = review;
+    const fixedReview = /^https?:\/\//i.test(review) ? review : 'https://' + review;
+    btn.href = fixedReview;
     btn.style.display = 'flex';
   } else {
     document.getElementById('subtext').textContent = 'Für diese Karte wurde noch kein Bewertungslink eingerichtet.';

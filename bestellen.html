@@ -82,9 +82,9 @@
         <label for="paket">Paket</label>
         <select name="Paket" id="paket" required>
           <option value="">Bitte wählen</option>
-          <option value="Basis-Karte (30€)">Basis-Karte — 30 €</option>
-          <option value="Theken-Set (35€)">Theken-Set — 35 €</option>
-          <option value="Eigenes Branding (45€)">Eigenes Branding — 45 €</option>
+          <option value="Basis-Karte (20€)">Basis-Karte — 20 €</option>
+          <option value="Theken-Set / Aufkleber (30€)">Theken-Set / Aufkleber — 30 €</option>
+          <option value="Eigenes Branding (40€)">Eigenes Branding — 40 €</option>
         </select>
 
         <label for="menge">Menge</label>
@@ -120,9 +120,9 @@
 
 <script>
   const packageMap = {
-    'Basis-Karte': 'Basis-Karte (30€)',
-    'Theken-Set': 'Theken-Set (35€)',
-    'Eigenes-Branding': 'Eigenes Branding (45€)'
+    'Basis-Karte': 'Basis-Karte (20€)',
+    'Theken-Set': 'Theken-Set (30€)',
+    'Eigenes-Branding': 'Eigenes Branding (40€)'
   };
   const urlPaket = new URLSearchParams(window.location.search).get('paket');
   if (urlPaket && packageMap[urlPaket]) {

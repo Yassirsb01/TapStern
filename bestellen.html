@@ -82,9 +82,10 @@
         <label for="paket">Paket</label>
         <select name="Paket" id="paket" required>
           <option value="">Bitte wählen</option>
-          <option value="Basis-Karte (20€)">Basis-Karte — 20 €</option>
-          <option value="Theken-Set / Aufkleber (30€)">Theken-Set / Aufkleber — 30 €</option>
-          <option value="Eigenes Branding (40€)">Eigenes Branding — 40 €</option>
+          <option value="Aufkleber – Standard (30€)">Aufkleber — Standard — 30 €</option>
+          <option value="Aufsteller – Standard (30€)">Aufsteller — Standard — 30 €</option>
+          <option value="Aufkleber – Eigenes Branding (40€)">Aufkleber — Eigenes Branding — 40 €</option>
+          <option value="Aufsteller – Eigenes Branding (40€)">Aufsteller — Eigenes Branding — 40 €</option>
         </select>
 
         <label for="menge">Menge</label>
@@ -120,17 +121,24 @@
 
 <script>
   const packageMap = {
-    'Basis-Karte': 'Basis-Karte (20€)',
-    'Theken-Set': 'Theken-Set (30€)',
-    'Eigenes-Branding': 'Eigenes Branding (40€)'
+    'Aufkleber-Standard': 'Aufkleber – Standard (30€)',
+    'Aufsteller-Standard': 'Aufsteller – Standard (30€)',
+    'Aufkleber-Branding': 'Aufkleber – Eigenes Branding (40€)',
+    'Aufsteller-Branding': 'Aufsteller – Eigenes Branding (40€)'
   };
-  const urlPaket = new URLSearchParams(window.location.search).get('paket');
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlPaket = urlParams.get('paket');
   if (urlPaket && packageMap[urlPaket]) {
     document.getElementById('paket').value = packageMap[urlPaket];
   }
 
+  const urlMenge = urlParams.get('menge');
+  if (urlMenge && parseInt(urlMenge, 10) > 0) {
+    document.getElementById('menge').value = urlMenge;
+  }
+
   function toggleBrandingFields() {
-    const isBranding = document.getElementById('paket').value === 'Eigenes Branding (45€)';
+    const isBranding = document.getElementById('paket').value.includes('Branding');
     document.getElementById('brandingFields').style.display = isBranding ? 'block' : 'none';
   }
   document.getElementById('paket').addEventListener('change', toggleBrandingFields);

@@ -516,7 +516,39 @@
     font-size:0.94rem;
   }
   .contact-box .row:first-child{border-top:none;}
+  .contact-box .row span{color:rgba(238,240,251,0.6);}
   .contact-box .row a{color:#22d3ee; text-decoration:none; font-weight:600;}
+  .contact-box label{
+    display:block; font-size:0.78rem; font-weight:600;
+    color:rgba(238,240,251,0.65); margin:14px 0 6px;
+  }
+  .contact-box label:first-of-type{margin-top:0;}
+  .contact-box .opt{font-weight:400; color:rgba(238,240,251,0.4);}
+  .contact-box input, .contact-box textarea{
+    width:100%; padding:11px 12px; border-radius:9px;
+    border:1px solid rgba(238,240,251,0.18);
+    background:rgba(255,255,255,0.05);
+    color:#eef0fb; font-family:'Inter',sans-serif; font-size:0.9rem;
+  }
+  .contact-box input::placeholder, .contact-box textarea::placeholder{color:rgba(238,240,251,0.35);}
+  .contact-box textarea{resize:vertical; min-height:70px;}
+  .contact-box input:focus, .contact-box textarea:focus{outline:2px solid var(--primary-bright); outline-offset:1px;}
+  .contact-box button{
+    width:100%; margin-top:16px; padding:13px; border-radius:10px; border:none;
+    background:var(--primary); color:#fff; font-weight:600; font-size:0.92rem; cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .contact-box button:hover{background:var(--primary-bright);}
+  .contact-box button:disabled{opacity:0.6; cursor:not-allowed;}
+  .contact-box .error{color:#f87171; font-size:0.8rem; margin-top:10px; display:none;}
+  .contact-confirmation{display:none; text-align:center; padding:6px 0;}
+  .contact-confirmation.show{display:block;}
+  .contact-confirmation p{color:#eef0fb; font-size:0.92rem; line-height:1.6; margin:0;}
+  .contact-direct{
+    display:flex; justify-content:space-between; gap:10px; margin-top:18px;
+    padding-top:16px; border-top:1px solid rgba(238,240,251,0.10);
+  }
+  .contact-direct a{color:#22d3ee; text-decoration:none; font-size:0.82rem; font-weight:600;}
 
   footer{
     border-top:1px solid var(--line);
@@ -829,9 +861,33 @@
         <p>Schreib uns kurz — wir schicken dir Produktfotos, alle Infos und die passende Empfehlung für deinen Betrieb. Unverbindlich, keine Kaufpflicht.</p>
       </div>
       <div class="contact-box">
-        <div class="row"><span>E-Mail</span><a href="mailto:Anfrage@tapstern.de">Anfrage@tapstern.de</a></div>
-        <div class="row"><span>WhatsApp</span><a href="https://wa.me/4917697730772" target="_blank" rel="noopener">+49 176 977 30772</a></div>
-        <div class="row"><span>Instagram</span><a href="https://www.instagram.com/tapstern.de" target="_blank" rel="noopener">@tapstern.de</a></div>
+        <form id="contactForm">
+          <input type="hidden" name="access_key" value="603ad85a-c6e5-44a6-9e2f-4b321148f8bb">
+          <input type="hidden" name="subject" value="Neue Tapstern-Kontaktanfrage">
+
+          <label for="c-firma">Name / Firma</label>
+          <input type="text" name="Name/Firma" id="c-firma" required placeholder="z. B. Café Sonnenblick">
+
+          <label for="c-email">E-Mail</label>
+          <input type="email" name="E-Mail" id="c-email" required placeholder="name@beispiel.de">
+
+          <label for="c-telefon">Telefon <span class="opt">(optional)</span></label>
+          <input type="tel" name="Telefon" id="c-telefon" placeholder="0176 ...">
+
+          <label for="c-nachricht">Nachricht</label>
+          <textarea name="Nachricht" id="c-nachricht" required placeholder="Wie kann ich dir helfen?"></textarea>
+
+          <button type="submit" id="contactSubmitBtn">Nachricht senden</button>
+          <div class="error" id="contactError">Bitte alle Pflichtfelder ausfüllen.</div>
+        </form>
+        <div class="contact-confirmation" id="contactConfirmation">
+          <p>Danke für deine Nachricht! Ich melde mich innerhalb von 1–2 Werktagen bei dir.</p>
+        </div>
+        <div class="contact-direct">
+          <a href="https://wa.me/4917697730772" target="_blank" rel="noopener">WhatsApp</a>
+          <a href="https://www.instagram.com/tapstern.de" target="_blank" rel="noopener">Instagram</a>
+          <a href="mailto:Anfrage@tapstern.de">E-Mail</a>
+        </div>
       </div>
     </div>
   </div>
@@ -945,6 +1001,51 @@
   });
   qtyInput.addEventListener('input', renderConfig);
   renderConfig();
+</script>
+
+<script>
+  // Contact form: submits via Web3Forms, same pattern as bestellen.html
+  const contactForm = document.getElementById('contactForm');
+  contactForm.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const form = e.target;
+    const errorEl = document.getElementById('contactError');
+    const btn = document.getElementById('contactSubmitBtn');
+
+    if (!form.checkValidity()) {
+      errorEl.style.display = 'block';
+      form.reportValidity();
+      return;
+    }
+    errorEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Wird gesendet…';
+
+    try {
+      const formData = new FormData(form);
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        body: formData
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        form.style.display = 'none';
+        document.getElementById('contactConfirmation').classList.add('show');
+      } else {
+        errorEl.textContent = 'Fehler: ' + (result.message || 'Unbekannter Fehler') + ' — bitte schreib uns direkt an anfrage@tapstern.de.';
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Nachricht senden';
+      }
+    } catch (err) {
+      errorEl.textContent = 'Technischer Fehler: ' + err.message + ' — bitte schreib uns direkt an anfrage@tapstern.de.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Nachricht senden';
+    }
+  });
 </script>
 
 <script>

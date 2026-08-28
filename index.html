@@ -9,18 +9,54 @@
 <link href="https://fonts.bunny.net/css?family=space-grotesk:500,600,700|inter:400,500,600&display=swap" rel="stylesheet">
 <style>
   :root{
+    --bg:#f5f6fb;
+    --bg-soft:#ecedf8;
+    --card:#ffffff;
+    --ink:#161a2c;
+    --ink-soft:#5b6079;
+    --primary:#6366f1;
+    --primary-bright:#4338ca;
+    --accent:#0e7490;
+    --navy:#1e2340;
+    --line: rgba(22,26,44,0.10);
+    --maxw: 1080px;
+  }
+  [data-theme="dark"]{
     --bg:#0d1020;
     --bg-soft:#12162b;
     --card:#181d36;
     --ink:#eef0fb;
     --ink-soft:#9aa1bd;
-    --primary:#6366f1;
     --primary-bright:#818cf8;
     --accent:#22d3ee;
-    --navy:#1e2340;
     --line: rgba(238,240,251,0.10);
-    --maxw: 1080px;
   }
+  [data-theme="dark"] nav{background:rgba(13,16,32,0.85);}
+  [data-theme="dark"] .btn-ghost{border-color:rgba(238,240,251,0.2);}
+  [data-theme="dark"] .qty-stepper button:hover{background:rgba(238,240,251,0.06);}
+  [data-theme="dark"] header.hero{
+    background-image:
+      radial-gradient(circle, rgba(238,240,251,0.07) 1px, transparent 1.5px),
+      radial-gradient(ellipse 60% 50% at 80% 0%, rgba(99,102,241,0.18), transparent),
+      radial-gradient(ellipse 50% 40% at 5% 100%, rgba(34,211,238,0.10), transparent);
+  }
+  body, .card, header.hero, nav, .price-visual, .btn-ghost{
+    transition:background 0.25s ease, background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+  .theme-toggle{
+    width:38px; height:38px; border-radius:10px;
+    border:1px solid var(--line); background:transparent; color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; margin-right:10px; flex-shrink:0;
+  }
+  .theme-toggle:hover{border-color:var(--primary-bright);}
+  .theme-toggle svg{width:17px; height:17px;}
+  .theme-toggle .icon-moon{display:none;}
+  [data-theme="dark"] .theme-toggle .icon-sun{display:none;}
+  [data-theme="dark"] .theme-toggle .icon-moon{display:block;}
+  .logo-icon-dark{display:none;}
+  [data-theme="dark"] .logo-icon-light{display:none;}
+  [data-theme="dark"] .logo-icon-dark{display:inline-block !important;}
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
   body{
@@ -44,9 +80,21 @@
   }
 
   /* NAV */
+  .announce-bar{
+    background:linear-gradient(90deg, var(--primary), var(--accent));
+    color:#fff;
+  }
+  .announce-bar .wrap{
+    padding:10px 28px;
+    display:flex; align-items:center; justify-content:center;
+    gap:10px; flex-wrap:wrap; text-align:center;
+    font-size:0.85rem; font-weight:600;
+  }
+  .announce-bar .arrow{opacity:0.75; font-weight:400;}
+
   nav{
     position:sticky; top:0; z-index:50;
-    background:rgba(13,16,32,0.85);
+    background:rgba(245,246,251,0.85);
     backdrop-filter:blur(10px);
     border-bottom:1px solid var(--line);
   }
@@ -69,10 +117,13 @@
     position:relative;
     overflow:hidden;
     border-bottom:1px solid var(--line);
-    background:
+    background-color:var(--bg);
+    background-image:
+      radial-gradient(circle, rgba(22,26,44,0.06) 1px, transparent 1.5px),
       radial-gradient(ellipse 60% 50% at 80% 0%, rgba(99,102,241,0.18), transparent),
-      radial-gradient(ellipse 50% 40% at 5% 100%, rgba(34,211,238,0.10), transparent),
-      var(--bg);
+      radial-gradient(ellipse 50% 40% at 5% 100%, rgba(34,211,238,0.10), transparent);
+    background-size: 26px 26px, 100% 100%, 100% 100%;
+    background-repeat: repeat, no-repeat, no-repeat;
   }
   .hero-grid{
     display:grid;
@@ -123,7 +174,7 @@
   }
   .btn-primary:hover{background:var(--primary-bright); transform:translateY(-1px);}
   .btn-ghost{
-    border:1px solid rgba(238,240,251,0.2); color:var(--ink);
+    border:1px solid rgba(22,26,44,0.18); color:var(--ink);
     padding:14px 26px; border-radius:12px; text-decoration:none;
     font-size:0.98rem; font-weight:500;
     transition:border-color 0.2s ease, background 0.2s ease;
@@ -137,8 +188,20 @@
     display:flex; align-items:center; justify-content:center;
     min-height:340px;
   }
+  .tap-demo::before{
+    content:"";
+    position:absolute;
+    top:50%; left:50%;
+    width:360px; height:360px;
+    transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(99,102,241,0.30), rgba(34,211,238,0.16) 55%, transparent 74%);
+    filter:blur(4px);
+    z-index:0;
+  }
   .tap-stage{
     position:relative;
+    z-index:1;
     width:260px; height:260px;
   }
   .ripple{
@@ -184,6 +247,63 @@
     border:5px solid #060811;
     box-shadow:0 18px 30px -14px rgba(0,0,0,0.6);
     animation:tapMove 2.4s ease-in-out infinite;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .phone-stars{
+    position:relative; z-index:2;
+    display:flex; gap:1px;
+  }
+  .ps{
+    font-size:0.6rem; color:#f5a524; display:inline-block;
+    opacity:0; transform:scale(0.3) translateY(3px);
+    animation:starPop 2.4s ease-in-out infinite;
+  }
+  @keyframes starPop{
+    0%,30%{opacity:0; transform:scale(0.3) translateY(3px);}
+    42%{opacity:1; transform:scale(1.35) translateY(-1px);}
+    50%{opacity:1; transform:scale(1) translateY(0);}
+    64%,100%{opacity:0; transform:scale(0.3) translateY(3px);}
+  }
+  .phone-flash{
+    position:absolute; inset:0; z-index:0;
+    background:radial-gradient(circle, rgba(245,165,36,0.45), transparent 70%);
+    opacity:0;
+    animation:phoneFlash 2.4s ease-out infinite;
+  }
+  @keyframes phoneFlash{
+    0%,36%{opacity:0;}
+    46%{opacity:1;}
+    60%,100%{opacity:0;}
+  }
+  .spark{
+    position:absolute; top:50%; left:50%; z-index:1;
+    width:3px; height:3px; border-radius:50%;
+    background:#f5a524; opacity:0;
+  }
+  .spark-a{animation:sparkA 2.4s ease-out infinite;}
+  .spark-b{animation:sparkB 2.4s ease-out infinite;}
+  .spark-c{animation:sparkC 2.4s ease-out infinite;}
+  .spark-d{animation:sparkD 2.4s ease-out infinite;}
+  @keyframes sparkA{
+    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
+    46%{opacity:1; transform:translate(-50%,-50%) translate(-7px,-5px) scale(1);}
+    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(-14px,-10px) scale(0.3);}
+  }
+  @keyframes sparkB{
+    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
+    46%{opacity:1; transform:translate(-50%,-50%) translate(7px,-5px) scale(1);}
+    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(14px,-10px) scale(0.3);}
+  }
+  @keyframes sparkC{
+    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
+    46%{opacity:1; transform:translate(-50%,-50%) translate(-6px,6px) scale(1);}
+    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(-12px,10px) scale(0.3);}
+  }
+  @keyframes sparkD{
+    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
+    46%{opacity:1; transform:translate(-50%,-50%) translate(6px,6px) scale(1);}
+    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(12px,10px) scale(0.3);}
   }
   @keyframes tapMove{
     0%,18%{ transform:translate(-72%,-42%) rotate(8deg); }
@@ -274,6 +394,94 @@
   .price-card li:first-child{border-top:none;}
   .price-card .btn-ghost, .price-card .btn-primary{text-align:center;}
 
+  /* CONFIGURATOR */
+  .configurator{
+    display:grid; grid-template-columns:0.9fr 1.1fr; gap:40px;
+    background:var(--card); border:1px solid var(--line); border-radius:22px;
+    padding:36px; align-items:center;
+  }
+  .config-visual{
+    position:relative; border-radius:16px; overflow:hidden;
+    border:1px solid var(--line); aspect-ratio:4/3; background:var(--navy);
+  }
+  .config-visual img{
+    width:100%; height:100%; object-fit:cover; display:block;
+    transition:opacity 0.2s ease;
+  }
+  .config-visual img.fading{opacity:0;}
+  .pkg-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px;}
+  .pkg-pill{
+    position:relative; border:1px solid var(--line); background:transparent;
+    color:var(--ink-soft); font-family:'Inter',sans-serif; font-size:0.88rem; font-weight:600;
+    padding:10px 18px; border-radius:100px; cursor:pointer;
+    transition:border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  }
+  .pkg-pill:hover{border-color:var(--primary-bright);}
+  .pkg-pill.active{background:var(--primary); border-color:var(--primary); color:#fff;}
+  .pkg-pill .tag{
+    position:absolute; top:-11px; right:-6px;
+    background:linear-gradient(90deg, var(--primary), var(--accent));
+    color:#fff; font-size:0.6rem; font-weight:700; padding:3px 8px; border-radius:100px;
+  }
+  .config-panel h3{font-size:1.3rem; color:var(--ink); margin-bottom:2px;}
+  .config-panel .price{
+    font-family:'Space Grotesk',sans-serif; font-size:2.2rem; font-weight:700;
+    color:var(--primary-bright); margin:12px 0 18px;
+  }
+  .config-panel .price small{font-size:0.85rem; color:var(--ink-soft); font-weight:400; font-family:'Inter',sans-serif;}
+  .config-panel ul{list-style:none; padding:0; margin:0 0 26px;}
+  .config-panel li{padding:9px 0; border-top:1px solid var(--line); font-size:0.94rem; color:var(--ink-soft);}
+  .config-panel li:first-child{border-top:none;}
+  .qty-row{display:flex; align-items:center; gap:16px; margin-bottom:24px;}
+  .qty-label{font-size:0.85rem; color:var(--ink-soft);}
+  .qty-stepper{display:flex; align-items:center; border:1px solid var(--line); border-radius:100px; overflow:hidden;}
+  .qty-stepper button{width:38px; height:38px; border:none; background:transparent; color:var(--ink); font-size:1.1rem; cursor:pointer;}
+  .qty-stepper button:hover{background:rgba(22,26,44,0.05);}
+  .qty-stepper input{width:44px; text-align:center; border:none; background:transparent; color:var(--ink); font-family:'Space Grotesk',sans-serif; font-size:0.95rem;}
+  .qty-stepper input:focus{outline:none;}
+
+  /* FEATURE STRIP */
+  .feature-strip{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:18px;
+  }
+  .feature-item{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:22px; display:flex; flex-direction:column; gap:12px;
+  }
+  .feature-item .icon{
+    width:38px; height:38px; border-radius:10px;
+    background:rgba(99,102,241,0.15); color:var(--primary-bright);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .feature-item .icon svg{width:19px; height:19px;}
+  .feature-item h4{font-size:0.95rem; color:var(--ink); margin:0;}
+  .feature-item p{font-size:0.85rem; color:var(--ink-soft); margin:0; line-height:1.5;}
+
+  /* STEP ICON */
+  .step-icon{
+    width:34px; height:34px; border-radius:9px;
+    background:rgba(34,211,238,0.14); color:var(--accent);
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:14px;
+  }
+  .step-icon svg{width:18px; height:18px;}
+
+  /* FAQ */
+  .faq-list{display:flex; flex-direction:column; gap:10px;}
+  .faq-item{
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:2px 22px;
+  }
+  .faq-item summary{
+    cursor:pointer; padding:18px 0; font-weight:600; color:var(--ink); font-size:0.98rem;
+    list-style:none; display:flex; justify-content:space-between; align-items:center; gap:16px;
+  }
+  .faq-item summary::-webkit-details-marker{display:none;}
+  .faq-item summary::after{
+    content:"+"; color:var(--primary-bright); font-size:1.4rem; font-weight:400; flex-shrink:0;
+  }
+  .faq-item[open] summary::after{content:"–";}
+  .faq-item p{margin:0 0 20px; color:var(--ink-soft); font-size:0.92rem; line-height:1.6;}
+
   /* TRUST */
   .trust-grid{
     display:grid; grid-template-columns:repeat(4,1fr); gap:24px;
@@ -308,7 +516,7 @@
     font-size:0.94rem;
   }
   .contact-box .row:first-child{border-top:none;}
-  .contact-box .row a{color:var(--accent); text-decoration:none; font-weight:600;}
+  .contact-box .row a{color:#22d3ee; text-decoration:none; font-weight:600;}
 
   footer{
     border-top:1px solid var(--line);
@@ -324,20 +532,44 @@
     .stat-row{grid-template-columns:1fr;}
     .steps{grid-template-columns:1fr;}
     .price-grid{grid-template-columns:1fr;}
+    .configurator{grid-template-columns:1fr; padding:24px;}
     .trust-grid{grid-template-columns:repeat(2,1fr);}
+    .feature-strip{grid-template-columns:repeat(2,1fr);}
     .cta-section{grid-template-columns:1fr; padding:36px 26px;}
   }
 </style>
 </head>
 <body>
+<script>
+  (function(){
+    try{
+      if(localStorage.getItem('tapstern-theme') === 'dark'){
+        document.documentElement.setAttribute('data-theme','dark');
+      }
+    }catch(e){}
+  })();
+</script>
+
+<div class="announce-bar">
+  <div class="wrap">
+    <span>Bestellen</span><span class="arrow">→</span><span>Vor Ort testen</span><span class="arrow">→</span><span>Erst dann bezahlen</span>
+  </div>
+</div>
 
 <nav>
   <div class="wrap">
     <div class="logo" style="display:flex; align-items:center; gap:9px;">
-      <img src="tapstern-icon-white.png" alt="" style="height:28px; width:auto; object-fit:contain;">
+      <img src="tapstern-icon-navy-transparent.png" alt="" class="logo-icon-light" style="height:28px; width:auto; object-fit:contain;">
+      <img src="tapstern-icon-white.png" alt="" class="logo-icon-dark" style="height:28px; width:auto; object-fit:contain; display:none;">
       Tapstern
     </div>
-    <a class="nav-cta" href="#kontakt">Jetzt anfragen</a>
+    <div style="display:flex; align-items:center;">
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="Farbschema wechseln">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+      </button>
+      <a class="nav-cta" href="#kontakt">Jetzt anfragen</a>
+    </div>
   </div>
 </nav>
 
@@ -364,11 +596,55 @@
             <span class="star" data-i="1">★</span><span class="star" data-i="2">★</span><span class="star" data-i="3">★</span><span class="star" data-i="4">★</span><span class="star" data-i="5">★</span>
           </div>
         </div>
-        <div class="phone"></div>
+        <div class="phone">
+          <span class="phone-flash"></span>
+          <span class="spark spark-a"></span>
+          <span class="spark spark-b"></span>
+          <span class="spark spark-c"></span>
+          <span class="spark spark-d"></span>
+          <div class="phone-stars">
+            <span class="ps" style="animation-delay:0s">★</span><span class="ps" style="animation-delay:0.05s">★</span><span class="ps" style="animation-delay:0.1s">★</span><span class="ps" style="animation-delay:0.15s">★</span><span class="ps" style="animation-delay:0.2s">★</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </header>
+
+<section id="features" style="padding:64px 0 0;">
+  <div class="wrap">
+    <div class="feature-strip">
+      <div class="feature-item">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M7 12a5 5 0 0 1 5-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <h4>Moderne NFC-Technologie</h4>
+        <p>Ein Antippen genügt — kein Scannen, kein Tippen nötig.</p>
+      </div>
+      <div class="feature-item">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h4>Keine App nötig</h4>
+        <p>Funktioniert direkt im Smartphone-Browser, ganz ohne Installation.</p>
+      </div>
+      <div class="feature-item">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 7l3-3a5 5 0 0 0-7-7"/><path d="M14 11a5 5 0 0 0-7-7L4 7a5 5 0 0 0 7 7"/></svg>
+        </div>
+        <h4>Fertig verlinkt</h4>
+        <p>Jede Karte wird individuell auf deine Google-Seite programmiert.</p>
+      </div>
+      <div class="feature-item">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/></svg>
+        </div>
+        <h4>Ehrliches Vertrauen</h4>
+        <p>Echte Bewertungen von echten Gästen — ohne Anreiz oder Trick.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section id="problem">
   <div class="wrap">
@@ -403,16 +679,25 @@
     </div>
     <div class="steps">
       <div class="step">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="15" rx="1.5"/><path d="M6 18l-2 3h16l-2-3"/></svg>
+        </div>
         <div class="idx">Schritt 1</div>
         <h3>Karte auf die Theke</h3>
         <p>Karte oder Aufsteller sichtbar an der Kasse, im Wartezimmer oder auf dem Tisch platzieren.</p>
       </div>
       <div class="step">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M7 12a5 5 0 0 1 5-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+        </div>
         <div class="idx">Schritt 2</div>
         <h3>Handy antippen</h3>
         <p>Der Gast hält sein Smartphone kurz an die Karte — ganz ohne App oder QR-Scanner-Umweg.</p>
       </div>
       <div class="step">
+        <div class="step-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/></svg>
+        </div>
         <div class="idx">Schritt 3</div>
         <h3>Bewertung abgeben</h3>
         <p>Die Google-Bewertungsseite öffnet sich direkt. Sterne vergeben, Text schreiben, fertig.</p>
@@ -429,50 +714,42 @@
       <p>Kein Abo, keine versteckten Kosten. Wähle das Paket, das zu deinem Betrieb passt.</p>
       <p style="margin-top:8px; font-weight:600; color:var(--ink);">Direkt online bestellen — bezahlt wird erst nach Lieferung, wenn du zufrieden bist.</p>
     </div>
-    <div class="price-grid">
-      <div class="price-card">
-        <div class="price-visual">
-          <img src="tapstern-basis.jpg" alt="NFC-Karte für Google-Bewertungen, Basis-Karte">
+    <div class="configurator">
+      <div class="config-visual">
+        <img id="configImg" src="tapstern-aufkleber-standard.jpg" alt="Tapstern Aufkleber">
+      </div>
+      <div class="config-panel">
+        <span class="qty-label" style="display:block; margin-bottom:8px;">Art</span>
+        <div class="pkg-row" id="artRow">
+          <button type="button" class="pkg-pill active" data-key="art" data-value="aufkleber">Aufkleber</button>
+          <button type="button" class="pkg-pill" data-key="art" data-value="aufsteller">Aufsteller<span class="tag">Beliebt</span></button>
         </div>
-        <h3>Basis-Karte</h3>
-        <div class="price">20 € <small>einmalig</small></div>
-        <ul>
-          <li>1 NFC-Karte, neutrales Design (Google Bewertung z.B)</li>
+        <span class="qty-label" style="display:block; margin:18px 0 8px;">Design</span>
+        <div class="pkg-row" id="designRow" style="margin-bottom:22px;">
+          <button type="button" class="pkg-pill active" data-key="design" data-value="standard">Standard Tapstern</button>
+          <button type="button" class="pkg-pill" data-key="design" data-value="branding">Eigenes Branding</button>
+        </div>
+        <h3 id="configTitle">Aufkleber — Standard</h3>
+        <div class="price" id="configPrice">30 € <small>einmalig</small></div>
+        <ul id="configFeatures">
+          <li>1 NFC-Aufkleber (quadratisch, selbstklebende Rückseite), neutrales Design</li>
           <li>Fertig auf deine Google-Seite programmiert</li>
           <li>Unbegrenzt nutzbar, kein Abo</li>
         </ul>
-        <a class="btn-ghost" href="bestellen.html?paket=Basis-Karte">Jetzt bestellen</a>
-      </div>
-      <div class="price-card featured">
-        <div class="price-visual">
-          <img src="tapstern-theken.jpg" alt="NFC-Aufsteller für Google-Bewertungen, Theken-Set">
+        <div class="qty-row">
+          <span class="qty-label">Menge</span>
+          <div class="qty-stepper">
+            <button type="button" id="qtyMinus" aria-label="Menge verringern">–</button>
+            <input type="number" id="qtyInput" value="1" min="1" aria-label="Menge">
+            <button type="button" id="qtyPlus" aria-label="Menge erhöhen">+</button>
+          </div>
         </div>
-        <h3>Theken-Set</h3>
-        <div class="price">30 € <small>einmalig</small></div>
-        <ul>
-          <li>1 NFC-Karte + Acryl-Aufsteller ODER Aufkleber</li>
-          <li>Neutrales Design</li>
-          <li>Ideal für Kasse, Empfang, Tisch</li>
-        </ul>
-        <a class="btn-primary" href="bestellen.html?paket=Theken-Set">Jetzt bestellen</a>
+        <a class="btn-primary" id="configCta" href="bestellen.html?paket=Aufkleber-Standard&menge=1" style="display:block; text-align:center;">Jetzt bestellen</a>
+        <p style="text-align:center; margin-top:14px; color:var(--ink-soft); font-size:0.85rem;">
+          Größere Menge geplant? Kurz anfragen — ich mache dir ein gutes Angebot.
+        </p>
       </div>
-      <div class="price-card">
-        <div class="price-visual">
-          <img src="tapstern-branding.jpg" alt="Individuell gebrandete NFC-Karte und Aufsteller">
-        </div>
-        <h3>Eigenes Branding</h3>
-        <div class="price">40 € <small>einmalig</small></div>
-        <ul>
-          <li>Karte mit eigenem Logo &amp; Farben</li>
-          <li>Aufsteller im gleichen Design</li>
-          <li>Für mehrere Standorte kombinierbar</li>
-        </ul>
-        <a class="btn-ghost" href="bestellen.html?paket=Eigenes-Branding">Jetzt bestellen</a>
-     </div>
     </div>
-    <p style="text-align:center; margin-top:32px; color:var(--ink-soft); font-size:0.95rem;">
-      Mehrere Karten oder Aufsteller auf einmal bestellen? Ab größeren Mengen mache ich gerne einen günstigeren Gesamtpreis — einfach bei der Bestellung angeben oder kurz anfragen.
-    </p>
   </div>
 </section>
 
@@ -500,6 +777,45 @@
         <h3>Lieferung</h3>
         <p>In Regensburg liefere ich persönlich vorbei. Deutschlandweit per Versand — bei größeren Bestellmengen auch persönlich nach Absprache. Bezahlt wird erst nach Lieferung, wenn du zufrieden bist.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Fragen &amp; Antworten</span>
+      <h2 class="display">Häufig gestellte Fragen</h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>Muss ich etwas programmieren oder einrichten?</summary>
+        <p>Nein. Jede Karte kommt fertig auf deine Google-Bewertungsseite programmiert — einfach auspacken und aufstellen.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Braucht meine Karte Strom oder eine Batterie?</summary>
+        <p>Nein, der NFC-Chip braucht keine Stromquelle und funktioniert im Prinzip unbegrenzt lange.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Muss mein Kunde eine App installieren?</summary>
+        <p>Nein. Der Gast hält sein Handy einfach an die Karte, die Google-Bewertungsseite öffnet sich direkt im Browser.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Funktioniert das mit jedem Smartphone?</summary>
+        <p>Mit allen gängigen Smartphones der letzten Jahre, die NFC unterstützen — bei iPhones ist das automatisch aktiv, bei Android meist unter den Einstellungen. Falls es bei einzelnen Geräten in deinem Betrieb Probleme gibt, melde dich einfach, ich helfe schnell weiter.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Kann ich mein eigenes Logo und meine Farben verwenden?</summary>
+        <p>Ja, im Paket "Eigenes Branding". Ich richte Karte und Aufsteller passend zu deinem Corporate Design ein.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Was passiert, wenn der Chip mal nicht funktioniert?</summary>
+        <p>Du bekommst kostenlosen Ersatz von mir — das ist bei jedem Paket inklusive.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Wie lange dauert die Lieferung?</summary>
+        <p>Bei neutralem Design meist wenige Tage, bei individuellem Branding etwas länger — die genaue Zeit sage ich dir bei der Bestellung.</p>
+      </details>
     </div>
   </div>
 </section>
@@ -534,6 +850,117 @@
     </div>
   </div>
 </footer>
+
+<script>
+  // Configurator: Art (Aufkleber/Aufsteller) x Design (Standard/Branding)
+  const PRODUCTS = {
+    'aufkleber-standard': {
+      title: 'Aufkleber — Standard',
+      price: '30 €',
+      image: 'tapstern-aufkleber-standard.jpg',
+      slug: 'Aufkleber-Standard',
+      features: [
+        '1 NFC-Aufkleber (quadratisch, selbstklebende Rückseite), neutrales Design',
+        'Fertig auf deine Google-Seite programmiert',
+        'Unbegrenzt nutzbar, kein Abo'
+      ]
+    },
+    'aufsteller-standard': {
+      title: 'Aufsteller — Standard',
+      price: '30 €',
+      image: 'tapstern-aufsteller-standard.jpg',
+      slug: 'Aufsteller-Standard',
+      features: [
+        '1 NFC-Aufsteller (Acryl-Stand), neutrales Design',
+        'Fertig auf deine Google-Seite programmiert',
+        'Ideal für Kasse, Empfang, Tisch'
+      ]
+    },
+    'aufkleber-branding': {
+      title: 'Aufkleber — Eigenes Branding',
+      price: '40 €',
+      image: 'tapstern-aufkleber-branding.jpg',
+      slug: 'Aufkleber-Branding',
+      features: [
+        '1 NFC-Aufkleber mit eigenem Logo &amp; Farben',
+        'Fertig auf deine Google-Seite programmiert',
+        'Für mehrere Standorte kombinierbar'
+      ]
+    },
+    'aufsteller-branding': {
+      title: 'Aufsteller — Eigenes Branding',
+      price: '40 €',
+      image: 'tapstern-aufsteller-branding.jpg',
+      slug: 'Aufsteller-Branding',
+      features: [
+        '1 NFC-Aufsteller mit eigenem Logo &amp; Farben',
+        'Fertig auf deine Google-Seite programmiert',
+        'Für mehrere Standorte kombinierbar'
+      ]
+    }
+  };
+
+  const configState = { art: 'aufkleber', design: 'standard' };
+  const configImg = document.getElementById('configImg');
+  const configTitle = document.getElementById('configTitle');
+  const configPrice = document.getElementById('configPrice');
+  const configFeatures = document.getElementById('configFeatures');
+  const configCta = document.getElementById('configCta');
+  const qtyInput = document.getElementById('qtyInput');
+
+  function currentProductKey(){
+    return `${configState.art}-${configState.design}`;
+  }
+
+  function renderConfig(){
+    const product = PRODUCTS[currentProductKey()];
+    configImg.classList.add('fading');
+    setTimeout(() => {
+      configImg.src = product.image;
+      configImg.alt = 'Tapstern ' + product.title;
+      configImg.classList.remove('fading');
+    }, 150);
+    configTitle.textContent = product.title;
+    configPrice.innerHTML = product.price + ' <small>einmalig</small>';
+    configFeatures.innerHTML = product.features.map(f => `<li>${f}</li>`).join('');
+    const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+    configCta.href = `bestellen.html?paket=${product.slug}&menge=${qty}`;
+  }
+
+  document.querySelectorAll('#artRow .pkg-pill, #designRow .pkg-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      configState[btn.dataset.key] = btn.dataset.value;
+      const group = btn.closest('.pkg-row');
+      group.querySelectorAll('.pkg-pill').forEach(b => b.classList.toggle('active', b === btn));
+      renderConfig();
+    });
+  });
+  document.getElementById('qtyMinus').addEventListener('click', () => {
+    qtyInput.value = Math.max(1, (parseInt(qtyInput.value, 10) || 1) - 1);
+    renderConfig();
+  });
+  document.getElementById('qtyPlus').addEventListener('click', () => {
+    qtyInput.value = (parseInt(qtyInput.value, 10) || 1) + 1;
+    renderConfig();
+  });
+  qtyInput.addEventListener('input', renderConfig);
+  renderConfig();
+</script>
+
+<script>
+  // Theme toggle: switches between light (default) and dark, remembers choice
+  const themeToggle = document.getElementById('themeToggle');
+  themeToggle.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('tapstern-theme', 'light'); } catch(e){}
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try { localStorage.setItem('tapstern-theme', 'dark'); } catch(e){}
+    }
+  });
+</script>
 
 <script>
   // Signature star-fill animation loop, synced with the phone tap motion

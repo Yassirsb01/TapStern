@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TapStern — Karte verwalten</title>
+<link rel="icon" type="image/png" href="/tapstern-favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#161826; --surface:#232532; --surface-2:#2b2d3c; --text:#e9e9ed;
+    --accent:#9184d9; --accent-300:#b5abfc; --accent-700:#4c5397;
+    --neutral-800:#3a3d4d; --neutral-900:#22242f;
+    --divider:color-mix(in srgb, #e9e9ed 14%, transparent);
+    --muted:color-mix(in srgb, #e9e9ed 55%, transparent);
+    --radius:8px;
+    --shadow-sm:0 0 0 1px #3a3d4d, 0 2px 6px rgba(0,0,0,.4);
+    --shadow-md:0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,.55);
+    --sp-1:5.6px; --sp-2:8.4px; --sp-3:11.2px; --sp-4:16.8px; --sp-5:22.4px; --sp-6:33.6px;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+    font-family:'Inter',system-ui,sans-serif; font-size:15px; line-height:1.55;
+  }
+  h1,h2,h3,h4{font-weight:500; letter-spacing:-.015em; margin:0;}
+  h2{font-size:31px; line-height:1.15;}
+  h6{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); margin:0;}
+  a{color:var(--accent-300);}
+  a:hover{color:var(--accent);}
+  :focus{outline:none;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  ::selection{background:color-mix(in srgb, var(--accent) 30%, transparent);}
+
+  .nav{
+    display:flex; align-items:center; gap:var(--sp-4); padding:var(--sp-2) var(--sp-5);
+    position:sticky; top:0; z-index:20; backdrop-filter:blur(10px);
+    background:color-mix(in srgb, var(--bg) 88%, transparent);
+  }
+  .nav img{height:22px; width:auto; margin-right:auto;}
+  .nav .links{display:flex; flex-wrap:wrap; gap:2px;}
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    font:inherit; font-size:14px; font-weight:500; border-radius:var(--radius);
+    padding:8px 16px; cursor:pointer; background:transparent; border:1px solid transparent;
+    color:var(--text); text-decoration:none; transition:background .12s, border-color .12s;
+  }
+  .btn-primary{border-color:var(--accent); color:var(--accent);}
+  .btn-primary:hover{background:color-mix(in srgb, var(--accent) 12%, transparent);}
+  .btn-primary:active{background:color-mix(in srgb, var(--accent) 22%, transparent);}
+  .btn-secondary{border-color:var(--neutral-800);}
+  .btn-secondary:hover{background:color-mix(in srgb, #e9e9ed 6%, transparent);}
+  .btn-ghost{color:var(--muted);}
+  .btn-ghost:hover{color:var(--text); background:color-mix(in srgb, #e9e9ed 5%, transparent);}
+  .btn-ghost.on{color:var(--accent);}
+  .btn-icon{width:34px; height:34px; padding:0; flex:none; font-size:17px; line-height:1;}
+  .btn-block{width:100%;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
+  .card{background:var(--surface); border-radius:var(--radius); display:flex; flex-direction:column;}
+  .elev-sm{box-shadow:var(--shadow-sm);} .elev-md{box-shadow:var(--shadow-md);}
+
+  .field{display:grid; gap:4px;}
+  .field label{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted);}
+  .input{
+    font:inherit; font-size:14px; color:var(--text); background:var(--neutral-900);
+    border:1px solid var(--neutral-800); border-radius:var(--radius); padding:8px 11px; width:100%;
+  }
+  .input:hover{border-color:#595d6c;}
+  select.input{appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 15px) 15px, calc(100% - 10px) 15px; background-size:5px 5px; background-repeat:no-repeat; padding-right:28px;}
+  textarea.input{resize:vertical; min-height:64px;}
+  .seg{display:inline-flex; background:var(--neutral-900); border:1px solid var(--neutral-800); border-radius:var(--radius); padding:2px;}
+  .seg button{font:inherit; font-size:13px; border:0; background:transparent; color:var(--muted); padding:6px 14px; border-radius:6px; cursor:pointer;}
+  .seg button.on{background:color-mix(in srgb, var(--accent) 18%, transparent); color:var(--accent);}
+
+  .tag{display:inline-flex; align-items:center; font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:99px;}
+  .tag-accent{background:color-mix(in srgb, var(--accent) 18%, transparent); color:var(--accent-300);}
+  .tag-neutral{background:color-mix(in srgb, #e9e9ed 8%, transparent); color:var(--muted);}
+
+  .table{width:100%; border-collapse:collapse; font-size:14px;}
+  .table th{text-align:left; font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--divider);}
+  .table td{padding:9px 10px; border-bottom:1px solid color-mix(in srgb, #e9e9ed 7%, transparent);}
+
+  .wrap{max-width:1180px; margin:0 auto; padding:var(--sp-6) var(--sp-5) 90px;}
+  .row2{display:grid; grid-template-columns:minmax(340px,1.1fr) minmax(320px,.9fr); gap:44px; align-items:start;}
+  @media (max-width:900px){ .row2{grid-template-columns:1fr;} }
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3);}
+  @media (max-width:560px){ .grid2{grid-template-columns:1fr;} }
+  .cgroup{display:flex; gap:var(--sp-1); align-items:center; margin-bottom:var(--sp-1);}
+  .cgroup select{width:112px; flex:none;}
+  .swatch{width:30px; height:30px; border-radius:var(--radius); cursor:pointer; border:1px solid var(--divider);}
+  .swatch.on{border:2px solid var(--text);}
+
+  /* Telefonvorschau */
+  .phone{width:320px; border-radius:34px; padding:9px; background:linear-gradient(180deg,var(--neutral-800),var(--neutral-900)); box-shadow:var(--shadow-md);}
+  .screen{border-radius:26px; background:var(--bg); overflow:hidden; min-height:600px; display:flex; flex-direction:column;}
+  .status{display:flex; justify-content:space-between; padding:10px 18px 0; font-size:11px; color:color-mix(in srgb,#e9e9ed 45%,transparent);}
+  .head{position:relative; padding:28px 20px 20px; display:grid; gap:var(--sp-3); justify-items:center; text-align:center; overflow:hidden;}
+  .head .glow{position:absolute; inset:0;}
+  .head > *:not(.glow){position:relative;}
+  .avatar{width:76px; height:76px; border-radius:50%; overflow:hidden; display:grid; place-items:center; font-size:27px; font-weight:500;}
+  .avatar img{width:100%; height:100%; object-fit:cover;}
+  .pname{font-size:24px; font-weight:500; line-height:1.1;}
+  .prole{font-size:13px; color:color-mix(in srgb,#e9e9ed 70%,transparent);}
+  .pbio{font-size:12px; margin-top:var(--sp-1); color:var(--muted);}
+  .rows{padding:0 20px var(--sp-4); display:grid;}
+  .crow{display:flex; gap:var(--sp-3); align-items:center; padding:7px 0; color:var(--text); text-decoration:none;}
+  .crow .ico{flex:none; display:grid; place-items:center; width:34px; height:34px; border-radius:var(--radius); background:color-mix(in srgb,#e9e9ed 6%,transparent);}
+  .crow .lbl{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:color-mix(in srgb,#e9e9ed 50%,transparent);}
+  .crow .val{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .pfoot{margin-top:auto; padding:14px 20px 20px; display:flex; align-items:center; gap:var(--sp-2); justify-content:center; font-size:11px; color:color-mix(in srgb,#e9e9ed 40%,transparent);}
+  .dot{width:6px; height:6px; border-radius:50%;}
+
+  .toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); opacity:0; transition:.2s; background:var(--surface-2); box-shadow:var(--shadow-md); border-radius:var(--radius); padding:10px 18px; font-size:14px; z-index:60; pointer-events:none;}
+  .toast.show{opacity:1; transform:translateX(-50%);}
+  .hide{display:none !important;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <img src="/tapstern-logo-full-white.png" alt="TapStern">
+  <div class="links" id="nav"></div>
+  <button class="btn btn-secondary hide" id="logout">Abmelden</button>
+</div>
+
+<!-- ── Konto ─────────────────────────────────────────────── -->
+<section class="wrap row2" id="s-auth">
+  <div>
+    <h2 style="margin-bottom:var(--sp-3)">Karte einrichten</h2>
+    <p style="color:color-mix(in srgb,#e9e9ed 70%,transparent); max-width:400px">
+      Beim Anlegen bekommst du einen Zugangscode. Mit Kartenlink und Code kommst du jederzeit
+      wieder in den Editor. Der Link auf der NFC-Karte bleibt immer derselbe.
+    </p>
+  </div>
+  <div class="card elev-md" style="padding:var(--sp-5); gap:var(--sp-4)">
+    <div class="seg" style="align-self:flex-start">
+      <button id="tab-signup" class="on">Neue Karte</button>
+      <button id="tab-login">Anmelden</button>
+    </div>
+
+    <div id="pane-signup" style="display:grid; gap:var(--sp-3)">
+      <div class="field"><label>Name</label><input class="input" id="su-name" placeholder="Lena Brandt"></div>
+      <div class="field"><label>Position</label><input class="input" id="su-role" placeholder="Innenarchitektin"></div>
+      <div class="field"><label>Firma</label><input class="input" id="su-company" placeholder="Studio Brandt"></div>
+      <button class="btn btn-primary btn-block" id="do-signup" style="padding:11px">Karte anlegen</button>
+    </div>
+
+    <div id="pane-login" class="hide" style="display:grid; gap:var(--sp-3)">
+      <div class="field"><label>Kartenlink</label><input class="input" id="li-slug" placeholder="lena-brandt"></div>
+      <div class="field"><label>Zugangscode</label><input class="input mono" id="li-code" placeholder="A7K2QM" maxlength="6" style="text-transform:uppercase"></div>
+      <button class="btn btn-primary btn-block" id="do-login" style="padding:11px">Anmelden</button>
+    </div>
+
+    <div id="code-box" class="hide card" style="background:var(--neutral-900); padding:var(--sp-4); gap:6px">
+      <h6>Dein Zugangscode</h6>
+      <div class="mono" id="code-val" style="font-size:26px; letter-spacing:.2em; color:var(--accent-300)"></div>
+      <p style="font-size:12px; color:var(--muted); margin:0">Notiere ihn. Ohne Code kommst du nicht mehr in den Editor.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Editor ────────────────────────────────────────────── -->
+<section class="wrap row2 hide" id="s-editor">
+  <div>
+    <h2 style="margin-bottom:var(--sp-1)">Deine Karte</h2>
+    <p style="color:color-mix(in srgb,#e9e9ed 65%,transparent); font-size:14px">Die Vorschau rechts zeigt, was der Besucher nach dem Tap sieht.</p>
+
+    <h6 style="margin:var(--sp-6) 0 var(--sp-3)">Person</h6>
+    <div class="grid2">
+      <div class="field"><label>Name</label><input class="input" id="f-name"></div>
+      <div class="field"><label>Position</label><input class="input" id="f-role"></div>
+      <div class="field"><label>Firma</label><input class="input" id="f-company"></div>
+      <div class="field"><label>Geburtstag</label><input class="input" id="f-birthday" type="date"></div>
+    </div>
+    <div class="field" style="margin-top:var(--sp-3)"><label>Kurze Bio</label><textarea class="input" id="f-bio" rows="2"></textarea></div>
+
+    <h6 style="margin:var(--sp-6) 0 var(--sp-1)">Telefon</h6>
+    <div id="g-phone"></div>
+    <button class="btn btn-ghost" data-add="phone" style="font-size:13px">+ Telefonnummer</button>
+
+    <h6 style="margin:var(--sp-5) 0 var(--sp-1)">E-Mail</h6>
+    <div id="g-mail"></div>
+    <button class="btn btn-ghost" data-add="mail" style="font-size:13px">+ E-Mail-Adresse</button>
+
+    <h6 style="margin:var(--sp-5) 0 var(--sp-1)">Adresse</h6>
+    <div id="g-address"></div>
+    <button class="btn btn-ghost" data-add="address" style="font-size:13px">+ Adresse</button>
+
+    <h6 style="margin:var(--sp-5) 0 var(--sp-1)">Web &amp; Social</h6>
+    <div id="g-link"></div>
+    <div style="display:flex; gap:var(--sp-2); flex-wrap:wrap">
+      <button class="btn btn-ghost" data-add="web" style="font-size:13px">+ Website</button>
+      <button class="btn btn-ghost" data-add="social" style="font-size:13px">+ Social-Profil</button>
+    </div>
+
+    <h6 style="margin:var(--sp-6) 0 var(--sp-3)">Bild &amp; Farbe</h6>
+    <div style="display:flex; flex-wrap:wrap; gap:var(--sp-5); align-items:flex-start">
+      <div>
+        <div class="field" style="margin-bottom:var(--sp-1)"><label>Profilfoto oder Logo</label></div>
+        <div style="display:flex; align-items:center; gap:var(--sp-3)">
+          <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-photo" accept="image/*" hidden></label>
+          <span style="font-size:12px; color:var(--muted)" id="photo-label">max. 4 MB</span>
+        </div>
+      </div>
+      <div>
+        <div class="field" style="margin-bottom:var(--sp-1)"><label>Firmenfarbe</label></div>
+        <div style="display:flex; gap:var(--sp-2)" id="swatches"></div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap; margin-top:var(--sp-6); padding-top:var(--sp-5); border-top:1px solid var(--divider)">
+      <button class="btn btn-primary" id="save" style="padding:11px 22px">Speichern</button>
+      <a class="btn btn-secondary" id="open-card" target="_blank" rel="noopener" style="padding:11px 22px">Als Besucher öffnen</a>
+      <span style="font-size:13px; color:var(--muted)" id="save-state"></span>
+    </div>
+  </div>
+
+  <div style="position:sticky; top:78px; display:flex; flex-direction:column; align-items:center; gap:var(--sp-3)">
+    <span class="tag tag-neutral">Live-Vorschau</span>
+    <div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span id="pv-url">tapstern.de</span></div>
+      <div class="head">
+        <div class="glow" id="pv-glow"></div>
+        <div class="avatar" id="pv-avatar"></div>
+        <div style="display:grid; gap:2px">
+          <div class="pname" id="pv-name"></div>
+          <div class="prole" id="pv-role"></div>
+          <div class="pbio" id="pv-bio"></div>
+        </div>
+        <span class="btn btn-primary" id="pv-save" style="margin-top:var(--sp-1)">Kontakt speichern</span>
+      </div>
+      <div class="rows" id="pv-rows"></div>
+      <div class="pfoot"><span class="dot" id="pv-dot"></span><span>Karte von TapStern</span></div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ── Link & NFC ────────────────────────────────────────── -->
+<section class="wrap hide" id="s-link">
+  <h2 style="margin-bottom:var(--sp-3)">Link &amp; NFC-Karte</h2>
+  <p style="color:color-mix(in srgb,#e9e9ed 70%,transparent); max-width:520px">Dieser Link zeigt auf deine Kartenseite. Er bleibt gleich, wenn du deine Daten änderst.</p>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:var(--sp-4); margin-top:var(--sp-6)">
+    <div class="card elev-md" style="padding:var(--sp-5); gap:var(--sp-3)">
+      <h6>Dein Link</h6>
+      <div class="mono" id="link-val" style="font-size:14px; word-break:break-all; padding:var(--sp-3); border-radius:var(--radius); border:1px dashed var(--divider); color:var(--accent-300)"></div>
+      <div style="display:flex; gap:var(--sp-2); flex-wrap:wrap">
+        <button class="btn btn-primary" id="copy">Link kopieren</button>
+        <a class="btn btn-secondary" id="open-card-2" target="_blank" rel="noopener">Öffnen</a>
+      </div>
+    </div>
+
+    <div class="card elev-md" style="padding:var(--sp-5); gap:var(--sp-3); align-items:flex-start">
+      <h6>QR-Code</h6>
+      <div id="qr" style="padding:var(--sp-3); border-radius:var(--radius); background:#f4f4f6"></div>
+      <p style="font-size:13px; color:var(--muted); margin:0">Für Aufsteller, Rechnungen und die E-Mail-Signatur.</p>
+      <button class="btn btn-secondary" id="qr-dl">QR herunterladen</button>
+    </div>
+
+    <div class="card elev-md" style="padding:var(--sp-5); gap:var(--sp-3); align-items:flex-start">
+      <h6>NFC-Karte beschreiben</h6>
+      <p style="font-size:14px; color:var(--muted); margin:0" id="nfc-note">Android mit Chrome: auf „Karte beschreiben“ tippen und die Karte an die Rückseite des Handys halten.</p>
+      <button class="btn btn-primary" id="nfc-write">Karte beschreiben</button>
+      <p style="font-size:12px; color:var(--muted); margin:0">iPhone: mit einer NFC-App wie NFC Tools den Link als URL-Record schreiben.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Dashboard ─────────────────────────────────────────── -->
+<section class="wrap hide" id="s-dash">
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:var(--sp-4); flex-wrap:wrap">
+    <div>
+      <h2 style="margin-bottom:var(--sp-1)">Dashboard</h2>
+      <p style="color:color-mix(in srgb,#e9e9ed 65%,transparent); font-size:14px; margin:0" id="dash-sub"></p>
+    </div>
+    <div class="seg"><button id="d30" class="on">30 Tage</button><button id="d90">90 Tage</button></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--sp-4); margin-top:var(--sp-6)" id="stats"></div>
+
+  <h4 style="margin:44px 0 var(--sp-3)">Letzte Aufrufe</h4>
+  <table class="table">
+    <thead><tr><th>Zeitpunkt</th><th>Gerät</th><th>Quelle</th><th>Aktion</th></tr></thead>
+    <tbody id="events"></tbody>
+  </table>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+/* ═══ Zustand ═══ */
+var COLORS = ['#9184d9','#b5abfc','#7972a9','#4c5397'];
+var LABELS = {
+  phone:['Mobil','Privat','Arbeit'],
+  mail:['Privat','Arbeit'],
+  address:['Arbeit','Privat','Filiale'],
+  web:['Website','Portfolio','Shop'],
+  social:['LinkedIn','Instagram','X','GitHub','TikTok','Xing','WhatsApp']
+};
+var SOCIAL_BASE = {
+  LinkedIn:'https://linkedin.com/in/', Instagram:'https://instagram.com/', X:'https://x.com/',
+  GitHub:'https://github.com/', TikTok:'https://tiktok.com/@', Xing:'https://xing.com/profile/',
+  WhatsApp:'https://wa.me/'
+};
+var ICON = {
+  phone:'M6.5 3h3l1.5 3.5-2 1.5a9 9 0 0 0 4 4l1.5-2L18 11.5v3c0 .8-.7 1.5-1.5 1.5A12.5 12.5 0 0 1 4 4.5C4 3.7 4.7 3 5.5 3z',
+  mail:'M3 5.5h14v9H3zM3 6l7 5 7-5',
+  web:'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM3 10h14M10 3c2 2.2 2 11.8 0 14M10 3C8 5.2 8 14.8 10 17',
+  address:'M10 17s5-4.6 5-8.2A5 5 0 0 0 5 8.8C5 12.4 10 17 10 17zM10 10.5a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6z',
+  social:'M8 12l4-4M7.5 10.5l-1.7 1.7a2.4 2.4 0 0 0 3.4 3.4l1.7-1.7M12.5 9.5l1.7-1.7a2.4 2.4 0 0 0-3.4-3.4L9.1 6.1'
+};
+
+var session = { slug:'', token:'' };
+var card = { name:'', role:'', company:'', birthday:'', bio:'', color:COLORS[0], photoUrl:null, contacts:[] };
+var screen = 'auth';
+
+var $ = function (id) { return document.getElementById(id); };
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function toast(msg){ var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(function(){ t.classList.remove('show'); }, 2600); }
+function cardUrl(){ return location.origin + '/vk/' + session.slug; }
+
+async function api(path, body, isForm){
+  var opt = { method:'POST' };
+  if (isForm) opt.body = body;
+  else { opt.headers = {'Content-Type':'application/json'}; opt.body = JSON.stringify(body); }
+  var res = await fetch(path, opt);
+  var data = await res.json().catch(function(){ return {}; });
+  if (!res.ok) throw new Error(data.error || 'Fehler ' + res.status);
+  return data;
+}
+
+/* ═══ Navigation ═══ */
+function show(name){
+  screen = name;
+  ['auth','editor','link','dash'].forEach(function(s){ $('s-' + s).classList.toggle('hide', s !== name); });
+  Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function(b){ b.classList.toggle('on', b.dataset.go === name); });
+  window.scrollTo(0, 0);
+  if (name === 'link') renderLink();
+  if (name === 'dash') loadStats();
+}
+
+function buildNav(){
+  var items = session.token ? [['editor','Editor'],['link','Link & NFC'],['dash','Dashboard']] : [];
+  $('nav').innerHTML = items.map(function(i){ return '<button class="btn btn-ghost" data-go="' + i[0] + '">' + i[1] + '</button>'; }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function(b){ b.onclick = function(){ show(b.dataset.go); }; });
+  $('logout').classList.toggle('hide', !session.token);
+}
+
+/* ═══ Kontakteinträge ═══ */
+function groupOf(kind){ return kind === 'web' || kind === 'social' ? 'link' : kind; }
+
+function renderContacts(){
+  var buckets = { phone:[], mail:[], address:[], link:[] };
+  card.contacts.forEach(function(c, i){ (buckets[groupOf(c.kind)] || buckets.link).push({ c:c, i:i }); });
+
+  Object.keys(buckets).forEach(function(g){
+    var host = $('g-' + g);
+    host.innerHTML = buckets[g].map(function(e){
+      var opts = (g === 'link' ? LABELS.web.concat(LABELS.social) : LABELS[g])
+        .map(function(l){ return '<option' + (l === e.c.label ? ' selected' : '') + '>' + l + '</option>'; }).join('');
+      var ph = { phone:'+49 …', mail:'name@firma.de', address:'Straße, PLZ Ort', link:'studio-brandt.de oder benutzername' }[g];
+      return '<div class="cgroup">' +
+        '<select class="input" data-i="' + e.i + '" data-k="label">' + opts + '</select>' +
+        '<input class="input" data-i="' + e.i + '" data-k="value" value="' + esc(e.c.value) + '" placeholder="' + ph + '">' +
+        '<button class="btn btn-icon btn-secondary" data-del="' + e.i + '" title="Entfernen" aria-label="Entfernen">−</button>' +
+      '</div>';
+    }).join('');
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-k]'), function(el){
+    el.oninput = el.onchange = function(){
+      var c = card.contacts[+el.dataset.i];
+      if (el.dataset.k === 'label') { c.label = el.value; c.kind = LABELS.social.indexOf(el.value) >= 0 ? 'social' : (LABELS.web.indexOf(el.value) >= 0 ? 'web' : c.kind); }
+      else c.value = el.value;
+      renderPreview();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-del]'), function(b){
+    b.onclick = function(){ card.contacts.splice(+b.dataset.del, 1); renderContacts(); renderPreview(); };
+  });
+}
+
+Array.prototype.forEach.call(document.querySelectorAll('[data-add]'), function(b){
+  b.onclick = function(){
+    var k = b.dataset.add;
+    card.contacts.push({ kind:k, label:LABELS[k][0], value:'' });
+    renderContacts(); renderPreview();
+  };
+});
+
+/* ═══ Vorschau ═══ */
+function href(c){
+  var v = (c.value || '').trim();
+  if (c.kind === 'phone') return 'tel:' + v.replace(/[\s\/]/g,'');
+  if (c.kind === 'mail') return 'mailto:' + v;
+  if (c.kind === 'web') return /^https?:\/\//i.test(v) ? v : 'https://' + v;
+  if (c.kind === 'address') return 'https://maps.google.com/?q=' + encodeURIComponent(v);
+  return (SOCIAL_BASE[c.label] || 'https://') + v.replace(/^@/,'');
+}
+function display(c){
+  var v = (c.value || '').trim();
+  if (c.kind === 'social') return c.label === 'WhatsApp' ? v : '@' + v.replace(/^@/,'');
+  if (c.kind === 'web') return v.replace(/^https?:\/\//i,'');
+  return v;
+}
+
+function renderPreview(){
+  var col = card.color;
+  $('pv-glow').style.background = 'radial-gradient(120% 80% at 50% -20%, color-mix(in srgb,' + col + ' 30%, transparent), transparent 70%)';
+  $('pv-url').textContent = session.slug ? 'tapstern.de/vk/' + session.slug : 'tapstern.de';
+  $('pv-name').textContent = card.name || 'Dein Name';
+  $('pv-role').textContent = [card.role, card.company].filter(Boolean).join(' · ');
+  $('pv-bio').textContent = card.bio || '';
+  $('pv-save').style.color = col; $('pv-save').style.borderColor = col;
+  $('pv-dot').style.background = col;
+
+  var av = $('pv-avatar');
+  if (card.photoUrl) {
+    av.innerHTML = '<img src="' + esc(card.photoUrl) + '" alt="">';
+    av.style.background = 'transparent';
+  } else {
+    var ini = (card.name || '').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){ return w[0]; }).join('').toUpperCase();
+    av.textContent = ini || '—';
+    av.style.background = 'color-mix(in srgb,' + col + ' 22%, var(--surface))';
+  }
+  av.style.boxShadow = 'inset 0 0 0 1px ' + col;
+  av.style.color = col;
+
+  $('pv-rows').innerHTML = card.contacts.filter(function(c){ return (c.value || '').trim(); }).map(function(c){
+    return '<a class="crow" href="' + esc(href(c)) + '">' +
+      '<span class="ico"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="' + col + '" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="' + (ICON[c.kind] || ICON.social) + '"/></svg></span>' +
+      '<span style="display:grid;gap:1px;min-width:0"><span class="lbl">' + esc(c.label) + '</span><span class="val">' + esc(display(c)) + '</span></span>' +
+    '</a>';
+  }).join('');
+}
+
+/* ═══ Formular ↔ Zustand ═══ */
+['name','role','company','birthday','bio'].forEach(function(k){
+  $('f-' + k).oninput = function(){ card[k] = $('f-' + k).value; renderPreview(); };
+});
+
+$('swatches').innerHTML = COLORS.map(function(c){ return '<button class="swatch" data-c="' + c + '" style="background:' + c + '"></button>'; }).join('');
+Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(b){
+  b.onclick = function(){
+    card.color = b.dataset.c;
+    Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(x){ x.classList.toggle('on', x.dataset.c === card.color); });
+    renderPreview();
+  };
+});
+
+function fillForm(){
+  ['name','role','company','birthday','bio'].forEach(function(k){ $('f-' + k).value = card[k] || ''; });
+  Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(x){ x.classList.toggle('on', x.dataset.c === card.color); });
+  $('open-card').href = $('open-card-2').href = cardUrl();
+  renderContacts(); renderPreview();
+}
+
+/* ═══ Konto ═══ */
+$('tab-signup').onclick = function(){ $('tab-signup').classList.add('on'); $('tab-login').classList.remove('on'); $('pane-signup').classList.remove('hide'); $('pane-login').classList.add('hide'); };
+$('tab-login').onclick = function(){ $('tab-login').classList.add('on'); $('tab-signup').classList.remove('on'); $('pane-login').classList.remove('hide'); $('pane-signup').classList.add('hide'); };
+
+$('do-signup').onclick = async function(){
+  var name = $('su-name').value.trim();
+  if (!name) return toast('Bitte einen Namen eingeben');
+  try {
+    var r = await api('/api/register', { name:name, jobTitle:$('su-role').value, companyName:$('su-company').value });
+    session = { slug:r.slug, token:r.token };
+    localStorage.setItem('tapstern', JSON.stringify(session));
+    card.name = name; card.role = $('su-role').value; card.company = $('su-company').value;
+    $('code-val').textContent = r.editCode;
+    $('code-box').classList.remove('hide');
+    buildNav(); fillForm();
+    toast('Karte angelegt — Code notieren!');
+    setTimeout(function(){ show('editor'); }, 2400);
+  } catch (e) { toast(e.message); }
+};
+
+$('do-login').onclick = async function(){
+  try {
+    var r = await api('/api/login', { slug:$('li-slug').value.trim().toLowerCase(), editCode:$('li-code').value.trim().toUpperCase() });
+    session = { slug:r.card.slug, token:r.token };
+    localStorage.setItem('tapstern', JSON.stringify(session));
+    adopt(r.card); buildNav(); fillForm(); show('editor');
+  } catch (e) { toast(e.message); }
+};
+
+$('logout').onclick = function(){
+  localStorage.removeItem('tapstern');
+  session = { slug:'', token:'' };
+  buildNav(); show('auth');
+};
+
+function adopt(c){
+  card.name = c.name || ''; card.role = c.jobTitle || ''; card.company = c.companyName || '';
+  card.birthday = c.birthday || ''; card.bio = c.bio || '';
+  card.color = COLORS.indexOf(c.accentColor) >= 0 ? c.accentColor : COLORS[0];
+  card.photoUrl = c.photoUrl || null;
+  card.contacts = Array.isArray(c.contacts) ? c.contacts : [];
+}
+
+/* ═══ Speichern ═══ */
+$('save').onclick = async function(){
+  $('save').disabled = true; $('save-state').textContent = 'Speichert …';
+  try {
+    await api('/api/update', {
+      slug:session.slug, token:session.token,
+      name:card.name, jobTitle:card.role, companyName:card.company,
+      birthday:card.birthday, bio:card.bio, accentColor:card.color,
+      contacts:card.contacts.filter(function(c){ return (c.value || '').trim(); })
+    });
+    $('save-state').textContent = 'Gespeichert';
+    setTimeout(function(){ $('save-state').textContent = ''; }, 2200);
+  } catch (e) { $('save-state').textContent = ''; toast(e.message); }
+  $('save').disabled = false;
+};
+
+$('f-photo').onchange = async function(e){
+  var f = e.target.files[0];
+  if (!f) return;
+  $('photo-label').textContent = 'Lädt hoch …';
+  var fd = new FormData();
+  fd.append('slug', session.slug); fd.append('token', session.token); fd.append('photo', f);
+  try {
+    var r = await api('/api/upload-photo', fd, true);
+    card.photoUrl = r.photoUrl;
+    $('photo-label').textContent = f.name;
+    renderPreview();
+  } catch (err) { $('photo-label').textContent = 'max. 4 MB'; toast(err.message); }
+};
+
+/* ═══ Link, QR, NFC ═══ */
+function renderLink(){
+  var url = cardUrl();
+  $('link-val').textContent = url;
+  $('open-card-2').href = url;
+  if (window.QRCode) {
+    QRCode.toCanvas(url, { width:170, margin:1, color:{ dark:'#22242f', light:'#f4f4f6' } }, function(err, canvas){
+      if (err) return;
+      $('qr').innerHTML = ''; $('qr').appendChild(canvas); $('qr')._canvas = canvas;
+    });
+  }
+}
+$('copy').onclick = function(){ navigator.clipboard.writeText(cardUrl()); toast('Link kopiert'); };
+$('qr-dl').onclick = function(){
+  var c = $('qr')._canvas;
+  if (!c) return toast('QR-Code noch nicht bereit');
+  var a = document.createElement('a');
+  a.href = c.toDataURL('image/png'); a.download = 'tapstern-' + session.slug + '.png'; a.click();
+};
+
+$('nfc-write').onclick = async function(){
+  if (!('NDEFReader' in window)) return toast('Dieser Browser kann kein NFC schreiben — nutze Chrome auf Android');
+  try {
+    var w = new NDEFReader();
+    toast('Karte jetzt an das Handy halten …');
+    await w.write({ records:[{ recordType:'url', data:cardUrl() }] });
+    toast('Karte beschrieben');
+  } catch (e) { toast('Schreiben fehlgeschlagen: ' + e.message); }
+};
+
+/* ═══ Dashboard ═══ */
+var days = 30;
+$('d30').onclick = function(){ days = 30; $('d30').classList.add('on'); $('d90').classList.remove('on'); loadStats(); };
+$('d90').onclick = function(){ days = 90; $('d90').classList.add('on'); $('d30').classList.remove('on'); loadStats(); };
+
+async function loadStats(){
+  $('dash-sub').textContent = 'Letzte ' + days + ' Tage · tapstern.de/vk/' + session.slug;
+  try {
+    var res = await fetch('/api/stats?slug=' + encodeURIComponent(session.slug) + '&token=' + encodeURIComponent(session.token) + '&days=' + days);
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Fehler');
+    var cells = [
+      ['Aufrufe', d.totals.views, ''],
+      ['Kontakt gespeichert', d.totals.saves, d.totals.saveRate + ' % der Aufrufe'],
+      ['Anrufe &amp; Mails', d.totals.contacts, 'direkt von der Kartenseite'],
+      ['Zeitraum', d.days + ' Tage', '']
+    ];
+    $('stats').innerHTML = cells.map(function(c){
+      return '<div class="card elev-sm" style="padding:var(--sp-4); gap:2px">' +
+        '<h6>' + c[0] + '</h6>' +
+        '<div style="font-size:34px; line-height:1.1; font-weight:500">' + c[1] + '</div>' +
+        '<div style="font-size:12px; color:var(--muted)">' + c[2] + '</div></div>';
+    }).join('');
+
+    var labels = { view:'Nur angesehen', save:'Kontakt gespeichert', call:'Angerufen', mail:'Mail geschrieben', web:'Website geöffnet' };
+    var sources = { nfc:'NFC-Tap', link:'Link', intern:'Kartenseite' };
+    $('events').innerHTML = (d.recent || []).map(function(e){
+      var t = new Date(e.created_at);
+      var accent = e.action !== 'view';
+      return '<tr><td>' + t.toLocaleString('de-DE', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) + '</td>' +
+        '<td>' + esc(e.device || '—') + '</td><td>' + esc(sources[e.source] || e.source || '—') + '</td>' +
+        '<td><span class="tag ' + (accent ? 'tag-accent' : 'tag-neutral') + '">' + (labels[e.action] || e.action) + '</span></td></tr>';
+    }).join('') || '<tr><td colspan="4" style="color:var(--muted)">Noch keine Aufrufe.</td></tr>';
+  } catch (e) { toast(e.message); }
+}
+
+/* ═══ Start ═══ */
+(async function init(){
+  var saved = null;
+  try { saved = JSON.parse(localStorage.getItem('tapstern') || 'null'); } catch (e) {}
+  buildNav();
+  if (saved && saved.slug && saved.token) {
+    session = saved;
+    try {
+      var res = await fetch('/api/card?slug=' + encodeURIComponent(saved.slug) + '&token=' + encodeURIComponent(saved.token));
+      if (res.ok) {
+        var d = await res.json();
+        adopt(d.card); buildNav(); fillForm(); show('editor'); return;
+      }
+    } catch (e) {}
+    localStorage.removeItem('tapstern'); session = { slug:'', token:'' }; buildNav();
+  }
+  show('auth');
+  renderPreview();
+})();
+</script>
+</body>
+</html>

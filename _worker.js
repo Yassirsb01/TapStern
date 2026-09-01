@@ -12,6 +12,7 @@ export default {
     try {
       if (method === 'POST' && path === '/api/register') return handleRegister(request, env);
       if (method === 'POST' && path === '/api/login') return handleLogin(request, env);
+      if (method === 'POST' && path === '/api/reset-code') return handleResetCode(request, env);
       if (method === 'POST' && path === '/api/update') return handleUpdate(request, env);
       if (method === 'POST' && path === '/api/upload-photo') return handleUploadPhoto(request, env);
       if (method === 'POST' && path === '/api/track') return handleTrack(request, env);
@@ -158,6 +159,22 @@ async function handleLogin(request, env) {
     .bind(token, Date.now() + DAY, slug).run();
 
   return json({ token, card: publicCard(row) });
+}
+
+/* ──────────────────────────── /api/reset-code ───────────────────────── */
+// Neuen Zugangscode erzeugen, solange die laufende Sitzung noch gültig ist.
+async function handleResetCode(request, env) {
+  const data = await readJson(request);
+  if (!data) return json({ error: 'Ungültige Anfrage' }, 400);
+
+  const row = await authorize(env, data.slug, data.token);
+  if (row.error) return json({ error: row.error }, row.status);
+
+  const newCode = generateCode();
+  await env.DB.prepare('UPDATE businesscards SET edit_code_hash = ? WHERE slug = ?')
+    .bind(await sha256(newCode), row.slug).run();
+
+  return json({ editCode: newCode });
 }
 
 /* ───────────────────────────── /api/update ─────────────────────────── */

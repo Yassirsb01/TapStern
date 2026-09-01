@@ -88,6 +88,12 @@
           <option value="Aufsteller – Eigenes Branding (40€)">Aufsteller — Eigenes Branding — 40 €</option>
         </select>
 
+        <div id="paketLocked" style="display:none;">
+          <label>Produkt</label>
+          <p id="paketLockedText" style="margin:-4px 0 0; font-weight:600; color:var(--ink);"></p>
+          <input type="hidden" name="Paket" id="paketHidden">
+        </div>
+
         <label for="menge">Menge</label>
         <input type="number" name="Menge" id="menge" min="1" value="1" required>
 
@@ -101,6 +107,29 @@
           <label for="wuensche">Wünsche zum Design</label>
           <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px;">Logo, Farben, gewünschte Beschriftung — je genauer, desto besser können wir das Design vorbereiten.</p>
           <textarea name="Design-Wünsche" id="wuensche" placeholder="z. B. Logo anbei, Hausfarbe Blau, Text 'Vielen Dank für Ihren Besuch'"></textarea>
+        </div>
+
+        <div id="cardFields" style="display:none;">
+          <label for="vkName">Name auf der Karte</label>
+          <input type="text" name="Name auf Karte" id="vkName" placeholder="Vor- und Nachname">
+
+          <label for="vkPosition">Position / Jobtitel</label>
+          <input type="text" name="Position" id="vkPosition" placeholder="z. B. Verkaufsberater">
+
+          <div class="row">
+            <div>
+              <label for="vkTelefon">Telefon auf der Karte</label>
+              <input type="tel" name="Telefon auf Karte" id="vkTelefon" placeholder="0176 ...">
+            </div>
+            <div>
+              <label for="vkEmail">E-Mail auf der Karte</label>
+              <input type="email" name="E-Mail auf Karte" id="vkEmail" placeholder="name@beispiel.de">
+            </div>
+          </div>
+
+          <label for="vkLogo">Logo &amp; Farben <span class="opt">(optional)</span></label>
+          <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px;">Falls gewünscht, kurz beschreiben oder in der E-Mail nach dem Absenden anhängen.</p>
+          <textarea name="Visitenkarte-Design-Wünsche" id="vkLogo" placeholder="z. B. Firmenlogo anbei, Hausfarbe Dunkelblau"></textarea>
         </div>
 
         <button type="submit" id="submitBtn">Bestellung absenden</button>
@@ -124,12 +153,34 @@
     'Aufkleber-Standard': 'Aufkleber – Standard (30€)',
     'Aufsteller-Standard': 'Aufsteller – Standard (30€)',
     'Aufkleber-Branding': 'Aufkleber – Eigenes Branding (40€)',
-    'Aufsteller-Branding': 'Aufsteller – Eigenes Branding (40€)'
+    'Aufsteller-Branding': 'Aufsteller – Eigenes Branding (40€)',
+    'Visitenkarte': 'NFC-Visitenkarte (20€ Einführungspreis)'
   };
+  // Packages with only one variant get a locked, read-only product field instead of a dropdown
+  const lockedPackages = new Set(['Visitenkarte']);
+
   const urlParams = new URLSearchParams(window.location.search);
   const urlPaket = urlParams.get('paket');
+  const paketSelect = document.getElementById('paket');
+  const paketLocked = document.getElementById('paketLocked');
+  const paketLockedText = document.getElementById('paketLockedText');
+  const paketHidden = document.getElementById('paketHidden');
+
   if (urlPaket && packageMap[urlPaket]) {
-    document.getElementById('paket').value = packageMap[urlPaket];
+    if (lockedPackages.has(urlPaket)) {
+      paketSelect.style.display = 'none';
+      paketSelect.removeAttribute('required');
+      paketSelect.disabled = true;
+      paketLocked.style.display = 'block';
+      paketLockedText.textContent = packageMap[urlPaket];
+      paketHidden.value = packageMap[urlPaket];
+    } else {
+      paketSelect.value = packageMap[urlPaket];
+    }
+  }
+
+  function getCurrentPaket() {
+    return paketSelect.disabled ? paketHidden.value : paketSelect.value;
   }
 
   const urlMenge = urlParams.get('menge');
@@ -138,12 +189,19 @@
   }
 
   function toggleBrandingFields() {
-    const isBranding = document.getElementById('paket').value.includes('Branding');
+    const isBranding = getCurrentPaket().includes('Branding');
     document.getElementById('brandingFields').style.display = isBranding ? 'block' : 'none';
   }
-  document.getElementById('paket').addEventListener('change', toggleBrandingFields);
+  function toggleCardFields() {
+    const isCard = getCurrentPaket().includes('Visitenkarte');
+    document.getElementById('cardFields').style.display = isCard ? 'block' : 'none';
+  }
+  paketSelect.addEventListener('change', function(){
+    toggleBrandingFields();
+    toggleCardFields();
+  });
   toggleBrandingFields();
-
+  toggleCardFields();
   document.getElementById('orderForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const form = e.target;

@@ -292,7 +292,7 @@ async function handleVcard(request, env, ctx, slug) {
   ctx.waitUntil(logEvent(env, slug, 'save', source(request), request));
 
   const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${row.name}`];
-  if (row.employment_status !== 'keiner' && row.company_name) lines.push(`ORG:${row.company_name}`);
+  if (row.company_name) lines.push(`ORG:${row.company_name}`);
   if (row.job_title) lines.push(`TITLE:${row.job_title}`);
   if (row.birthday) lines.push(`BDAY:${row.birthday.replace(/-/g, '')}`);
   for (const c of parseContacts(row)) {
@@ -306,7 +306,10 @@ async function handleVcard(request, env, ctx, slug) {
     else if (c.kind === 'social') lines.push(`X-SOCIALPROFILE;TYPE=${c.label.toLowerCase()}:${contactHref(c)}`);
   }
   if (row.bio) lines.push(`NOTE:${row.bio.replace(/\r?\n/g, '\\n')}`);
-  if (row.photo_key) lines.push(`PHOTO;VALUE=URI:${new URL(request.url).origin}/photo/${row.photo_key}`);
+  if (row.photo_key) {
+    const photoLine = await embeddedPhotoLine(env, row.photo_key);
+    if (photoLine) lines.push(photoLine);
+  }
   lines.push('END:VCARD');
 
   return new Response(lines.join('\r\n'), {
@@ -315,6 +318,42 @@ async function handleVcard(request, env, ctx, slug) {
       'Content-Disposition': `attachment; filename="${row.name}.vcf"`
     }
   });
+}
+
+async function embeddedPhotoLine(env, key) {
+  try {
+    const obj = await env.PHOTOS.get(key);
+    if (!obj) return null;
+    const buf = await obj.arrayBuffer();
+    const base64 = bufferToBase64(buf);
+    const mime = (obj.httpMetadata && obj.httpMetadata.contentType) || 'image/jpeg';
+    const subtype = (mime.split('/')[1] || 'jpeg').toUpperCase().replace('JPG', 'JPEG');
+    return foldVcardLine(`PHOTO;ENCODING=b;TYPE=${subtype}:${base64}`);
+  } catch (e) {
+    return null;
+  }
+}
+
+function bufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function foldVcardLine(line) {
+  const limit = 75;
+  if (line.length <= limit) return line;
+  let out = line.slice(0, limit);
+  let rest = line.slice(limit);
+  while (rest.length > 0) {
+    out += '\r\n ' + rest.slice(0, limit - 1);
+    rest = rest.slice(limit - 1);
+  }
+  return out;
 }
 
 /* ────────────────────────── GET /vk/:slug ─────────────────────────── */

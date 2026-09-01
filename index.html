@@ -111,6 +111,43 @@
   }
   .nav-cta:hover{background:var(--primary-bright);}
 
+  .nav-links{
+    display:flex; align-items:center; gap:28px;
+  }
+  .nav-links a{
+    color:var(--ink-soft); text-decoration:none; font-size:0.92rem; font-weight:500;
+    transition:color 0.15s ease;
+  }
+  .nav-links a:hover{color:var(--ink);}
+  .nav-links a.active{color:var(--primary-bright); font-weight:600;}
+  .nav-links-mobile a.active{color:var(--primary-bright); font-weight:700;}
+
+  .menu-toggle{
+    display:none;
+    width:38px; height:38px; margin-left:10px; border-radius:10px;
+    border:1px solid var(--line); background:transparent; color:var(--ink);
+    align-items:center; justify-content:center; cursor:pointer;
+  }
+  .menu-toggle svg{width:18px; height:18px;}
+
+  .nav-links-mobile{
+    display:none;
+    flex-direction:column;
+    padding:6px 28px 18px;
+    border-top:1px solid var(--line);
+  }
+  .nav-links-mobile a{
+    display:block; padding:12px 0; color:var(--ink); text-decoration:none;
+    font-size:0.98rem; font-weight:500; border-bottom:1px solid var(--line);
+  }
+  .nav-links-mobile a:last-child{border-bottom:none;}
+  .nav-links-mobile.open{display:flex;}
+
+  @media (max-width: 820px){
+    .nav-links{display:none;}
+    .menu-toggle{display:flex;}
+  }
+
   /* HERO */
   header.hero{
     padding:96px 0 72px;
@@ -595,13 +632,27 @@
       <img src="tapstern-icon-white.png" alt="" class="logo-icon-dark" style="height:28px; width:auto; object-fit:contain; display:none;">
       Tapstern
     </div>
+
+    <div class="nav-links" id="navLinks">
+      <a href="index.html" class="active">Bewertungskarten</a>
+      <a href="visitenkarten.html">Visitenkarten</a>
+    </div>
+
     <div style="display:flex; align-items:center;">
       <button type="button" class="theme-toggle" id="themeToggle" aria-label="Farbschema wechseln">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8"/></svg>
         <svg class="icon-moon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
       </button>
       <a class="nav-cta" href="#kontakt">Jetzt anfragen</a>
+      <button type="button" class="menu-toggle" id="menuToggle" aria-label="Menü öffnen" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      </button>
     </div>
+  </div>
+
+  <div class="nav-links-mobile" id="navLinksMobile">
+    <a href="index.html" class="active">Bewertungskarten</a>
+    <a href="visitenkarten.html">Visitenkarten</a>
   </div>
 </nav>
 
@@ -1045,6 +1096,22 @@
       btn.disabled = false;
       btn.textContent = 'Nachricht senden';
     }
+  });
+</script>
+
+<script>
+  // Mobile hamburger menu: toggles the dropdown link panel
+  const menuToggle = document.getElementById('menuToggle');
+  const navLinksMobile = document.getElementById('navLinksMobile');
+  menuToggle.addEventListener('click', () => {
+    const isOpen = navLinksMobile.classList.toggle('open');
+    menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+  navLinksMobile.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      navLinksMobile.classList.remove('open');
+      menuToggle.setAttribute('aria-expanded', 'false');
+    });
   });
 </script>
 

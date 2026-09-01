@@ -529,9 +529,35 @@ $('save').onclick = async function(){
   $('save').disabled = false;
 };
 
+function resizeImage(file, maxDim, quality){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function(){
+      URL.revokeObjectURL(url);
+      var w = img.width, h = img.height;
+      if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+      else if (h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function(blob){
+        if (!blob) return reject(new Error('Bild konnte nicht verarbeitet werden'));
+        resolve(new File([blob], (file.name || 'foto').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('Bild konnte nicht gelesen werden')); };
+    img.src = url;
+  });
+}
+
 $('f-photo').onchange = async function(e){
   var f = e.target.files[0];
   if (!f) return;
+  $('photo-label').textContent = 'Wird verkleinert …';
+  try {
+    f = await resizeImage(f, 480, 0.82);
+  } catch (err) { $('photo-label').textContent = 'max. 4 MB'; toast(err.message); return; }
   $('photo-label').textContent = 'Lädt hoch …';
   var fd = new FormData();
   fd.append('slug', session.slug); fd.append('token', session.token); fd.append('photo', f);

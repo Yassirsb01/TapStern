@@ -308,7 +308,8 @@ async function handleVcard(request, env, ctx, slug) {
 
   ctx.waitUntil(logEvent(env, slug, 'save', source(request), request));
 
-  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${row.name}`];
+  const nameParts = splitName(row.name);
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `N:${nameParts.family};${nameParts.given};;;`, `FN:${row.name}`];
   if (row.company_name) lines.push(`ORG:${row.company_name}`);
   if (row.job_title) lines.push(`TITLE:${row.job_title}`);
   if (row.birthday) lines.push(`BDAY:${row.birthday.replace(/-/g, '')}`);
@@ -320,7 +321,7 @@ async function handleVcard(request, env, ctx, slug) {
     else if (c.kind === 'mail') lines.push(`EMAIL;TYPE=INTERNET,${work ? 'WORK' : 'HOME'}:${v}`);
     else if (c.kind === 'web') lines.push(`URL:${contactHref(c)}`);
     else if (c.kind === 'address') lines.push(`ADR;TYPE=${work ? 'WORK' : 'HOME'}:;;${v.replace(/,\s*/g, ';')};;;;`);
-    else if (c.kind === 'social') lines.push(`X-SOCIALPROFILE;TYPE=${c.label.toLowerCase()}:${contactHref(c)}`);
+    else if (c.kind === 'social') lines.push(`X-SOCIALPROFILE;type=${c.label.toLowerCase()};x-user=${v.replace(/^@/, '')}:${contactHref(c)}`);
   }
   if (row.bio) lines.push(`NOTE:${row.bio.replace(/\r?\n/g, '\\n')}`);
   if (row.photo_key) {
@@ -587,6 +588,14 @@ async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
+function splitName(full) {
+  const parts = str(full).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { given: '', family: '' };
+  if (parts.length === 1) return { given: parts[0], family: '' };
+  const family = parts.pop();
+  return { given: parts.join(' '), family };
+}
+
 function normalizeUrl(url) { return /^https?:\/\//i.test(url) ? url : `https://${url}`; }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

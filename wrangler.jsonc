@@ -1,0 +1,22 @@
+{
+  "name": "tapstern",
+  "compatibility_date": "2026-08-01",
+  "main": "_worker.js",
+  "assets": {
+    "directory": "./",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tapstern-db",
+      "database_id": "37e3b774-7a17-4630-9d7a-1a41bdc7dd78"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "tapstern-photos"
+    }
+  ]
+}

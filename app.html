@@ -159,7 +159,11 @@
     <div id="code-box" class="hide card" style="background:var(--neutral-900); padding:var(--sp-4); gap:6px">
       <h6>Dein Zugangscode</h6>
       <div class="mono" id="code-val" style="font-size:26px; letter-spacing:.2em; color:var(--accent-300)"></div>
-      <p style="font-size:12px; color:var(--muted); margin:0">Notiere ihn. Ohne Code kommst du nicht mehr in den Editor.</p>
+      <p style="font-size:12px; color:var(--muted); margin:0 0 var(--sp-3)">Notiere ihn. Ohne Code kommst du nicht mehr in den Editor.</p>
+      <hr class="hr" style="margin:0 0 var(--sp-3)">
+      <p style="font-size:14px; margin:0 0 var(--sp-2)">Deine Karte ist fertig — jetzt auf eine echte NFC-Karte mit deinem Design bestellen?</p>
+      <a class="btn btn-primary btn-block" id="order-now" href="bestellen.html?paket=Visitenkarte&menge=1" style="padding:11px">NFC-Karte mit eigenem Design bestellen</a>
+      <button class="btn btn-ghost btn-block" id="skip-order" style="padding:11px">Später — erstmal weiter bearbeiten</button>
     </div>
   </div>
 </section>
@@ -216,6 +220,7 @@
     <div style="display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap; margin-top:var(--sp-6); padding-top:var(--sp-5); border-top:1px solid var(--divider)">
       <button class="btn btn-primary" id="save" style="padding:11px 22px">Speichern</button>
       <a class="btn btn-secondary" id="open-card" target="_blank" rel="noopener" style="padding:11px 22px">Als Besucher öffnen</a>
+      <a class="btn btn-ghost" href="bestellen.html?paket=Visitenkarte&menge=1" style="padding:11px 22px">NFC-Karte bestellen</a>
       <span style="font-size:13px; color:var(--muted)" id="save-state"></span>
     </div>
   </div>
@@ -475,11 +480,13 @@ $('do-signup').onclick = async function(){
     card.name = name; card.role = $('su-role').value; card.company = $('su-company').value;
     $('code-val').textContent = r.editCode;
     $('code-box').classList.remove('hide');
+    $('pane-signup').classList.add('hide');
     buildNav(); fillForm();
     toast('Karte angelegt — Code notieren!');
-    setTimeout(function(){ show('editor'); }, 2400);
   } catch (e) { toast(e.message); }
 };
+
+$('skip-order').onclick = function(){ show('editor'); };
 
 $('do-login').onclick = async function(){
   try {
@@ -493,6 +500,8 @@ $('do-login').onclick = async function(){
 $('logout').onclick = function(){
   localStorage.removeItem('tapstern');
   session = { slug:'', token:'' };
+  $('code-box').classList.add('hide');
+  $('pane-signup').classList.remove('hide');
   buildNav(); show('auth');
 };
 

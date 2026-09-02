@@ -10,9 +10,17 @@ export default {
     const method = request.method;
 
     try {
-      if (method === 'POST' && path === '/api/register') return handleRegister(request, env);
-      if (method === 'POST' && path === '/api/login') return handleLogin(request, env);
-      if (method === 'POST' && path === '/api/reset-code') return handleResetCode(request, env);
+      if (method === 'POST' && path === '/api/signup') return handleSignup(request, env, ctx);
+      if (method === 'POST' && path === '/api/signin') return handleSignin(request, env);
+      if (method === 'POST' && path === '/api/signout') return handleSignout(request, env);
+      if (method === 'POST' && path === '/api/resend-verify') return handleResendVerify(request, env, ctx);
+      if (method === 'POST' && path === '/api/forgot') return handleForgot(request, env, ctx);
+      if (method === 'POST' && path === '/api/reset-password') return handleResetPassword(request, env);
+      if (method === 'GET'  && path === '/api/me') return handleMe(request, env);
+      if (method === 'POST' && path === '/api/cards') return handleCreateCard(request, env);
+      if (method === 'POST' && path === '/api/delete-card') return handleDeleteCard(request, env);
+      if (method === 'GET'  && path === '/verify') return handleVerifyLink(request, env);
+
       if (method === 'POST' && path === '/api/update') return handleUpdate(request, env);
       if (method === 'POST' && path === '/api/upload-photo') return handleUploadPhoto(request, env);
       if (method === 'POST' && path === '/api/track') return handleTrack(request, env);
@@ -35,6 +43,185 @@ export default {
     }
   }
 };
+
+const SESSION_DAYS = 30;
+const VERIFY_HOURS = 24;
+const RESET_MINUTES = 60;
+const MAX_CARDS = 10;
+
+/* ══════════════════════ Konten: E-Mail und Passwort ══════════════════════ */
+
+/* POST /api/signup — Konto anlegen, Bestätigungsmail senden */
+async function handleSignup(request, env, ctx) {
+  const d = await readJson(request);
+  if (!d) return json({ error: 'Ungültige Anfrage' }, 400);
+
+  const email = normalizeEmail(d.email);
+  const password = String(d.password || '');
+  if (!validEmail(email)) return json({ error: 'Bitte eine gültige E-Mail-Adresse angeben' }, 400);
+  const pwErr = passwordProblem(password);
+  if (pwErr) return json({ error: pwErr }, 400);
+
+  const existing = await env.DB.prepare('SELECT id, verified FROM users WHERE email = ?').bind(email).first();
+  if (existing) {
+    return json({ error: 'Für diese Adresse gibt es schon ein Konto. Melde dich an oder setze das Passwort zurück.' }, 409);
+  }
+
+  const now = Date.now();
+  const userId = crypto.randomUUID();
+  const verifyToken = randomToken();
+
+  await env.DB.prepare(
+    `INSERT INTO users (id, email, password_hash, verified, verify_token, verify_expires, created_at)
+     VALUES (?,?,?,0,?,?,?)`
+  ).bind(userId, email, await hashPassword(password), await sha256(verifyToken), now + VERIFY_HOURS * 3600000, now).run();
+
+  const token = await newSession(env, userId);
+  ctx.waitUntil(sendVerifyMail(env, request, email, verifyToken));
+
+  return json({ user: { email, verified: false }, cards: [] }, 200, sessionCookie(token));
+}
+
+/* POST /api/signin */
+async function handleSignin(request, env) {
+  const d = await readJson(request);
+  if (!d) return json({ error: 'Ungültige Anfrage' }, 400);
+
+  const email = normalizeEmail(d.email);
+  const gate = await checkLock(env, 'pw:' + email);
+  if (gate) return json({ error: gate }, 429);
+
+  const u = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+  const ok = u && await verifyPassword(String(d.password || ''), u.password_hash);
+  if (!ok) {
+    await noteFail(env, 'pw:' + email);
+    return json({ error: 'E-Mail oder Passwort ist falsch' }, 401);
+  }
+  await clearFails(env, 'pw:' + email);
+
+  const token = await newSession(env, u.id);
+  return json({ user: { email: u.email, verified: !!u.verified }, cards: await cardsOf(env, u.id) }, 200, sessionCookie(token));
+}
+
+/* POST /api/signout */
+async function handleSignout(request, env) {
+  const t = sessionToken(request);
+  if (t) await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256(t)).run();
+  return json({ success: true }, 200, 'ts_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+}
+
+/* GET /api/me — Konto und Karten der laufenden Sitzung */
+async function handleMe(request, env) {
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  return json({ user: { email: u.email, verified: !!u.verified }, cards: await cardsOf(env, u.id) });
+}
+
+/* GET /verify?token=… — Klick aus der Bestätigungsmail */
+async function handleVerifyLink(request, env) {
+  const token = new URL(request.url).searchParams.get('token') || '';
+  const hash = await sha256(token);
+  const u = await env.DB.prepare('SELECT * FROM users WHERE verify_token = ?').bind(hash).first();
+
+  if (!u) return verifyPage(false, 'Dieser Link ist ungültig. Fordere im Konto eine neue Bestätigung an.');
+  if (u.verified) return verifyPage(true, 'Diese Adresse war schon bestätigt.');
+  if (u.verify_expires < Date.now()) return verifyPage(false, 'Der Link ist abgelaufen. Fordere im Konto eine neue Bestätigung an.');
+
+  await env.DB.prepare('UPDATE users SET verified = 1, verify_token = NULL, verify_expires = NULL WHERE id = ?').bind(u.id).run();
+  await env.DB.prepare('UPDATE businesscards SET published = 1 WHERE user_id = ?').bind(u.id).run();
+  return verifyPage(true, 'E-Mail bestätigt. Deine Karten sind jetzt öffentlich erreichbar.');
+}
+
+/* POST /api/resend-verify */
+async function handleResendVerify(request, env, ctx) {
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  if (u.verified) return json({ error: 'Adresse ist bereits bestätigt' }, 400);
+
+  const gate = await checkLock(env, 'verify:' + u.email);
+  if (gate) return json({ error: gate }, 429);
+  await noteFail(env, 'verify:' + u.email);
+
+  const t = randomToken();
+  await env.DB.prepare('UPDATE users SET verify_token = ?, verify_expires = ? WHERE id = ?')
+    .bind(await sha256(t), Date.now() + VERIFY_HOURS * 3600000, u.id).run();
+  ctx.waitUntil(sendVerifyMail(env, request, u.email, t));
+  return json({ success: true });
+}
+
+/* POST /api/forgot — antwortet immer gleich, verrät keine Konten */
+async function handleForgot(request, env, ctx) {
+  const d = await readJson(request);
+  const email = normalizeEmail(d && d.email);
+  const u = email ? await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first() : null;
+
+  if (u) {
+    const t = randomToken();
+    await env.DB.prepare('UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?')
+      .bind(await sha256(t), Date.now() + RESET_MINUTES * 60000, u.id).run();
+    ctx.waitUntil(sendResetMail(env, request, email, t));
+  }
+  return json({ success: true });
+}
+
+/* POST /api/reset-password */
+async function handleResetPassword(request, env) {
+  const d = await readJson(request);
+  if (!d) return json({ error: 'Ungültige Anfrage' }, 400);
+
+  const pwErr = passwordProblem(String(d.password || ''));
+  if (pwErr) return json({ error: pwErr }, 400);
+
+  const u = await env.DB.prepare('SELECT * FROM users WHERE reset_token = ?').bind(await sha256(String(d.token || ''))).first();
+  if (!u || u.reset_expires < Date.now()) return json({ error: 'Der Link ist abgelaufen. Fordere einen neuen an.' }, 400);
+
+  await env.DB.prepare('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?')
+    .bind(await hashPassword(String(d.password)), u.id).run();
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(u.id).run();
+
+  const token = await newSession(env, u.id);
+  return json({ user: { email: u.email, verified: !!u.verified }, cards: await cardsOf(env, u.id) }, 200, sessionCookie(token));
+}
+
+/* POST /api/cards — weitere Karte anlegen */
+async function handleCreateCard(request, env) {
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+
+  const d = await readJson(request) || {};
+  const name = str(d.name);
+  if (!name) return json({ error: 'Name fehlt' }, 400);
+
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM businesscards WHERE user_id = ?').bind(u.id).first();
+  if (count.n >= MAX_CARDS) return json({ error: `Maximal ${MAX_CARDS} Karten pro Konto` }, 400);
+
+  const slug = await freeSlug(env, d.slug ? slugify(d.slug) : slugify(name));
+  const now = Date.now();
+
+  await env.DB.prepare(
+    `INSERT INTO businesscards
+     (id, user_id, slug, published, name, job_title, company_name, accent_color, contacts, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(crypto.randomUUID(), u.id, slug, u.verified ? 1 : 0, name,
+    str(d.jobTitle), str(d.companyName), COLORS[0], '[]', now, now).run();
+
+  return json({ slug, cards: await cardsOf(env, u.id) });
+}
+
+/* POST /api/delete-card */
+async function handleDeleteCard(request, env) {
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+
+  const d = await readJson(request) || {};
+  const row = await ownedCard(env, u, d.slug);
+  if (row.error) return json({ error: row.error }, row.status);
+
+  if (row.photo_key) { try { await env.PHOTOS.delete(row.photo_key); } catch (e) {} }
+  await env.DB.prepare('DELETE FROM businesscards WHERE id = ?').bind(row.id).run();
+  await env.DB.prepare('DELETE FROM card_events WHERE slug = ?').bind(row.slug).run();
+  return json({ cards: await cardsOf(env, u.id) });
+}
 
 const FIELDS = {
   name: 'name', birthday: 'birthday', jobTitle: 'job_title', companyName: 'company_name',
@@ -109,80 +296,14 @@ function trackKind(kind) {
   return kind === 'phone' ? 'call' : kind === 'mail' ? 'mail' : kind === 'web' ? 'web' : '';
 }
 
-/* ─────────────────────────── /api/register ─────────────────────────── */
-async function handleRegister(request, env) {
-  const data = await readJson(request);
-  if (!data) return json({ error: 'Ungültige Anfrage' }, 400);
-
-  const name = str(data.name);
-  if (!name) return json({ error: 'Name fehlt' }, 400);
-
-  const baseSlug = slugify(name);
-  let slug = baseSlug, attempt = 1;
-  while (await slugExists(env.DB, slug)) { attempt++; slug = `${baseSlug}-${attempt}`; }
-
-  const editCode = generateCode();
-  const now = Date.now();
-  const token = crypto.randomUUID();
-
-  await env.DB.prepare(
-    `INSERT INTO businesscards
-     (id, slug, edit_code_hash, name, birthday, employment_status, job_title,
-      company_name, bio, accent_color, contacts,
-      session_token, session_expires, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(
-    crypto.randomUUID(), slug, await sha256(editCode), name, str(data.birthday),
-    employment(data.employmentStatus), str(data.jobTitle), str(data.companyName),
-    str(data.bio), color(data.accentColor), normalizeContacts(data.contacts),
-    token, now + DAY, now, now
-  ).run();
-
-  return json({ slug, editCode, token, url: `/vk/${slug}` });
-}
-
-/* ───────────────────────────── /api/login ──────────────────────────── */
-async function handleLogin(request, env) {
-  const data = await readJson(request);
-  if (!data) return json({ error: 'Ungültige Anfrage' }, 400);
-
-  const slug = str(data.slug).toLowerCase();
-  const editCode = str(data.editCode).toUpperCase();
-  if (!slug || !editCode) return json({ error: 'Bitte Link und Zugangscode angeben' }, 400);
-
-  const row = await card(env, slug);
-  if (!row) return json({ error: 'Karte nicht gefunden' }, 404);
-  if (await sha256(editCode) !== row.edit_code_hash) return json({ error: 'Falscher Zugangscode' }, 401);
-
-  const token = crypto.randomUUID();
-  await env.DB.prepare('UPDATE businesscards SET session_token = ?, session_expires = ? WHERE slug = ?')
-    .bind(token, Date.now() + DAY, slug).run();
-
-  return json({ token, card: publicCard(row) });
-}
-
-/* ──────────────────────────── /api/reset-code ───────────────────────── */
-// Neuen Zugangscode erzeugen, solange die laufende Sitzung noch gültig ist.
-async function handleResetCode(request, env) {
-  const data = await readJson(request);
-  if (!data) return json({ error: 'Ungültige Anfrage' }, 400);
-
-  const row = await authorize(env, data.slug, data.token);
-  if (row.error) return json({ error: row.error }, row.status);
-
-  const newCode = generateCode();
-  await env.DB.prepare('UPDATE businesscards SET edit_code_hash = ? WHERE slug = ?')
-    .bind(await sha256(newCode), row.slug).run();
-
-  return json({ editCode: newCode });
-}
-
 /* ───────────────────────────── /api/update ─────────────────────────── */
 async function handleUpdate(request, env) {
   const data = await readJson(request);
   if (!data) return json({ error: 'Ungültige Anfrage' }, 400);
 
-  const row = await authorize(env, data.slug, data.token);
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  const row = await ownedCard(env, u, data.slug);
   if (row.error) return json({ error: row.error }, row.status);
 
   const sets = [], vals = [];
@@ -209,7 +330,9 @@ async function handleUploadPhoto(request, env) {
   let form;
   try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
 
-  const row = await authorize(env, form.get('slug'), form.get('token'));
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  const row = await ownedCard(env, u, form.get('slug'));
   if (row.error) return json({ error: row.error }, row.status);
 
   const file = form.get('photo');
@@ -241,8 +364,9 @@ async function handleTrack(request, env) {
 /* ───────────────────────────── /api/card ──────────────────────────── */
 // Karte der laufenden Sitzung laden (für den Auto-Login im Editor)
 async function handleCard(request, env) {
-  const url = new URL(request.url);
-  const row = await authorize(env, url.searchParams.get('slug'), url.searchParams.get('token'));
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  const row = await ownedCard(env, u, new URL(request.url).searchParams.get('slug'));
   if (row.error) return json({ error: row.error }, row.status);
   return json({ card: publicCard(row) });
 }
@@ -250,7 +374,9 @@ async function handleCard(request, env) {
 /* ───────────────────────────── /api/stats ─────────────────────────── */
 async function handleStats(request, env) {
   const url = new URL(request.url);
-  const row = await authorize(env, url.searchParams.get('slug'), url.searchParams.get('token'));
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  const row = await ownedCard(env, u, url.searchParams.get('slug'));
   if (row.error) return json({ error: row.error }, row.status);
 
   const days = url.searchParams.get('days') === '90' ? 90 : 30;
@@ -305,25 +431,26 @@ async function handlePhoto(env, key) {
 async function handleVcard(request, env, ctx, slug) {
   const row = await card(env, slug);
   if (!row) return new Response('Nicht gefunden', { status: 404 });
+  if (!row.published) return new Response('Diese Karte ist noch nicht veröffentlicht.', { status: 403 });
 
   ctx.waitUntil(logEvent(env, slug, 'save', source(request), request));
 
   const nameParts = splitName(row.name);
-  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `N:${nameParts.family};${nameParts.given};;;`, `FN:${row.name}`];
-  if (row.company_name) lines.push(`ORG:${row.company_name}`);
-  if (row.job_title) lines.push(`TITLE:${row.job_title}`);
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `N:${vc(nameParts.family)};${vc(nameParts.given)};;;`, `FN:${vc(row.name)}`];
+  if (row.company_name) lines.push(`ORG:${vc(row.company_name)}`);
+  if (row.job_title) lines.push(`TITLE:${vc(row.job_title)}`);
   if (row.birthday) lines.push(`BDAY:${row.birthday.replace(/-/g, '')}`);
   for (const c of parseContacts(row)) {
     const v = str(c.value);
     if (!v) continue;
     const work = c.label === 'Arbeit';
-    if (c.kind === 'phone') lines.push(`TEL;TYPE=${c.label === 'Mobil' ? 'CELL,VOICE' : work ? 'WORK,VOICE' : 'HOME,VOICE'}:${v}`);
-    else if (c.kind === 'mail') lines.push(`EMAIL;TYPE=INTERNET,${work ? 'WORK' : 'HOME'}:${v}`);
+    if (c.kind === 'phone') lines.push(`TEL;TYPE=${c.label === 'Mobil' ? 'CELL,VOICE' : work ? 'WORK,VOICE' : 'HOME,VOICE'}:${vc(v)}`);
+    else if (c.kind === 'mail') lines.push(`EMAIL;TYPE=INTERNET,${work ? 'WORK' : 'HOME'}:${vc(v)}`);
     else if (c.kind === 'web') lines.push(`URL:${contactHref(c)}`);
-    else if (c.kind === 'address') lines.push(`ADR;TYPE=${work ? 'WORK' : 'HOME'}:;;${v.replace(/,\s*/g, ';')};;;;`);
+    else if (c.kind === 'address') lines.push(`ADR;TYPE=${work ? 'WORK' : 'HOME'}:;;${v.split(/,\s*/).map(vc).join(';')};;;;`);
     else if (c.kind === 'social') lines.push(`X-SOCIALPROFILE;type=${c.label.toLowerCase()};x-user=${v.replace(/^@/, '')}:${contactHref(c)}`);
   }
-  if (row.bio) lines.push(`NOTE:${row.bio.replace(/\r?\n/g, '\\n')}`);
+  if (row.bio) lines.push(foldVcardLine(`NOTE:${vc(row.bio)}`));
   if (row.photo_key) {
     const photoLine = await embeddedPhotoLine(env, row.photo_key);
     if (photoLine) lines.push(photoLine);
@@ -333,7 +460,7 @@ async function handleVcard(request, env, ctx, slug) {
   return new Response(lines.join('\r\n'), {
     headers: {
       'Content-Type': 'text/vcard; charset=UTF-8',
-      'Content-Disposition': `attachment; filename="${row.name}.vcf"`
+      'Content-Disposition': `attachment; filename="${slug}.vcf"; filename*=UTF-8''${encodeURIComponent(row.name)}.vcf`
     }
   });
 }
@@ -378,6 +505,7 @@ function foldVcardLine(line) {
 async function handleCardPage(request, env, ctx, slug) {
   const row = await card(env, slug);
   if (!row) return new Response('Diese Visitenkarte wurde nicht gefunden.', { status: 404 });
+  if (!row.published) return notPublishedPage();
 
   ctx.waitUntil(logEvent(env, slug, 'view', source(request), request));
 
@@ -519,6 +647,212 @@ function detailRow(icon, label, value, href, track) {
   </a>`;
 }
 
+/* ══════════════════════ Konten-Helfer ══════════════════════ */
+
+function normalizeEmail(v) { return str(v).toLowerCase(); }
+function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v) && v.length <= 254; }
+
+function passwordProblem(pw) {
+  if (pw.length < 10) return 'Das Passwort braucht mindestens 10 Zeichen';
+  if (pw.length > 200) return 'Das Passwort ist zu lang';
+  if (!/[a-zA-ZäöüÄÖÜß]/.test(pw) || !/[0-9]/.test(pw)) return 'Bitte Buchstaben und Zahlen mischen';
+  return null;
+}
+
+function randomToken() {
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  return [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+/* PBKDF2-SHA256, 210.000 Runden — in Workers eingebaut, kein Paket nötig */
+async function hashPassword(password, saltHex) {
+  const salt = saltHex ? hexToBytes(saltHex) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 210000, hash: 'SHA-256' }, key, 256);
+  return 'pbkdf2$210000$' + bytesToHex(salt) + '$' + bytesToHex(new Uint8Array(bits));
+}
+
+async function verifyPassword(password, stored) {
+  const parts = String(stored || '').split('$');
+  if (parts.length !== 4) return false;
+  const again = await hashPassword(password, parts[2]);
+  return timingSafeEqual(again, stored);
+}
+
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function bytesToHex(b) { return [...b].map(x => x.toString(16).padStart(2, '0')).join(''); }
+function hexToBytes(h) {
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.substr(i * 2, 2), 16);
+  return out;
+}
+
+/* Sitzung im HttpOnly-Cookie — kein Token im localStorage */
+async function newSession(env, userId) {
+  const token = randomToken();
+  await env.DB.prepare('INSERT INTO sessions (token_hash, user_id, expires) VALUES (?,?,?)')
+    .bind(await sha256(token), userId, Date.now() + SESSION_DAYS * DAY).run();
+  return token;
+}
+
+function sessionCookie(token) {
+  return `ts_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`;
+}
+
+function sessionToken(request) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)ts_session=([^;]+)/);
+  return m ? m[1] : '';
+}
+
+async function currentUser(env, request) {
+  const t = sessionToken(request);
+  if (!t) return { error: 'Bitte anmelden', status: 401 };
+  const row = await env.DB.prepare(
+    `SELECT u.*, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`
+  ).bind(await sha256(t)).first();
+  if (!row) return { error: 'Bitte anmelden', status: 401 };
+  if (row.expires < Date.now()) {
+    await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256(t)).run();
+    return { error: 'Sitzung abgelaufen, bitte neu anmelden', status: 401 };
+  }
+  return row;
+}
+
+async function cardsOf(env, userId) {
+  const r = await env.DB.prepare(
+    'SELECT slug, name, job_title, company_name, published, photo_key FROM businesscards WHERE user_id = ? ORDER BY created_at'
+  ).bind(userId).all();
+  return (r.results || []).map(c => ({
+    slug: c.slug, name: c.name, jobTitle: c.job_title, companyName: c.company_name,
+    published: !!c.published, photoUrl: c.photo_key ? '/photo/' + c.photo_key : null
+  }));
+}
+
+async function ownedCard(env, user, slug) {
+  const row = await card(env, slug);
+  if (!row) return { error: 'Karte nicht gefunden', status: 404 };
+  if (row.user_id !== user.id) return { error: 'Diese Karte gehört zu einem anderen Konto', status: 403 };
+  return row;
+}
+
+async function freeSlug(env, base) {
+  let slug = base || 'karte', n = 1;
+  while (await slugExists(env.DB, slug)) { n++; slug = base + '-' + n; }
+  return slug;
+}
+
+/* ══════════════════════ Mailversand über Brevo (EU) ══════════════════════ */
+
+async function sendMail(env, to, subject, heading, body, ctaLabel, ctaUrl) {
+  if (!env.BREVO_KEY) { console.log('BREVO_KEY fehlt — Mail an ' + to + ' nicht gesendet'); return; }
+  const sender = parseSender(env.MAIL_FROM);
+  const html = `<!DOCTYPE html><html lang="de"><body style="margin:0;padding:32px 16px;background:#161826;font-family:'Helvetica Neue',Arial,sans-serif;color:#e9e9ed">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#232532;border-radius:8px;padding:32px">
+<tr><td style="font-size:20px;font-weight:500;padding-bottom:12px">${escapeHtml(heading)}</td></tr>
+<tr><td style="font-size:15px;line-height:1.6;color:#c9c9d1;padding-bottom:24px">${escapeHtml(body)}</td></tr>
+<tr><td><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:11px 22px;border:1px solid #9184d9;border-radius:8px;color:#b5abfc;text-decoration:none;font-size:15px">${escapeHtml(ctaLabel)}</a></td></tr>
+<tr><td style="font-size:12px;color:#7a7d8c;padding-top:24px;line-height:1.6">Funktioniert der Knopf nicht, kopiere diese Adresse in den Browser:<br><span style="color:#9d9fae;word-break:break-all">${escapeHtml(ctaUrl)}</span></td></tr>
+</table>
+<div style="font-size:11px;color:#5c5f6d;padding-top:20px">TapStern · Diese Mail wurde automatisch versendet.</div>
+</td></tr></table></body></html>`;
+
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': env.BREVO_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: html })
+    });
+    if (!res.ok) console.log('Brevo ' + res.status + ': ' + await res.text());
+  } catch (e) { console.log('Mailversand fehlgeschlagen: ' + e.message); }
+}
+
+// "TapStern <noreply@tapstern.de>" → { name, email }
+function parseSender(v) {
+  const raw = str(v) || 'TapStern <noreply@tapstern.de>';
+  const m = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  return m ? { name: m[1] || 'TapStern', email: m[2] } : { name: 'TapStern', email: raw };
+}
+
+function sendVerifyMail(env, request, email, token) {
+  const url = new URL(request.url).origin + '/verify?token=' + token;
+  return sendMail(env, email, 'TapStern: E-Mail bestätigen', 'Noch ein Klick',
+    'Bestätige deine Adresse, damit deine Karte öffentlich erreichbar wird. Der Link gilt 24 Stunden.',
+    'E-Mail bestätigen', url);
+}
+
+function sendResetMail(env, request, email, token) {
+  const url = new URL(request.url).origin + '/app.html?reset=' + token;
+  return sendMail(env, email, 'TapStern: Passwort zurücksetzen', 'Neues Passwort setzen',
+    'Du hast ein neues Passwort angefordert. Der Link gilt 60 Minuten. Warst du das nicht, ignoriere diese Mail.',
+    'Passwort neu setzen', url);
+}
+
+function notPublishedPage() {
+  return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Noch nicht öffentlich — TapStern</title>
+<link rel="icon" type="image/png" href="/tapstern-favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#161826;color:#e9e9ed;font-family:'Inter',system-ui,sans-serif;padding:22px}
+.box{max-width:380px;background:#232532;border-radius:8px;box-shadow:0 0 0 1px #595d6c,0 6px 18px rgba(0,0,0,.55);padding:34px;text-align:center}
+h1{font-size:20px;font-weight:500;letter-spacing:-.015em;margin:0 0 11px}
+p{font-size:14px;line-height:1.55;color:color-mix(in srgb,#e9e9ed 65%,transparent);margin:0}</style></head>
+<body><div class="box"><h1>Noch nicht öffentlich</h1>
+<p>Diese Karte wird sichtbar, sobald der Inhaber seine E-Mail-Adresse bestätigt hat.</p></div></body></html>`,
+    { status: 404, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store' } });
+}
+
+function verifyPage(ok, message) {
+  const accent = ok ? '#9184d9' : '#c98a8a';
+  return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TapStern</title>
+<link rel="icon" type="image/png" href="/tapstern-favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#161826;color:#e9e9ed;font-family:'Inter',system-ui,sans-serif;padding:22px}
+.box{max-width:400px;background:#232532;border-radius:8px;box-shadow:0 0 0 1px #595d6c,0 6px 18px rgba(0,0,0,.55);padding:34px;text-align:center}
+h1{font-size:22px;font-weight:500;letter-spacing:-.015em;margin:0 0 11px}
+p{font-size:15px;line-height:1.55;color:color-mix(in srgb,#e9e9ed 70%,transparent);margin:0 0 22px}
+a{display:inline-block;padding:11px 22px;border:1px solid ${accent};border-radius:8px;color:${accent};text-decoration:none;font-size:15px;font-weight:500}
+a:hover{background:color-mix(in srgb,${accent} 12%,transparent)}</style></head>
+<body><div class="box"><h1>${ok ? 'Fertig' : 'Das hat nicht geklappt'}</h1><p>${escapeHtml(message)}</p>
+<a href="/app.html">Zum Konto</a></div></body></html>`,
+    { headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store' } });
+}
+
+/* ─────────────────── Fehlversuche: 10 pro 15 Minuten ─────────────────── */
+const LOCK_MAX = 10, LOCK_WINDOW = 15 * 60 * 1000;
+
+async function checkLock(env, key) {
+  const r = await env.DB.prepare('SELECT fails, until FROM login_locks WHERE key = ?').bind(key).first();
+  if (!r) return null;
+  if (r.until > Date.now()) {
+    const min = Math.ceil((r.until - Date.now()) / 60000);
+    return `Zu viele Fehlversuche. Bitte in ${min} Minuten erneut versuchen.`;
+  }
+  return null;
+}
+
+async function noteFail(env, key) {
+  const now = Date.now();
+  const r = await env.DB.prepare('SELECT fails, until FROM login_locks WHERE key = ?').bind(key).first();
+  const fails = (r && r.until > now - LOCK_WINDOW ? r.fails : 0) + 1;
+  const until = fails >= LOCK_MAX ? now + LOCK_WINDOW : now;
+  await env.DB.prepare(
+    'INSERT INTO login_locks (key, fails, until) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET fails = ?, until = ?'
+  ).bind(key, fails, until, fails, until).run();
+}
+
+function clearFails(env, key) {
+  return env.DB.prepare('DELETE FROM login_locks WHERE key = ?').bind(key).run();
+}
+
 /* ───────────────────────────── Helpers ────────────────────────────── */
 const DAY = 1000 * 60 * 60 * 24;
 
@@ -527,17 +861,6 @@ function str(v) { return (v == null ? '' : String(v)).trim(); }
 function color(v) { const c = str(v).toLowerCase(); return COLORS.includes(c) ? c : COLORS[0]; }
 function employment(v) { return ['gruender', 'mitarbeiter', 'keiner'].includes(v) ? v : 'keiner'; }
 function card(env, slug) { return env.DB.prepare('SELECT * FROM businesscards WHERE slug = ?').bind(str(slug).toLowerCase()).first(); }
-
-async function authorize(env, slug, token) {
-  slug = str(slug).toLowerCase(); token = str(token);
-  if (!slug || !token) return { error: 'Sitzung fehlt, bitte neu einloggen', status: 401 };
-  const row = await card(env, slug);
-  if (!row) return { error: 'Karte nicht gefunden', status: 404 };
-  if (!row.session_token || row.session_token !== token || Date.now() > row.session_expires) {
-    return { error: 'Sitzung abgelaufen, bitte neu einloggen', status: 401 };
-  }
-  return row;
-}
 
 function publicCard(row) {
   return {
@@ -578,16 +901,15 @@ function slugify(s) {
 async function slugExists(db, slug) {
   return !!(await db.prepare('SELECT 1 FROM businesscards WHERE slug = ?').bind(slug).first());
 }
-function generateCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
+// vCard-Werte: Backslash, Semikolon, Komma und Umbruch maskieren (RFC 6350)
+function vc(v) {
+  return str(v).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+
 function splitName(full) {
   const parts = str(full).trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { given: '', family: '' };
@@ -601,6 +923,8 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function escapeAttr(s) { return escapeHtml(s).replace(/\n/g, ' '); }
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json; charset=UTF-8' } });
+function json(obj, status = 200, cookie) {
+  const headers = { 'Content-Type': 'application/json; charset=UTF-8' };
+  if (cookie) headers['Set-Cookie'] = cookie;
+  return new Response(JSON.stringify(obj), { status, headers });
 }

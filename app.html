@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TapStern — Karte verwalten</title>
+<title>TapStern — Konto</title>
 <link rel="icon" type="image/png" href="/tapstern-favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -131,46 +131,77 @@
 <!-- ── Konto ─────────────────────────────────────────────── -->
 <section class="wrap row2" id="s-auth">
   <div>
-    <h2 style="margin-bottom:var(--sp-3)">Karte einrichten</h2>
+    <h2 style="margin-bottom:var(--sp-3)">Konto</h2>
     <p style="color:color-mix(in srgb,#e9e9ed 70%,transparent); max-width:400px">
-      Beim Anlegen bekommst du einen Zugangscode. Mit Kartenlink und Code kommst du jederzeit
-      wieder in den Editor. Der Link auf der NFC-Karte bleibt immer derselbe.
+      Melde dich mit E-Mail und Passwort an. Nach der Registrierung schicken wir dir eine
+      Bestätigungsmail — danach ist deine Karte öffentlich erreichbar.
     </p>
   </div>
   <div class="card elev-md" style="padding:var(--sp-5); gap:var(--sp-4)">
     <div class="seg" style="align-self:flex-start">
-      <button id="tab-signup" class="on">Neue Karte</button>
-      <button id="tab-login">Anmelden</button>
+      <button id="tab-signup" class="on">Registrieren</button>
+      <button id="tab-signin">Anmelden</button>
     </div>
 
     <div id="pane-signup" style="display:grid; gap:var(--sp-3)">
-      <div class="field"><label>Name</label><input class="input" id="su-name" placeholder="Lena Brandt"></div>
-      <div class="field"><label>Position</label><input class="input" id="su-role" placeholder="Innenarchitektin"></div>
-      <div class="field"><label>Firma</label><input class="input" id="su-company" placeholder="Studio Brandt"></div>
-      <button class="btn btn-primary btn-block" id="do-signup" style="padding:11px">Karte anlegen</button>
+      <div class="field"><label>E-Mail</label><input class="input" id="su-email" type="email" autocomplete="email" placeholder="name@firma.de"></div>
+      <div class="field"><label>Passwort</label><input class="input" id="su-pw" type="password" autocomplete="new-password" placeholder="mindestens 10 Zeichen"></div>
+      <div class="field"><label>Dein Name</label><input class="input" id="su-name" placeholder="Lena Brandt"></div>
+      <p style="font-size:12px; color:var(--muted); margin:0">Buchstaben und Zahlen mischen, mindestens 10 Zeichen.</p>
+      <button class="btn btn-primary btn-block" id="do-signup" style="padding:11px">Konto anlegen</button>
     </div>
 
-    <div id="pane-login" class="hide" style="display:grid; gap:var(--sp-3)">
-      <div class="field"><label>Kartenlink</label><input class="input" id="li-slug" placeholder="lena-brandt"></div>
-      <div class="field"><label>Zugangscode</label><input class="input mono" id="li-code" placeholder="A7K2QM" maxlength="6" style="text-transform:uppercase"></div>
-      <button class="btn btn-primary btn-block" id="do-login" style="padding:11px">Anmelden</button>
+    <div id="pane-signin" class="hide" style="display:grid; gap:var(--sp-3)">
+      <div class="field"><label>E-Mail</label><input class="input" id="si-email" type="email" autocomplete="email"></div>
+      <div class="field"><label>Passwort</label><input class="input" id="si-pw" type="password" autocomplete="current-password"></div>
+      <button class="btn btn-primary btn-block" id="do-signin" style="padding:11px">Anmelden</button>
+      <button class="btn btn-ghost" id="go-forgot" style="font-size:13px">Passwort vergessen?</button>
     </div>
 
-    <div id="code-box" class="hide card" style="background:var(--neutral-900); padding:var(--sp-4); gap:6px">
-      <h6>Dein Zugangscode</h6>
-      <div class="mono" id="code-val" style="font-size:26px; letter-spacing:.2em; color:var(--accent-300)"></div>
-      <p style="font-size:12px; color:var(--muted); margin:0 0 var(--sp-3)">Notiere ihn. Ohne Code kommst du nicht mehr in den Editor.</p>
-      <hr class="hr" style="margin:0 0 var(--sp-3)">
-      <p style="font-size:14px; margin:0 0 var(--sp-2)">Deine Karte ist fertig — jetzt auf eine echte NFC-Karte mit deinem Design bestellen?</p>
-      <a class="btn btn-primary btn-block" id="order-now" href="bestellen.html?paket=Visitenkarte&menge=1" style="padding:11px">NFC-Karte mit eigenem Design bestellen</a>
-      <button class="btn btn-ghost btn-block" id="skip-order" style="padding:11px">Später — erstmal weiter bearbeiten</button>
+    <div id="pane-forgot" class="hide" style="display:grid; gap:var(--sp-3)">
+      <p style="font-size:14px; color:var(--muted); margin:0">Wir schicken dir einen Link zum Zurücksetzen. Er gilt 60 Minuten.</p>
+      <div class="field"><label>E-Mail</label><input class="input" id="fg-email" type="email" autocomplete="email"></div>
+      <button class="btn btn-primary btn-block" id="do-forgot" style="padding:11px">Link schicken</button>
+      <button class="btn btn-ghost" id="back-signin" style="font-size:13px">Zurück zur Anmeldung</button>
+    </div>
+
+    <div id="pane-reset" class="hide" style="display:grid; gap:var(--sp-3)">
+      <p style="font-size:14px; color:var(--muted); margin:0">Setze jetzt ein neues Passwort.</p>
+      <div class="field"><label>Neues Passwort</label><input class="input" id="rs-pw" type="password" autocomplete="new-password" placeholder="mindestens 10 Zeichen"></div>
+      <button class="btn btn-primary btn-block" id="do-reset" style="padding:11px">Passwort speichern</button>
     </div>
   </div>
+</section>
+
+<!-- ── Karten ────────────────────────────────────────────── -->
+<section class="wrap hide" id="s-cards">
+  <div id="verify-banner" class="card elev-sm hide" style="padding:var(--sp-4); gap:var(--sp-2); margin-bottom:var(--sp-5); border-left:0">
+    <h6 style="color:var(--accent)">E-Mail noch nicht bestätigt</h6>
+    <p style="font-size:14px; color:var(--muted); margin:0">
+      Du kannst deine Karten schon bearbeiten. Öffentlich erreichbar werden sie, sobald du den
+      Link in der Mail an <span id="verify-mail" style="color:var(--text)"></span> angeklickt hast.
+    </p>
+    <div style="display:flex; gap:var(--sp-2); flex-wrap:wrap">
+      <button class="btn btn-secondary" id="resend">Mail erneut senden</button>
+      <button class="btn btn-ghost" id="recheck" style="font-size:13px">Ich habe bestätigt</button>
+    </div>
+  </div>
+
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:var(--sp-4); flex-wrap:wrap">
+    <div>
+      <h2 style="margin-bottom:var(--sp-1)">Deine Karten</h2>
+      <p style="color:color-mix(in srgb,#e9e9ed 65%,transparent); font-size:14px; margin:0" id="cards-sub"></p>
+    </div>
+    <button class="btn btn-primary" id="new-card">+ Neue Karte</button>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:var(--sp-4); margin-top:var(--sp-6)" id="card-list"></div>
 </section>
 
 <!-- ── Editor ────────────────────────────────────────────── -->
 <section class="wrap row2 hide" id="s-editor">
   <div>
+    <button class="btn btn-ghost" id="back-cards" style="font-size:13px; margin-bottom:var(--sp-2); padding-left:0">← Alle Karten</button>
     <h2 style="margin-bottom:var(--sp-1)">Deine Karte</h2>
     <p style="color:color-mix(in srgb,#e9e9ed 65%,transparent); font-size:14px">Die Vorschau rechts zeigt, was der Besucher nach dem Tap sieht.</p>
 
@@ -250,6 +281,10 @@
   <h2 style="margin-bottom:var(--sp-3)">Link &amp; NFC-Karte</h2>
   <p style="color:color-mix(in srgb,#e9e9ed 70%,transparent); max-width:520px">Dieser Link zeigt auf deine Kartenseite. Er bleibt gleich, wenn du deine Daten änderst.</p>
 
+  <p id="link-note" class="hide" style="color:var(--accent-300); font-size:14px; margin-top:var(--sp-3)">
+    Der Link funktioniert erst, wenn du deine E-Mail-Adresse bestätigt hast.
+  </p>
+
   <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:var(--sp-4); margin-top:var(--sp-6)">
     <div class="card elev-md" style="padding:var(--sp-5); gap:var(--sp-3)">
       <h6>Dein Link</h6>
@@ -321,7 +356,7 @@ var ICON = {
   social:'M8 12l4-4M7.5 10.5l-1.7 1.7a2.4 2.4 0 0 0 3.4 3.4l1.7-1.7M12.5 9.5l1.7-1.7a2.4 2.4 0 0 0-3.4-3.4L9.1 6.1'
 };
 
-var session = { slug:'', token:'' };
+var session = { slug:'' };
 var card = { name:'', role:'', company:'', birthday:'', bio:'', color:COLORS[0], photoUrl:null, contacts:[] };
 var screen = 'auth';
 
@@ -343,7 +378,7 @@ async function api(path, body, isForm){
 /* ═══ Navigation ═══ */
 function show(name){
   screen = name;
-  ['auth','editor','link','dash'].forEach(function(s){ $('s-' + s).classList.toggle('hide', s !== name); });
+  ['auth','cards','editor','link','dash'].forEach(function(s){ $('s-' + s).classList.toggle('hide', s !== name); });
   Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function(b){ b.classList.toggle('on', b.dataset.go === name); });
   window.scrollTo(0, 0);
   if (name === 'link') renderLink();
@@ -351,10 +386,11 @@ function show(name){
 }
 
 function buildNav(){
-  var items = session.token ? [['editor','Editor'],['link','Link & NFC'],['dash','Dashboard']] : [];
+  var items = user ? [['cards','Karten']] : [];
+  if (user && session.slug) items = items.concat([['editor','Editor'],['link','Link & NFC'],['dash','Dashboard']]);
   $('nav').innerHTML = items.map(function(i){ return '<button class="btn btn-ghost" data-go="' + i[0] + '">' + i[1] + '</button>'; }).join('');
   Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function(b){ b.onclick = function(){ show(b.dataset.go); }; });
-  $('logout').classList.toggle('hide', !session.token);
+  $('logout').classList.toggle('hide', !user);
 }
 
 /* ═══ Kontakteinträge ═══ */
@@ -467,43 +503,140 @@ function fillForm(){
 }
 
 /* ═══ Konto ═══ */
-$('tab-signup').onclick = function(){ $('tab-signup').classList.add('on'); $('tab-login').classList.remove('on'); $('pane-signup').classList.remove('hide'); $('pane-login').classList.add('hide'); };
-$('tab-login').onclick = function(){ $('tab-login').classList.add('on'); $('tab-signup').classList.remove('on'); $('pane-login').classList.remove('hide'); $('pane-signup').classList.add('hide'); };
+var user = null, cards = [];
+
+function pane(which){
+  ['signup','signin','forgot','reset'].forEach(function(p){ $('pane-' + p).classList.toggle('hide', p !== which); });
+  $('tab-signup').classList.toggle('on', which === 'signup');
+  $('tab-signin').classList.toggle('on', which !== 'signup');
+}
+$('tab-signup').onclick = function(){ pane('signup'); };
+$('tab-signin').onclick = function(){ pane('signin'); };
+$('go-forgot').onclick = function(){ pane('forgot'); };
+$('back-signin').onclick = function(){ pane('signin'); };
 
 $('do-signup').onclick = async function(){
-  var name = $('su-name').value.trim();
-  if (!name) return toast('Bitte einen Namen eingeben');
+  var email = $('su-email').value.trim(), pw = $('su-pw').value, name = $('su-name').value.trim();
+  if (!email || !pw) return toast('Bitte E-Mail und Passwort angeben');
+  if (!name) return toast('Bitte deinen Namen angeben');
+  $('do-signup').disabled = true;
   try {
-    var r = await api('/api/register', { name:name, jobTitle:$('su-role').value, companyName:$('su-company').value });
-    session = { slug:r.slug, token:r.token };
-    localStorage.setItem('tapstern', JSON.stringify(session));
-    card.name = name; card.role = $('su-role').value; card.company = $('su-company').value;
-    $('code-val').textContent = r.editCode;
-    $('code-box').classList.remove('hide');
-    $('pane-signup').classList.add('hide');
-    buildNav(); fillForm();
-    toast('Karte angelegt — Code notieren!');
+    var r = await api('/api/signup', { email:email, password:pw });
+    user = r.user; cards = r.cards;
+    await api('/api/cards', { name:name });
+    await loadAccount();
+    toast('Konto angelegt — schau in dein Postfach');
+  } catch (e) { toast(e.message); }
+  $('do-signup').disabled = false;
+};
+
+$('do-signin').onclick = async function(){
+  $('do-signin').disabled = true;
+  try {
+    var r = await api('/api/signin', { email:$('si-email').value.trim(), password:$('si-pw').value });
+    user = r.user; cards = r.cards;
+    renderAccount(); show(cards.length === 1 ? 'editor' : 'cards');
+    if (cards.length === 1) openCard(cards[0].slug);
+  } catch (e) { toast(e.message); }
+  $('do-signin').disabled = false;
+};
+
+$('do-forgot').onclick = async function(){
+  try {
+    await api('/api/forgot', { email:$('fg-email').value.trim() });
+    toast('Falls es ein Konto gibt, ist die Mail unterwegs');
+    pane('signin');
   } catch (e) { toast(e.message); }
 };
 
-$('skip-order').onclick = function(){ show('editor'); };
-
-$('do-login').onclick = async function(){
+$('do-reset').onclick = async function(){
+  var t = new URLSearchParams(location.search).get('reset');
   try {
-    var r = await api('/api/login', { slug:$('li-slug').value.trim().toLowerCase(), editCode:$('li-code').value.trim().toUpperCase() });
-    session = { slug:r.card.slug, token:r.token };
-    localStorage.setItem('tapstern', JSON.stringify(session));
-    adopt(r.card); buildNav(); fillForm(); show('editor');
+    var r = await api('/api/reset-password', { token:t, password:$('rs-pw').value });
+    user = r.user; cards = r.cards;
+    history.replaceState(null, '', '/app.html');
+    renderAccount(); show('cards');
+    toast('Passwort geändert');
   } catch (e) { toast(e.message); }
 };
 
-$('logout').onclick = function(){
-  localStorage.removeItem('tapstern');
-  session = { slug:'', token:'' };
-  $('code-box').classList.add('hide');
-  $('pane-signup').classList.remove('hide');
-  buildNav(); show('auth');
+$('logout').onclick = async function(){
+  try { await api('/api/signout', {}); } catch (e) {}
+  user = null; cards = []; session = { slug:'' };
+  buildNav(); pane('signin'); show('auth');
 };
+
+$('resend').onclick = async function(){
+  try { await api('/api/resend-verify', {}); toast('Mail erneut gesendet'); }
+  catch (e) { toast(e.message); }
+};
+$('recheck').onclick = function(){ loadAccount(); };
+
+async function loadAccount(){
+  var res = await fetch('/api/me');
+  if (!res.ok) { user = null; cards = []; buildNav(); pane('signin'); show('auth'); return false; }
+  var d = await res.json();
+  user = d.user; cards = d.cards;
+  renderAccount();
+  show(screen === 'auth' ? 'cards' : screen);
+  return true;
+}
+
+function renderAccount(){
+  buildNav();
+  $('verify-banner').classList.toggle('hide', !user || user.verified);
+  if (user) $('verify-mail').textContent = user.email;
+  $('cards-sub').textContent = cards.length === 1 ? 'Eine Karte' : cards.length + ' Karten';
+
+  $('card-list').innerHTML = cards.map(function(c){
+    var ini = (c.name || '').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){ return w[0]; }).join('').toUpperCase();
+    var pic = c.photoUrl
+      ? '<img src="' + esc(c.photoUrl) + '" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none">'
+      : '<span style="width:44px;height:44px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:500;background:color-mix(in srgb,var(--accent) 22%,var(--surface));color:var(--accent)">' + esc(ini) + '</span>';
+    return '<div class="card elev-sm" style="padding:var(--sp-4); gap:var(--sp-3)">' +
+      '<div style="display:flex; gap:var(--sp-3); align-items:center">' + pic +
+        '<div style="display:grid; gap:1px; min-width:0">' +
+          '<div style="font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">' + esc(c.name) + '</div>' +
+          '<div style="font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">' + esc([c.jobTitle, c.companyName].filter(Boolean).join(' · ') || '—') + '</div>' +
+        '</div></div>' +
+      '<div class="mono" style="font-size:12px; color:var(--accent-300); word-break:break-all">/vk/' + esc(c.slug) + '</div>' +
+      '<span class="tag ' + (c.published ? 'tag-accent' : 'tag-neutral') + '" style="align-self:flex-start">' + (c.published ? 'Öffentlich' : 'Noch nicht öffentlich') + '</span>' +
+      '<div style="display:flex; gap:var(--sp-2); flex-wrap:wrap">' +
+        '<button class="btn btn-primary" data-edit="' + esc(c.slug) + '">Bearbeiten</button>' +
+        '<button class="btn btn-ghost" data-remove="' + esc(c.slug) + '" style="font-size:13px">Löschen</button>' +
+      '</div></div>';
+  }).join('') || '<p style="color:var(--muted)">Noch keine Karte. Leg eine an.</p>';
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-edit]'), function(b){
+    b.onclick = function(){ openCard(b.dataset.edit); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-remove]'), function(b){
+    b.onclick = async function(){
+      if (!confirm('Karte wirklich löschen? Der Link funktioniert danach nicht mehr.')) return;
+      try { var r = await api('/api/delete-card', { slug:b.dataset.remove }); cards = r.cards; renderAccount(); }
+      catch (e) { toast(e.message); }
+    };
+  });
+}
+
+$('new-card').onclick = async function(){
+  var name = prompt('Name für die neue Karte');
+  if (!name) return;
+  try { var r = await api('/api/cards', { name:name }); cards = r.cards; renderAccount(); openCard(r.slug); }
+  catch (e) { toast(e.message); }
+};
+
+$('back-cards').onclick = function(){ show('cards'); };
+
+async function openCard(slug){
+  session.slug = slug;
+  try {
+    var res = await fetch('/api/card?slug=' + encodeURIComponent(slug));
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Fehler');
+    adopt(d.card); fillForm(); show('editor');
+  } catch (e) { toast(e.message); }
+}
 
 function adopt(c){
   card.name = c.name || ''; card.role = c.jobTitle || ''; card.company = c.companyName || '';
@@ -518,7 +651,7 @@ $('save').onclick = async function(){
   $('save').disabled = true; $('save-state').textContent = 'Speichert …';
   try {
     await api('/api/update', {
-      slug:session.slug, token:session.token,
+      slug:session.slug,
       name:card.name, jobTitle:card.role, companyName:card.company,
       birthday:card.birthday, bio:card.bio, accentColor:card.color,
       contacts:card.contacts.filter(function(c){ return (c.value || '').trim(); })
@@ -560,7 +693,7 @@ $('f-photo').onchange = async function(e){
   } catch (err) { $('photo-label').textContent = 'max. 4 MB'; toast(err.message); return; }
   $('photo-label').textContent = 'Lädt hoch …';
   var fd = new FormData();
-  fd.append('slug', session.slug); fd.append('token', session.token); fd.append('photo', f);
+  fd.append('slug', session.slug); fd.append('photo', f);
   try {
     var r = await api('/api/upload-photo', fd, true);
     card.photoUrl = r.photoUrl;
@@ -572,6 +705,8 @@ $('f-photo').onchange = async function(e){
 /* ═══ Link, QR, NFC ═══ */
 function renderLink(){
   var url = cardUrl();
+  var pub = cards.filter(function(c){ return c.slug === session.slug; })[0];
+  $('link-note').classList.toggle('hide', !(pub && !pub.published));
   $('link-val').textContent = url;
   $('open-card-2').href = url;
   if (window.QRCode) {
@@ -607,7 +742,7 @@ $('d90').onclick = function(){ days = 90; $('d90').classList.add('on'); $('d30')
 async function loadStats(){
   $('dash-sub').textContent = 'Letzte ' + days + ' Tage · tapstern.de/vk/' + session.slug;
   try {
-    var res = await fetch('/api/stats?slug=' + encodeURIComponent(session.slug) + '&token=' + encodeURIComponent(session.token) + '&days=' + days);
+    var res = await fetch('/api/stats?slug=' + encodeURIComponent(session.slug) + '&days=' + days);
     var d = await res.json();
     if (!res.ok) throw new Error(d.error || 'Fehler');
     var cells = [
@@ -637,22 +772,10 @@ async function loadStats(){
 
 /* ═══ Start ═══ */
 (async function init(){
-  var saved = null;
-  try { saved = JSON.parse(localStorage.getItem('tapstern') || 'null'); } catch (e) {}
-  buildNav();
-  if (saved && saved.slug && saved.token) {
-    session = saved;
-    try {
-      var res = await fetch('/api/card?slug=' + encodeURIComponent(saved.slug) + '&token=' + encodeURIComponent(saved.token));
-      if (res.ok) {
-        var d = await res.json();
-        adopt(d.card); buildNav(); fillForm(); show('editor'); return;
-      }
-    } catch (e) {}
-    localStorage.removeItem('tapstern'); session = { slug:'', token:'' }; buildNav();
-  }
-  show('auth');
   renderPreview();
+  if (new URLSearchParams(location.search).get('reset')) { pane('reset'); show('auth'); return; }
+  var ok = await loadAccount();
+  if (!ok) { pane('signup'); show('auth'); }
 })();
 </script>
 </body>

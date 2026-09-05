@@ -320,6 +320,7 @@ async function handleUpdate(request, env) {
     if (col === 'name' && !v) continue;
     sets.push(`${col} = ?`); vals.push(v);
   }
+  if ('bgColor' in data) { sets.push('bg_color = ?'); vals.push(bgColorOrNull(data.bgColor)); }
   if ('employmentStatus' in data) { sets.push('employment_status = ?'); vals.push(employment(data.employmentStatus)); }
   if ('contacts' in data) { sets.push('contacts = ?'); vals.push(normalizeContacts(data.contacts)); }
   if (!sets.length) return json({ error: 'Keine Änderungen' }, 400);
@@ -552,6 +553,8 @@ async function handleCardPage(request, env, ctx, slug) {
   ctx.waitUntil(logEvent(env, slug, 'view', source(request), request));
 
   const accent = color(row.accent_color);
+  const bg = bgColorOrNull(row.bg_color) || '#161826';
+  const textColor = readableTextColor(bg);
   const bannerUrl = row.banner_key ? `/photo/${escapeAttr(row.banner_key)}` : null;
   const logoUrl = row.logo_key ? `/photo/${escapeAttr(row.logo_key)}` : null;
   const initials = row.name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
@@ -581,10 +584,10 @@ async function handleCardPage(request, env, ctx, slug) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#161826; --surface:#232532; --text:#e9e9ed; --accent:${accent};
-    --divider:color-mix(in srgb, #e9e9ed 16%, transparent);
-    --muted:color-mix(in srgb, #e9e9ed 55%, transparent);
-    --radius:8px; --shadow-md:0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55);
+    --bg:${bg}; --surface:color-mix(in srgb, var(--bg) 93%, var(--text) 7%); --text:${textColor}; --accent:${accent};
+    --divider:color-mix(in srgb, var(--text) 16%, transparent);
+    --muted:color-mix(in srgb, var(--text) 55%, transparent);
+    --radius:8px; --shadow-md:0 0 0 1px color-mix(in srgb, var(--text) 20%, transparent), 0 6px 18px rgba(0,0,0,0.35);
   }
   *,*::before,*::after{box-sizing:border-box;}
   body{
@@ -616,7 +619,7 @@ async function handleCardPage(request, env, ctx, slug) {
     background:color-mix(in srgb, var(--accent) 22%, var(--surface));
   }
   h1{font-size:25px; font-weight:500; line-height:1.12; letter-spacing:-.015em; margin:0 0 3px;}
-  .role{font-size:13px; color:color-mix(in srgb, #e9e9ed 70%, transparent); margin:0;}
+  .role{font-size:13px; color:color-mix(in srgb, var(--text) 70%, transparent); margin:0;}
   .bio{font-size:12px; color:var(--muted); margin:6px 0 0;}
   .save{
     display:inline-flex; align-items:center; justify-content:center; margin-top:17px;
@@ -630,17 +633,17 @@ async function handleCardPage(request, env, ctx, slug) {
     display:flex; gap:11px; align-items:center; padding:8px 0;
     color:var(--text); text-decoration:none;
   }
-  .row:hover{background:color-mix(in srgb, #e9e9ed 4%, transparent);}
+  .row:hover{background:color-mix(in srgb, var(--text) 4%, transparent);}
   .row .ico{
     flex:none; display:grid; place-items:center; width:34px; height:34px; border-radius:var(--radius);
-    background:color-mix(in srgb, #e9e9ed 6%, transparent);
+    background:color-mix(in srgb, var(--text) 6%, transparent);
   }
   .row .txt{display:grid; gap:1px; min-width:0;}
-  .row .lbl{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:color-mix(in srgb, #e9e9ed 50%, transparent);}
+  .row .lbl{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:color-mix(in srgb, var(--text) 50%, transparent);}
   .row .val{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .foot{
     padding:14px 22px 22px; display:flex; align-items:center; justify-content:center; gap:8px;
-    font-size:11px; color:color-mix(in srgb, #e9e9ed 40%, transparent);
+    font-size:11px; color:color-mix(in srgb, var(--text) 40%, transparent);
   }
   .foot a{color:inherit; text-decoration:none;}
   .dot{width:6px; height:6px; border-radius:50%; background:var(--accent);}
@@ -912,6 +915,20 @@ function color(v) {
   const c = str(v).toLowerCase();
   return /^#[0-9a-f]{6}$/.test(c) ? c : COLORS[0];
 }
+// Anders als accent_color: leer/ungültig bedeutet hier "Standard verwenden" (NULL),
+// nicht ein erzwungener Fallback-Wert — so lässt sich die Karte auf Standard zurücksetzen.
+function bgColorOrNull(v) {
+  const c = str(v).toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(c) ? c : null;
+}
+// Einfache Helligkeits-Schätzung, damit Text auf hellem Hintergrund dunkel
+// und auf dunklem Hintergrund hell wird — ohne dass der Kunde das einstellen muss.
+function readableTextColor(bgHex) {
+  const c = str(bgHex).replace('#', '');
+  const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.6 ? '#161826' : '#e9e9ed';
+}
 function employment(v) { return ['gruender', 'mitarbeiter', 'keiner'].includes(v) ? v : 'keiner'; }
 function card(env, slug) { return env.DB.prepare('SELECT * FROM businesscards WHERE slug = ?').bind(str(slug).toLowerCase()).first(); }
 
@@ -920,7 +937,7 @@ function publicCard(row) {
     slug: row.slug, name: row.name, birthday: row.birthday, photoUrl: row.photo_key ? `/photo/${row.photo_key}` : null,
     logoUrl: row.logo_key ? `/photo/${row.logo_key}` : null, bannerUrl: row.banner_key ? `/photo/${row.banner_key}` : null,
     employmentStatus: row.employment_status, jobTitle: row.job_title, companyName: row.company_name,
-    bio: row.bio, accentColor: color(row.accent_color), contacts: parseContacts(row)
+    bio: row.bio, accentColor: color(row.accent_color), bgColor: row.bg_color || null, contacts: parseContacts(row)
   };
 }
 

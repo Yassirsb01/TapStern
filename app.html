@@ -98,13 +98,13 @@
   .phone{width:320px; border-radius:34px; padding:9px; background:linear-gradient(180deg,var(--neutral-800),var(--neutral-900)); box-shadow:var(--shadow-md); --cbg:#161826; --ctext:#e9e9ed;}
   .screen{border-radius:26px; background:var(--cbg); color:var(--ctext); overflow:hidden; min-height:600px; display:flex; flex-direction:column;}
   .status{display:flex; justify-content:space-between; padding:10px 18px 0; font-size:11px; color:color-mix(in srgb,var(--ctext) 45%,transparent);}
-  .head{position:relative; padding:28px 20px 20px; display:grid; gap:var(--sp-3); justify-items:center; text-align:center; overflow:hidden; background-size:cover; background-position:center;}
-  .head .glow{position:absolute; inset:0;}
-  .head .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(22,24,38,.15), rgba(22,24,38,.88) 85%);}
-  .head > *:not(.glow):not(.scrim){position:relative;}
-  .logo-badge{position:absolute; top:12px; left:14px; width:34px; height:34px; border-radius:9px; overflow:hidden; background:rgba(0,0,0,.25); box-shadow:0 0 0 1px rgba(255,255,255,.15);}
+  .head{position:relative; text-align:center;}
+  .banner{height:104px; position:relative; overflow:hidden; background-size:cover; background-position:center;}
+  .banner.no-image{background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 75%), var(--cbg);}
+  .logo-badge{position:absolute; top:12px; left:14px; width:34px; height:34px; border-radius:9px; overflow:hidden; background:rgba(0,0,0,.25); box-shadow:0 0 0 1px rgba(255,255,255,.15); z-index:2;}
   .logo-badge img{width:100%; height:100%; object-fit:cover;}
-  .avatar{width:76px; height:76px; border-radius:50%; overflow:hidden; display:grid; place-items:center; font-size:27px; font-weight:500;}
+  .head-body{padding:0 20px 20px; margin-top:-38px; display:grid; gap:var(--sp-3); justify-items:center;}
+  .avatar{width:76px; height:76px; border-radius:50%; overflow:hidden; display:grid; place-items:center; font-size:27px; font-weight:500; position:relative; z-index:1;}
   .avatar img{width:100%; height:100%; object-fit:cover;}
   .pname{font-size:24px; font-weight:500; line-height:1.1;}
   .prole{font-size:13px; color:color-mix(in srgb,var(--ctext) 70%,transparent);}
@@ -244,20 +244,22 @@
       <div class="field" style="margin-bottom:0; flex:1"><label>Profilfoto</label></div>
       <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-photo" accept="image/*" hidden></label>
       <span style="font-size:12px; color:var(--muted)" id="photo-label">max. 4 MB</span>
+      <button class="btn btn-icon btn-secondary" id="photo-remove" title="Entfernen" aria-label="Profilfoto entfernen" style="display:none">−</button>
     </div>
 
     <div class="upl-row">
       <div class="field" style="margin-bottom:0; flex:1"><label>Firmenlogo (optional)</label></div>
       <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-logo" accept="image/*" hidden></label>
       <span style="font-size:12px; color:var(--muted)" id="logo-label">max. 4 MB</span>
+      <button class="btn btn-icon btn-secondary" id="logo-remove" title="Entfernen" aria-label="Logo entfernen" style="display:none">−</button>
     </div>
 
     <div class="upl-row">
       <div class="field" style="margin-bottom:0; flex:1"><label>Bannerbild (optional)</label></div>
       <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-banner" accept="image/*" hidden></label>
       <span style="font-size:12px; color:var(--muted)" id="banner-label">max. 4 MB</span>
+      <button class="btn btn-icon btn-secondary" id="banner-remove" title="Entfernen" aria-label="Banner entfernen" style="display:none">−</button>
     </div>
-    <button class="btn btn-ghost" id="banner-remove" style="font-size:12px; align-self:flex-start; padding-left:0; display:none">Bannerbild entfernen</button>
 
     <div class="field" style="margin-top:var(--sp-4); margin-bottom:var(--sp-1)"><label>Akzentfarbe (Buttons &amp; Icons)</label></div>
     <div style="display:flex; gap:var(--sp-2); align-items:center" id="swatches"></div>
@@ -278,9 +280,10 @@
     <div class="phone"><div class="screen">
       <div class="status"><span>9:41</span><span id="pv-url">tapstern.de</span></div>
       <div class="head" id="pv-head">
-        <div class="glow" id="pv-glow"></div>
-        <div class="scrim" id="pv-scrim"></div>
-        <div class="logo-badge hide" id="pv-logo"></div>
+        <div class="banner" id="pv-banner">
+          <div class="logo-badge hide" id="pv-logo"></div>
+        </div>
+        <div class="head-body">
         <div class="avatar" id="pv-avatar"></div>
         <div style="display:grid; gap:2px">
           <div class="pname" id="pv-name"></div>
@@ -288,6 +291,7 @@
           <div class="pbio" id="pv-bio"></div>
         </div>
         <span class="btn btn-primary" id="pv-save" style="margin-top:var(--sp-1)">Kontakt speichern</span>
+        </div>
       </div>
       <div class="rows" id="pv-rows"></div>
       <div class="pfoot"><span class="dot" id="pv-dot"></span><span>Karte von TapStern</span></div>
@@ -486,16 +490,14 @@ function renderPreview(){
   var phone = document.querySelector('.phone');
   phone.style.setProperty('--cbg', bg);
   phone.style.setProperty('--ctext', txt);
-  var head = $('pv-head');
 
+  var banner = $('pv-banner');
   if (card.bannerUrl) {
-    head.style.backgroundImage = 'url(' + card.bannerUrl.replace(/'/g,"%27") + ')';
-    $('pv-glow').style.background = 'none';
-    $('pv-scrim').style.display = 'block';
+    banner.style.backgroundImage = 'url(' + card.bannerUrl.replace(/'/g,"%27") + ')';
+    banner.classList.remove('no-image');
   } else {
-    head.style.backgroundImage = 'none';
-    $('pv-glow').style.background = 'radial-gradient(120% 80% at 50% -20%, color-mix(in srgb,' + col + ' 30%, transparent), transparent 70%)';
-    $('pv-scrim').style.display = 'none';
+    banner.style.backgroundImage = 'none';
+    banner.classList.add('no-image');
   }
 
   var logo = $('pv-logo');
@@ -522,7 +524,7 @@ function renderPreview(){
     av.textContent = ini || '—';
     av.style.background = 'color-mix(in srgb,' + col + ' 22%, var(--surface))';
   }
-  av.style.boxShadow = 'inset 0 0 0 1px ' + col;
+  av.style.boxShadow = '0 0 0 4px var(--cbg), inset 0 0 0 1px ' + col;
   av.style.color = col;
 
   $('pv-rows').innerHTML = card.contacts.filter(function(c){ return (c.value || '').trim(); }).map(function(c){
@@ -596,7 +598,9 @@ function fillForm(){
   markSwatch();
   markBgSwatch();
   $('photo-label').textContent = card.photoUrl ? 'Foto gesetzt' : 'max. 4 MB';
+  $('photo-remove').style.display = card.photoUrl ? 'inline-flex' : 'none';
   $('logo-label').textContent = card.logoUrl ? 'Logo gesetzt' : 'max. 4 MB';
+  $('logo-remove').style.display = card.logoUrl ? 'inline-flex' : 'none';
   $('banner-label').textContent = card.bannerUrl ? 'Banner gesetzt' : 'max. 4 MB';
   $('banner-remove').style.display = card.bannerUrl ? 'inline-flex' : 'none';
   $('open-card').href = $('open-card-2').href = cardUrl();
@@ -805,6 +809,8 @@ function wireImageUpload(inputId, labelId, maxDim, quality, endpoint, formField,
       card[stateKey] = r[stateKey];
       $(labelId).textContent = f.name;
       if (stateKey === 'bannerUrl') $('banner-remove').style.display = 'inline-flex';
+      if (stateKey === 'logoUrl') $('logo-remove').style.display = 'inline-flex';
+      if (stateKey === 'photoUrl') $('photo-remove').style.display = 'inline-flex';
       renderPreview();
     } catch (err) { $(labelId).textContent = 'max. 4 MB'; toast(err.message); }
   };
@@ -814,12 +820,24 @@ wireImageUpload('f-photo', 'photo-label', 480, 0.82, '/api/upload-photo', 'photo
 wireImageUpload('f-logo', 'logo-label', 300, 0.85, '/api/upload-logo', 'logo', 'logoUrl');
 wireImageUpload('f-banner', 'banner-label', 1000, 0.8, '/api/upload-banner', 'banner', 'bannerUrl');
 
-$('banner-remove').onclick = function(){
-  card.bannerUrl = null;
-  $('banner-label').textContent = 'max. 4 MB';
-  $('banner-remove').style.display = 'none';
-  renderPreview();
-};
+function wireRemove(buttonId, labelId, endpoint, stateKey, defaultLabel){
+  $(buttonId).onclick = async function(){
+    var btn = $(buttonId);
+    btn.disabled = true;
+    try {
+      await api(endpoint, { slug: session.slug });
+      card[stateKey] = null;
+      $(labelId).textContent = defaultLabel;
+      btn.style.display = 'none';
+      renderPreview();
+    } catch (err) { toast(err.message); }
+    btn.disabled = false;
+  };
+}
+
+wireRemove('photo-remove', 'photo-label', '/api/remove-photo', 'photoUrl', 'max. 4 MB');
+wireRemove('logo-remove', 'logo-label', '/api/remove-logo', 'logoUrl', 'max. 4 MB');
+wireRemove('banner-remove', 'banner-label', '/api/remove-banner', 'bannerUrl', 'max. 4 MB');
 
 /* ═══ Link, QR, NFC ═══ */
 function renderLink(){

@@ -23,6 +23,10 @@ export default {
 
       if (method === 'POST' && path === '/api/update') return handleUpdate(request, env);
       if (method === 'POST' && path === '/api/upload-photo') return handleUploadPhoto(request, env);
+      if (method === 'POST' && path === '/api/upload-logo') return handleUploadLogo(request, env);
+      if (method === 'POST' && path === '/api/upload-banner') return handleUploadBanner(request, env);
+      if (method === 'POST' && path === '/api/remove-logo') return handleRemoveLogo(request, env);
+      if (method === 'POST' && path === '/api/remove-banner') return handleRemoveBanner(request, env);
       if (method === 'POST' && path === '/api/track') return handleTrack(request, env);
       if (method === 'GET' && path === '/api/stats') return handleStats(request, env);
       if (method === 'GET' && path === '/api/card') return handleCard(request, env);
@@ -218,6 +222,8 @@ async function handleDeleteCard(request, env) {
   if (row.error) return json({ error: row.error }, row.status);
 
   if (row.photo_key) { try { await env.PHOTOS.delete(row.photo_key); } catch (e) {} }
+  if (row.logo_key) { try { await env.PHOTOS.delete(row.logo_key); } catch (e) {} }
+  if (row.banner_key) { try { await env.PHOTOS.delete(row.banner_key); } catch (e) {} }
   await env.DB.prepare('DELETE FROM businesscards WHERE id = ?').bind(row.id).run();
   await env.DB.prepare('DELETE FROM card_events WHERE slug = ?').bind(row.slug).run();
   return json({ cards: await cardsOf(env, u.id) });
@@ -325,8 +331,11 @@ async function handleUpdate(request, env) {
   return json({ success: true, card: publicCard(await card(env, row.slug)) });
 }
 
-/* ────────────────────────── /api/upload-photo ──────────────────────── */
-async function handleUploadPhoto(request, env) {
+/* ──────────────────── Bild-Uploads: Foto, Logo, Banner ──────────────────── */
+// Gemeinsame Logik für /api/upload-photo, /api/upload-logo, /api/upload-banner.
+// Alle drei legen die Datei im selben R2-Bucket (PHOTOS) ab und merken sich
+// nur den Objekt-Key in der jeweiligen Spalte — genau wie bisher beim Foto.
+async function handleUploadImage(request, env, opts) {
   let form;
   try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
 
@@ -335,21 +344,54 @@ async function handleUploadPhoto(request, env) {
   const row = await ownedCard(env, u, form.get('slug'));
   if (row.error) return json({ error: row.error }, row.status);
 
-  const file = form.get('photo');
+  const file = form.get(opts.formField);
   if (!file) return json({ error: 'Fehlende Angaben' }, 400);
   if (!file.type || !file.type.startsWith('image/')) return json({ error: 'Bitte ein Bild hochladen' }, 400);
   if (file.size > 4 * 1024 * 1024) return json({ error: 'Bild darf maximal 4 MB groß sein' }, 400);
 
   const ext = (file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-  const key = `${row.slug}-${Date.now()}.${ext}`;
+  const key = `${opts.prefix}-${row.slug}-${Date.now()}.${ext}`;
   await env.PHOTOS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
-  if (row.photo_key) { try { await env.PHOTOS.delete(row.photo_key); } catch (e) {} }
 
-  await env.DB.prepare('UPDATE businesscards SET photo_key = ?, updated_at = ? WHERE slug = ?')
+  const oldKey = row[opts.column];
+  if (oldKey) { try { await env.PHOTOS.delete(oldKey); } catch (e) {} }
+
+  await env.DB.prepare(`UPDATE businesscards SET ${opts.column} = ?, updated_at = ? WHERE slug = ?`)
     .bind(key, Date.now(), row.slug).run();
 
-  return json({ success: true, photoUrl: `/photo/${key}` });
+  return json({ success: true, [opts.resultKey]: `/photo/${key}` });
 }
+
+/* ────────────────────────── /api/upload-photo ──────────────────────── */
+function handleUploadPhoto(request, env) {
+  return handleUploadImage(request, env, { formField: 'photo', column: 'photo_key', prefix: 'photo', resultKey: 'photoUrl' });
+}
+
+/* ────────────────────────── /api/upload-logo ───────────────────────── */
+function handleUploadLogo(request, env) {
+  return handleUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'logo', resultKey: 'logoUrl' });
+}
+
+/* ───────────────────────── /api/upload-banner ──────────────────────── */
+function handleUploadBanner(request, env) {
+  return handleUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'banner', resultKey: 'bannerUrl' });
+}
+
+/* Logo/Banner wieder entfernen, ohne die restliche Karte anzufassen */
+async function handleRemoveImage(request, env, column) {
+  const d = await readJson(request) || {};
+  const u = await currentUser(env, request);
+  if (u.error) return json({ error: u.error }, u.status);
+  const row = await ownedCard(env, u, d.slug);
+  if (row.error) return json({ error: row.error }, row.status);
+
+  if (row[column]) { try { await env.PHOTOS.delete(row[column]); } catch (e) {} }
+  await env.DB.prepare(`UPDATE businesscards SET ${column} = NULL, updated_at = ? WHERE slug = ?`)
+    .bind(Date.now(), row.slug).run();
+  return json({ success: true });
+}
+function handleRemoveLogo(request, env) { return handleRemoveImage(request, env, 'logo_key'); }
+function handleRemoveBanner(request, env) { return handleRemoveImage(request, env, 'banner_key'); }
 
 /* ───────────────────────────── /api/track ─────────────────────────── */
 // Aufruf vom Browser: navigator.sendBeacon('/api/track', JSON.stringify({slug, action:'call'}))
@@ -510,6 +552,8 @@ async function handleCardPage(request, env, ctx, slug) {
   ctx.waitUntil(logEvent(env, slug, 'view', source(request), request));
 
   const accent = color(row.accent_color);
+  const bannerUrl = row.banner_key ? `/photo/${escapeAttr(row.banner_key)}` : null;
+  const logoUrl = row.logo_key ? `/photo/${escapeAttr(row.logo_key)}` : null;
   const initials = row.name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const avatar = row.photo_key
     ? `<div class="avatar"><img src="/photo/${escapeAttr(row.photo_key)}" alt="${escapeHtml(row.name)}"></div>`
@@ -552,12 +596,16 @@ async function handleCardPage(request, env, ctx, slug) {
     width:100%; max-width:400px; background:var(--surface); border-radius:14px;
     box-shadow:var(--shadow-md); overflow:hidden;
   }
-  .head{position:relative; padding:34px 22px 22px; text-align:center; overflow:hidden;}
+  .head{position:relative; padding:34px 22px 22px; text-align:center; overflow:hidden; background-size:cover; background-position:center;}
+  .head.has-banner::before{display:none;}
   .head::before{
     content:''; position:absolute; inset:0;
     background:radial-gradient(120% 80% at 50% -20%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%);
   }
+  .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(22,24,38,.18), rgba(22,24,38,.90) 85%);}
   .head > *{position:relative;}
+  .logo-badge{position:absolute; top:14px; left:16px; width:38px; height:38px; border-radius:9px; overflow:hidden; background:rgba(0,0,0,.25); box-shadow:0 0 0 1px rgba(255,255,255,.15); z-index:2;}
+  .logo-badge img{width:100%; height:100%; object-fit:cover; display:block;}
   .avatar{
     width:88px; height:88px; margin:0 auto 14px; border-radius:50%; overflow:hidden;
     display:grid; place-items:center; box-shadow:inset 0 0 0 1px var(--accent);
@@ -603,7 +651,9 @@ async function handleCardPage(request, env, ctx, slug) {
 </head>
 <body>
 <div class="card">
-  <div class="head">
+  <div class="head${bannerUrl ? ' has-banner' : ''}"${bannerUrl ? ` style="background-image:url('${bannerUrl}')"` : ''}>
+    ${bannerUrl ? '<div class="scrim"></div>' : ''}
+    ${logoUrl ? `<div class="logo-badge"><img src="${logoUrl}" alt=""></div>` : ''}
     ${avatar}
     <h1>${escapeHtml(row.name)}</h1>
     ${roleLine ? `<p class="role">${escapeHtml(roleLine)}</p>` : ''}
@@ -858,13 +908,17 @@ const DAY = 1000 * 60 * 60 * 24;
 
 async function readJson(request) { try { return await request.json(); } catch (e) { return null; } }
 function str(v) { return (v == null ? '' : String(v)).trim(); }
-function color(v) { const c = str(v).toLowerCase(); return COLORS.includes(c) ? c : COLORS[0]; }
+function color(v) {
+  const c = str(v).toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(c) ? c : COLORS[0];
+}
 function employment(v) { return ['gruender', 'mitarbeiter', 'keiner'].includes(v) ? v : 'keiner'; }
 function card(env, slug) { return env.DB.prepare('SELECT * FROM businesscards WHERE slug = ?').bind(str(slug).toLowerCase()).first(); }
 
 function publicCard(row) {
   return {
     slug: row.slug, name: row.name, birthday: row.birthday, photoUrl: row.photo_key ? `/photo/${row.photo_key}` : null,
+    logoUrl: row.logo_key ? `/photo/${row.logo_key}` : null, bannerUrl: row.banner_key ? `/photo/${row.banner_key}` : null,
     employmentStatus: row.employment_status, jobTitle: row.job_title, companyName: row.company_name,
     bio: row.bio, accentColor: color(row.accent_color), contacts: parseContacts(row)
   };

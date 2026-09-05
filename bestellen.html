@@ -106,8 +106,8 @@
           <input type="text" name="Website" id="webseite" placeholder="www.euerbetrieb.de">
 
           <label for="wuensche">Wünsche zum Design</label>
-          <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px;">Logo, Farben, gewünschte Beschriftung — je genauer, desto besser können wir das Design vorbereiten.</p>
-          <textarea name="Design-Wünsche" id="wuensche" placeholder="z. B. Logo anbei, Hausfarbe Blau, Text 'Vielen Dank für Ihren Besuch'"></textarea>
+          <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px;">Logo, Farben, gewünschte Beschriftung — je genauer, desto besser können wir das Design vorbereiten. <strong>Logo-Datei bitte nicht hier einfügen</strong> — schick sie einfach als Anhang, wenn du auf unsere Bestätigungsmail antwortest.</p>
+          <textarea name="Design-Wünsche" id="wuensche" placeholder="z. B. Hausfarbe Blau, Text 'Vielen Dank für Ihren Besuch' — Logo kommt per Mail-Anhang"></textarea>
         </div>
 
         <div id="cardFields" style="display:none;">
@@ -145,6 +145,11 @@
     <div class="confirmation" id="confirmation">
       <h2>Bestellung eingegangen</h2>
       <p>Danke für deine Bestellung! Wir melden uns innerhalb von 1–2 Werktagen per E-Mail mit einer Bestätigung und den weiteren Schritten.</p>
+      <p id="confLogoNote" style="display:none; margin-top:14px;">Hast du ein Logo? Antworte einfach auf unsere Bestätigungsmail mit dem Logo als Anhang.</p>
+      <p id="confAppNote" style="display:none; margin-top:14px; padding:14px; background:var(--card); border:1px solid var(--line); border-radius:10px; font-size:0.9rem;">
+        Du kannst dein digitales Profil schon jetzt einrichten, bevor die Karte ankommt:
+        <a href="app.html" style="color:var(--primary); font-weight:600; text-decoration:none;">Jetzt Profil anlegen →</a>
+      </p>
       <p style="margin-top:20px;"><a href="index.html" style="color:var(--primary); font-weight:600; text-decoration:none;">← Zurück zur Startseite</a></p>
     </div>
   </div>
@@ -271,6 +276,8 @@
       const result = await response.json();
 
       if (result.success) {
+        document.getElementById('confLogoNote').style.display = document.getElementById('brandingFields').style.display !== 'none' ? 'block' : 'none';
+        document.getElementById('confAppNote').style.display = document.getElementById('cardFields').style.display !== 'none' ? 'block' : 'none';
         document.getElementById('formSection').classList.add('hide');
         document.getElementById('confirmation').classList.add('show');
       } else {

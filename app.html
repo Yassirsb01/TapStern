@@ -95,9 +95,9 @@
   .swatch.on{border:2px solid var(--text);}
 
   /* Telefonvorschau */
-  .phone{width:320px; border-radius:34px; padding:9px; background:linear-gradient(180deg,var(--neutral-800),var(--neutral-900)); box-shadow:var(--shadow-md);}
-  .screen{border-radius:26px; background:var(--bg); overflow:hidden; min-height:600px; display:flex; flex-direction:column;}
-  .status{display:flex; justify-content:space-between; padding:10px 18px 0; font-size:11px; color:color-mix(in srgb,#e9e9ed 45%,transparent);}
+  .phone{width:320px; border-radius:34px; padding:9px; background:linear-gradient(180deg,var(--neutral-800),var(--neutral-900)); box-shadow:var(--shadow-md); --cbg:#161826; --ctext:#e9e9ed;}
+  .screen{border-radius:26px; background:var(--cbg); color:var(--ctext); overflow:hidden; min-height:600px; display:flex; flex-direction:column;}
+  .status{display:flex; justify-content:space-between; padding:10px 18px 0; font-size:11px; color:color-mix(in srgb,var(--ctext) 45%,transparent);}
   .head{position:relative; padding:28px 20px 20px; display:grid; gap:var(--sp-3); justify-items:center; text-align:center; overflow:hidden; background-size:cover; background-position:center;}
   .head .glow{position:absolute; inset:0;}
   .head .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(22,24,38,.15), rgba(22,24,38,.88) 85%);}
@@ -107,14 +107,14 @@
   .avatar{width:76px; height:76px; border-radius:50%; overflow:hidden; display:grid; place-items:center; font-size:27px; font-weight:500;}
   .avatar img{width:100%; height:100%; object-fit:cover;}
   .pname{font-size:24px; font-weight:500; line-height:1.1;}
-  .prole{font-size:13px; color:color-mix(in srgb,#e9e9ed 70%,transparent);}
-  .pbio{font-size:12px; margin-top:var(--sp-1); color:var(--muted);}
+  .prole{font-size:13px; color:color-mix(in srgb,var(--ctext) 70%,transparent);}
+  .pbio{font-size:12px; margin-top:var(--sp-1); color:color-mix(in srgb,var(--ctext) 55%,transparent);}
   .rows{padding:0 20px var(--sp-4); display:grid;}
-  .crow{display:flex; gap:var(--sp-3); align-items:center; padding:7px 0; color:var(--text); text-decoration:none;}
-  .crow .ico{flex:none; display:grid; place-items:center; width:34px; height:34px; border-radius:var(--radius); background:color-mix(in srgb,#e9e9ed 6%,transparent);}
-  .crow .lbl{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:color-mix(in srgb,#e9e9ed 50%,transparent);}
+  .crow{display:flex; gap:var(--sp-3); align-items:center; padding:7px 0; color:var(--ctext); text-decoration:none;}
+  .crow .ico{flex:none; display:grid; place-items:center; width:34px; height:34px; border-radius:var(--radius); background:color-mix(in srgb,var(--ctext) 6%,transparent);}
+  .crow .lbl{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:color-mix(in srgb,var(--ctext) 50%,transparent);}
   .crow .val{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .pfoot{margin-top:auto; padding:14px 20px 20px; display:flex; align-items:center; gap:var(--sp-2); justify-content:center; font-size:11px; color:color-mix(in srgb,#e9e9ed 40%,transparent);}
+  .pfoot{margin-top:auto; padding:14px 20px 20px; display:flex; align-items:center; gap:var(--sp-2); justify-content:center; font-size:11px; color:color-mix(in srgb,var(--ctext) 40%,transparent);}
   .dot{width:6px; height:6px; border-radius:50%;}
 
   .toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); opacity:0; transition:.2s; background:var(--surface-2); box-shadow:var(--shadow-md); border-radius:var(--radius); padding:10px 18px; font-size:14px; z-index:60; pointer-events:none;}
@@ -259,8 +259,11 @@
     </div>
     <button class="btn btn-ghost" id="banner-remove" style="font-size:12px; align-self:flex-start; padding-left:0; display:none">Bannerbild entfernen</button>
 
-    <div class="field" style="margin-top:var(--sp-4); margin-bottom:var(--sp-1)"><label>Farbe</label></div>
+    <div class="field" style="margin-top:var(--sp-4); margin-bottom:var(--sp-1)"><label>Akzentfarbe (Buttons &amp; Icons)</label></div>
     <div style="display:flex; gap:var(--sp-2); align-items:center" id="swatches"></div>
+
+    <div class="field" style="margin-top:var(--sp-4); margin-bottom:var(--sp-1)"><label>Hintergrund der Karte</label></div>
+    <div style="display:flex; gap:var(--sp-2); align-items:center" id="bg-swatches"></div>
 
     <div style="display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap; margin-top:var(--sp-6); padding-top:var(--sp-5); border-top:1px solid var(--divider)">
       <button class="btn btn-primary" id="save" style="padding:11px 22px">Speichern</button>
@@ -373,7 +376,7 @@ var ICON = {
 };
 
 var session = { slug:'' };
-var card = { name:'', role:'', company:'', birthday:'', bio:'', color:COLORS[0], photoUrl:null, logoUrl:null, bannerUrl:null, contacts:[] };
+var card = { name:'', role:'', company:'', birthday:'', bio:'', color:COLORS[0], bgColor:null, photoUrl:null, logoUrl:null, bannerUrl:null, contacts:[] };
 var screen = 'auth';
 
 var $ = function (id) { return document.getElementById(id); };
@@ -452,6 +455,15 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-add]'), function(b
 });
 
 /* ═══ Vorschau ═══ */
+var BG_PRESETS = ['#161826', '#ffffff', '#000000']; // Dunkel (Standard), Weiß, Schwarz
+
+function readableTextFor(bgHex){
+  var h = (bgHex || '#161826').replace('#','');
+  var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
+  var lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+  return lum > 0.6 ? '#161826' : '#e9e9ed';
+}
+
 function href(c){
   var v = (c.value || '').trim();
   if (c.kind === 'phone') return 'tel:' + v.replace(/[\s\/]/g,'');
@@ -469,6 +481,11 @@ function display(c){
 
 function renderPreview(){
   var col = card.color;
+  var bg = card.bgColor || BG_PRESETS[0];
+  var txt = readableTextFor(bg);
+  var phone = document.querySelector('.phone');
+  phone.style.setProperty('--cbg', bg);
+  phone.style.setProperty('--ctext', txt);
   var head = $('pv-head');
 
   if (card.bannerUrl) {
@@ -545,9 +562,39 @@ function markSwatch(){
 }
 renderSwatches();
 
+var BG_LABELS = { '#161826':'Dunkel', '#ffffff':'Weiß', '#000000':'Schwarz' };
+function renderBgSwatches(){
+  var html = BG_PRESETS.map(function(c){
+    var border = c === '#ffffff' ? 'border:1px solid var(--neutral-800);' : '';
+    return '<button class="swatch bg-swatch" data-c="' + c + '" title="' + BG_LABELS[c] + '" style="background:' + c + ';' + border + '"></button>';
+  }).join('');
+  html += '<input type="color" class="colorpick" id="custom-bg-color" title="Eigene Hintergrundfarbe wählen" value="' + (card.bgColor || BG_PRESETS[0]) + '">';
+  $('bg-swatches').innerHTML = html;
+
+  Array.prototype.forEach.call(document.querySelectorAll('.bg-swatch'), function(b){
+    b.onclick = function(){
+      card.bgColor = b.dataset.c === BG_PRESETS[0] ? null : b.dataset.c;
+      markBgSwatch();
+      renderPreview();
+    };
+  });
+  $('custom-bg-color').oninput = function(){
+    card.bgColor = this.value;
+    markBgSwatch();
+    renderPreview();
+  };
+}
+function markBgSwatch(){
+  var current = card.bgColor || BG_PRESETS[0];
+  Array.prototype.forEach.call(document.querySelectorAll('.bg-swatch'), function(x){ x.classList.toggle('on', x.dataset.c === current); });
+  $('custom-bg-color').value = /^#[0-9a-f]{6}$/i.test(current) ? current : BG_PRESETS[0];
+}
+renderBgSwatches();
+
 function fillForm(){
   ['name','role','company','birthday','bio'].forEach(function(k){ $('f-' + k).value = card[k] || ''; });
   markSwatch();
+  markBgSwatch();
   $('photo-label').textContent = card.photoUrl ? 'Foto gesetzt' : 'max. 4 MB';
   $('logo-label').textContent = card.logoUrl ? 'Logo gesetzt' : 'max. 4 MB';
   $('banner-label').textContent = card.bannerUrl ? 'Banner gesetzt' : 'max. 4 MB';
@@ -696,6 +743,7 @@ function adopt(c){
   card.name = c.name || ''; card.role = c.jobTitle || ''; card.company = c.companyName || '';
   card.birthday = c.birthday || ''; card.bio = c.bio || '';
   card.color = c.accentColor || COLORS[0];
+  card.bgColor = c.bgColor || null;
   card.photoUrl = c.photoUrl || null;
   card.logoUrl = c.logoUrl || null;
   card.bannerUrl = c.bannerUrl || null;
@@ -709,7 +757,7 @@ $('save').onclick = async function(){
     await api('/api/update', {
       slug:session.slug,
       name:card.name, jobTitle:card.role, companyName:card.company,
-      birthday:card.birthday, bio:card.bio, accentColor:card.color,
+      birthday:card.birthday, bio:card.bio, accentColor:card.color, bgColor:card.bgColor || '',
       logoUrl:card.logoUrl, bannerUrl:card.bannerUrl,
       contacts:card.contacts.filter(function(c){ return (c.value || '').trim(); })
     });

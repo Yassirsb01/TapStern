@@ -25,6 +25,7 @@ export default {
       if (method === 'POST' && path === '/api/upload-photo') return handleUploadPhoto(request, env);
       if (method === 'POST' && path === '/api/upload-logo') return handleUploadLogo(request, env);
       if (method === 'POST' && path === '/api/upload-banner') return handleUploadBanner(request, env);
+      if (method === 'POST' && path === '/api/remove-photo') return handleRemovePhoto(request, env);
       if (method === 'POST' && path === '/api/remove-logo') return handleRemoveLogo(request, env);
       if (method === 'POST' && path === '/api/remove-banner') return handleRemoveBanner(request, env);
       if (method === 'POST' && path === '/api/track') return handleTrack(request, env);
@@ -393,6 +394,7 @@ async function handleRemoveImage(request, env, column) {
 }
 function handleRemoveLogo(request, env) { return handleRemoveImage(request, env, 'logo_key'); }
 function handleRemoveBanner(request, env) { return handleRemoveImage(request, env, 'banner_key'); }
+function handleRemovePhoto(request, env) { return handleRemoveImage(request, env, 'photo_key'); }
 
 /* ───────────────────────────── /api/track ─────────────────────────── */
 // Aufruf vom Browser: navigator.sendBeacon('/api/track', JSON.stringify({slug, action:'call'}))
@@ -599,19 +601,15 @@ async function handleCardPage(request, env, ctx, slug) {
     width:100%; max-width:400px; background:var(--surface); border-radius:14px;
     box-shadow:var(--shadow-md); overflow:hidden;
   }
-  .head{position:relative; padding:34px 22px 22px; text-align:center; overflow:hidden; background-size:cover; background-position:center;}
-  .head.has-banner::before{display:none;}
-  .head::before{
-    content:''; position:absolute; inset:0;
-    background:radial-gradient(120% 80% at 50% -20%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%);
-  }
-  .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(22,24,38,.18), rgba(22,24,38,.90) 85%);}
-  .head > *{position:relative;}
+  .head{position:relative; text-align:center;}
+  .banner{height:120px; position:relative; overflow:hidden; background-size:cover; background-position:center;}
+  .banner.no-image{background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 75%), var(--surface);}
   .logo-badge{position:absolute; top:14px; left:16px; width:38px; height:38px; border-radius:9px; overflow:hidden; background:rgba(0,0,0,.25); box-shadow:0 0 0 1px rgba(255,255,255,.15); z-index:2;}
   .logo-badge img{width:100%; height:100%; object-fit:cover; display:block;}
+  .head-body{padding:0 22px 22px; margin-top:-44px; position:relative;}
   .avatar{
     width:88px; height:88px; margin:0 auto 14px; border-radius:50%; overflow:hidden;
-    display:grid; place-items:center; box-shadow:inset 0 0 0 1px var(--accent);
+    display:grid; place-items:center; box-shadow:0 0 0 4px var(--surface), inset 0 0 0 1px var(--accent); position:relative;
   }
   .avatar img{width:100%; height:100%; object-fit:cover; display:block;}
   .avatar.mono{
@@ -654,14 +652,17 @@ async function handleCardPage(request, env, ctx, slug) {
 </head>
 <body>
 <div class="card">
-  <div class="head${bannerUrl ? ' has-banner' : ''}"${bannerUrl ? ` style="background-image:url('${bannerUrl}')"` : ''}>
-    ${bannerUrl ? '<div class="scrim"></div>' : ''}
-    ${logoUrl ? `<div class="logo-badge"><img src="${logoUrl}" alt=""></div>` : ''}
-    ${avatar}
-    <h1>${escapeHtml(row.name)}</h1>
-    ${roleLine ? `<p class="role">${escapeHtml(roleLine)}</p>` : ''}
-    ${row.bio ? `<p class="bio">${escapeHtml(row.bio)}</p>` : ''}
-    <a class="save" href="/vk/${escapeAttr(slug)}/vcard" download="${escapeAttr(row.name)}.vcf">Kontakt speichern</a>
+  <div class="head">
+    <div class="banner${bannerUrl ? '' : ' no-image'}"${bannerUrl ? ` style="background-image:url('${bannerUrl}')"` : ''}>
+      ${logoUrl ? `<div class="logo-badge"><img src="${logoUrl}" alt=""></div>` : ''}
+    </div>
+    <div class="head-body">
+      ${avatar}
+      <h1>${escapeHtml(row.name)}</h1>
+      ${roleLine ? `<p class="role">${escapeHtml(roleLine)}</p>` : ''}
+      ${row.bio ? `<p class="bio">${escapeHtml(row.bio)}</p>` : ''}
+      <a class="save" href="/vk/${escapeAttr(slug)}/vcard" download="${escapeAttr(row.name)}.vcf">Kontakt speichern</a>
+    </div>
   </div>
   <div class="rows">${rows}</div>
   <div class="foot"><span class="dot"></span><span>Karte von <a href="https://tapstern.de">TapStern</a></span></div>

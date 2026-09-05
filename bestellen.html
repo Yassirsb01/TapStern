@@ -96,6 +96,7 @@
 
         <label for="menge">Menge</label>
         <input type="number" name="Menge" id="menge" min="1" value="1" required>
+        <p class="opt" id="mengeHinweis" style="display:none; margin-top:-2px; font-size:0.8rem; color:var(--ink-soft);"></p>
 
         <label for="adresse">Lieferadresse <span class="opt">(oder Abholung/Regensburg angeben)</span></label>
         <textarea name="Lieferadresse" id="adresse" required placeholder="Straße, PLZ, Ort — oder 'Abholung in Regensburg'"></textarea>
@@ -166,7 +167,21 @@
   const paketLockedText = document.getElementById('paketLockedText');
   const paketHidden = document.getElementById('paketHidden');
 
-  if (urlPaket && packageMap[urlPaket]) {
+  // Generic path: any product coming from produkte.html (Google-Sheet-driven).
+  // Works for products that don't exist in packageMap above, so new products
+  // never require editing this file again.
+  const urlProdukt = urlParams.get('produkt');
+  const urlPreis = urlParams.get('preis');
+
+  if (urlProdukt) {
+    const label = urlPreis ? `${decodeURIComponent(urlProdukt)} (${urlPreis} €)` : decodeURIComponent(urlProdukt);
+    paketSelect.style.display = 'none';
+    paketSelect.removeAttribute('required');
+    paketSelect.disabled = true;
+    paketLocked.style.display = 'block';
+    paketLockedText.textContent = label;
+    paketHidden.value = label;
+  } else if (urlPaket && packageMap[urlPaket]) {
     if (lockedPackages.has(urlPaket)) {
       paketSelect.style.display = 'none';
       paketSelect.removeAttribute('required');
@@ -195,7 +210,36 @@
   function toggleCardFields() {
     const isCard = getCurrentPaket().includes('Visitenkarte');
     document.getElementById('cardFields').style.display = isCard ? 'block' : 'none';
+    applyMengeMinimum();
   }
+
+  // Individuell bedruckte NFC-Visitenkarten sind bei Kleinstmengen beim
+  // Hersteller unverhältnismäßig teuer (Fixkosten pro Bestellung) — daher
+  // gilt hierfür eine Mindestbestellmenge, damit die Marge stimmt.
+  const MIN_MENGE_VISITENKARTE = 3;
+  function applyMengeMinimum() {
+    const mengeInput = document.getElementById('menge');
+    const hinweis = document.getElementById('mengeHinweis');
+    const isVisitenkarte = getCurrentPaket().includes('Visitenkarte');
+
+    if (isVisitenkarte) {
+      mengeInput.min = MIN_MENGE_VISITENKARTE;
+      if (parseInt(mengeInput.value, 10) < MIN_MENGE_VISITENKARTE) {
+        mengeInput.value = MIN_MENGE_VISITENKARTE;
+      }
+      hinweis.textContent = `Mindestbestellmenge bei individuellem Design: ${MIN_MENGE_VISITENKARTE} Stück`;
+      hinweis.style.display = 'block';
+    } else {
+      mengeInput.min = 1;
+      hinweis.style.display = 'none';
+    }
+  }
+
+  document.getElementById('menge').addEventListener('change', function() {
+    if (getCurrentPaket().includes('Visitenkarte') && parseInt(this.value, 10) < MIN_MENGE_VISITENKARTE) {
+      this.value = MIN_MENGE_VISITENKARTE;
+    }
+  });
   paketSelect.addEventListener('change', function(){
     toggleBrandingFields();
     toggleCardFields();

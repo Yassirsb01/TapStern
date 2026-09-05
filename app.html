@@ -98,9 +98,12 @@
   .phone{width:320px; border-radius:34px; padding:9px; background:linear-gradient(180deg,var(--neutral-800),var(--neutral-900)); box-shadow:var(--shadow-md);}
   .screen{border-radius:26px; background:var(--bg); overflow:hidden; min-height:600px; display:flex; flex-direction:column;}
   .status{display:flex; justify-content:space-between; padding:10px 18px 0; font-size:11px; color:color-mix(in srgb,#e9e9ed 45%,transparent);}
-  .head{position:relative; padding:28px 20px 20px; display:grid; gap:var(--sp-3); justify-items:center; text-align:center; overflow:hidden;}
+  .head{position:relative; padding:28px 20px 20px; display:grid; gap:var(--sp-3); justify-items:center; text-align:center; overflow:hidden; background-size:cover; background-position:center;}
   .head .glow{position:absolute; inset:0;}
-  .head > *:not(.glow){position:relative;}
+  .head .scrim{position:absolute; inset:0; background:linear-gradient(180deg, rgba(22,24,38,.15), rgba(22,24,38,.88) 85%);}
+  .head > *:not(.glow):not(.scrim){position:relative;}
+  .logo-badge{position:absolute; top:12px; left:14px; width:34px; height:34px; border-radius:9px; overflow:hidden; background:rgba(0,0,0,.25); box-shadow:0 0 0 1px rgba(255,255,255,.15);}
+  .logo-badge img{width:100%; height:100%; object-fit:cover;}
   .avatar{width:76px; height:76px; border-radius:50%; overflow:hidden; display:grid; place-items:center; font-size:27px; font-weight:500;}
   .avatar img{width:100%; height:100%; object-fit:cover;}
   .pname{font-size:24px; font-weight:500; line-height:1.1;}
@@ -118,6 +121,8 @@
   .toast.show{opacity:1; transform:translateX(-50%);}
   .hide{display:none !important;}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .colorpick{width:30px; height:30px; border-radius:var(--radius); border:1px solid var(--divider); padding:0; background:none; cursor:pointer;}
+  .upl-row{display:flex; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-3)}
 </style>
 </head>
 <body>
@@ -234,19 +239,28 @@
     </div>
 
     <h6 style="margin:var(--sp-6) 0 var(--sp-3)">Bild &amp; Farbe</h6>
-    <div style="display:flex; flex-wrap:wrap; gap:var(--sp-5); align-items:flex-start">
-      <div>
-        <div class="field" style="margin-bottom:var(--sp-1)"><label>Profilfoto oder Logo</label></div>
-        <div style="display:flex; align-items:center; gap:var(--sp-3)">
-          <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-photo" accept="image/*" hidden></label>
-          <span style="font-size:12px; color:var(--muted)" id="photo-label">max. 4 MB</span>
-        </div>
-      </div>
-      <div>
-        <div class="field" style="margin-bottom:var(--sp-1)"><label>Firmenfarbe</label></div>
-        <div style="display:flex; gap:var(--sp-2)" id="swatches"></div>
-      </div>
+
+    <div class="upl-row">
+      <div class="field" style="margin-bottom:0; flex:1"><label>Profilfoto</label></div>
+      <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-photo" accept="image/*" hidden></label>
+      <span style="font-size:12px; color:var(--muted)" id="photo-label">max. 4 MB</span>
     </div>
+
+    <div class="upl-row">
+      <div class="field" style="margin-bottom:0; flex:1"><label>Firmenlogo (optional)</label></div>
+      <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-logo" accept="image/*" hidden></label>
+      <span style="font-size:12px; color:var(--muted)" id="logo-label">max. 4 MB</span>
+    </div>
+
+    <div class="upl-row">
+      <div class="field" style="margin-bottom:0; flex:1"><label>Bannerbild (optional)</label></div>
+      <label class="btn btn-secondary" style="cursor:pointer">Datei wählen<input type="file" id="f-banner" accept="image/*" hidden></label>
+      <span style="font-size:12px; color:var(--muted)" id="banner-label">max. 4 MB</span>
+    </div>
+    <button class="btn btn-ghost" id="banner-remove" style="font-size:12px; align-self:flex-start; padding-left:0; display:none">Bannerbild entfernen</button>
+
+    <div class="field" style="margin-top:var(--sp-4); margin-bottom:var(--sp-1)"><label>Farbe</label></div>
+    <div style="display:flex; gap:var(--sp-2); align-items:center" id="swatches"></div>
 
     <div style="display:flex; gap:var(--sp-3); align-items:center; flex-wrap:wrap; margin-top:var(--sp-6); padding-top:var(--sp-5); border-top:1px solid var(--divider)">
       <button class="btn btn-primary" id="save" style="padding:11px 22px">Speichern</button>
@@ -260,8 +274,10 @@
     <span class="tag tag-neutral">Live-Vorschau</span>
     <div class="phone"><div class="screen">
       <div class="status"><span>9:41</span><span id="pv-url">tapstern.de</span></div>
-      <div class="head">
+      <div class="head" id="pv-head">
         <div class="glow" id="pv-glow"></div>
+        <div class="scrim" id="pv-scrim"></div>
+        <div class="logo-badge hide" id="pv-logo"></div>
         <div class="avatar" id="pv-avatar"></div>
         <div style="display:grid; gap:2px">
           <div class="pname" id="pv-name"></div>
@@ -357,7 +373,7 @@ var ICON = {
 };
 
 var session = { slug:'' };
-var card = { name:'', role:'', company:'', birthday:'', bio:'', color:COLORS[0], photoUrl:null, contacts:[] };
+var card = { name:'', role:'', company:'', birthday:'', bio:'', color:COLORS[0], photoUrl:null, logoUrl:null, bannerUrl:null, contacts:[] };
 var screen = 'auth';
 
 var $ = function (id) { return document.getElementById(id); };
@@ -453,7 +469,26 @@ function display(c){
 
 function renderPreview(){
   var col = card.color;
-  $('pv-glow').style.background = 'radial-gradient(120% 80% at 50% -20%, color-mix(in srgb,' + col + ' 30%, transparent), transparent 70%)';
+  var head = $('pv-head');
+
+  if (card.bannerUrl) {
+    head.style.backgroundImage = 'url(' + card.bannerUrl.replace(/'/g,"%27") + ')';
+    $('pv-glow').style.background = 'none';
+    $('pv-scrim').style.display = 'block';
+  } else {
+    head.style.backgroundImage = 'none';
+    $('pv-glow').style.background = 'radial-gradient(120% 80% at 50% -20%, color-mix(in srgb,' + col + ' 30%, transparent), transparent 70%)';
+    $('pv-scrim').style.display = 'none';
+  }
+
+  var logo = $('pv-logo');
+  if (card.logoUrl) {
+    logo.innerHTML = '<img src="' + esc(card.logoUrl) + '" alt="">';
+    logo.classList.remove('hide');
+  } else {
+    logo.classList.add('hide');
+  }
+
   $('pv-url').textContent = session.slug ? 'tapstern.de/vk/' + session.slug : 'tapstern.de';
   $('pv-name').textContent = card.name || 'Dein Name';
   $('pv-role').textContent = [card.role, card.company].filter(Boolean).join(' · ');
@@ -486,18 +521,37 @@ function renderPreview(){
   $('f-' + k).oninput = function(){ card[k] = $('f-' + k).value; renderPreview(); };
 });
 
-$('swatches').innerHTML = COLORS.map(function(c){ return '<button class="swatch" data-c="' + c + '" style="background:' + c + '"></button>'; }).join('');
-Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(b){
-  b.onclick = function(){
-    card.color = b.dataset.c;
-    Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(x){ x.classList.toggle('on', x.dataset.c === card.color); });
+function renderSwatches(){
+  var html = COLORS.map(function(c){ return '<button class="swatch" data-c="' + c + '" style="background:' + c + '"></button>'; }).join('');
+  html += '<input type="color" class="colorpick" id="custom-color" title="Eigene Farbe wählen" value="' + card.color + '">';
+  $('swatches').innerHTML = html;
+
+  Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(b){
+    b.onclick = function(){
+      card.color = b.dataset.c;
+      markSwatch();
+      renderPreview();
+    };
+  });
+  $('custom-color').oninput = function(){
+    card.color = this.value;
+    markSwatch();
     renderPreview();
   };
-});
+}
+function markSwatch(){
+  Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(x){ x.classList.toggle('on', x.dataset.c === card.color); });
+  $('custom-color').value = /^#[0-9a-f]{6}$/i.test(card.color) ? card.color : '#9184d9';
+}
+renderSwatches();
 
 function fillForm(){
   ['name','role','company','birthday','bio'].forEach(function(k){ $('f-' + k).value = card[k] || ''; });
-  Array.prototype.forEach.call(document.querySelectorAll('.swatch'), function(x){ x.classList.toggle('on', x.dataset.c === card.color); });
+  markSwatch();
+  $('photo-label').textContent = card.photoUrl ? 'Foto gesetzt' : 'max. 4 MB';
+  $('logo-label').textContent = card.logoUrl ? 'Logo gesetzt' : 'max. 4 MB';
+  $('banner-label').textContent = card.bannerUrl ? 'Banner gesetzt' : 'max. 4 MB';
+  $('banner-remove').style.display = card.bannerUrl ? 'inline-flex' : 'none';
   $('open-card').href = $('open-card-2').href = cardUrl();
   renderContacts(); renderPreview();
 }
@@ -641,8 +695,10 @@ async function openCard(slug){
 function adopt(c){
   card.name = c.name || ''; card.role = c.jobTitle || ''; card.company = c.companyName || '';
   card.birthday = c.birthday || ''; card.bio = c.bio || '';
-  card.color = COLORS.indexOf(c.accentColor) >= 0 ? c.accentColor : COLORS[0];
+  card.color = c.accentColor || COLORS[0];
   card.photoUrl = c.photoUrl || null;
+  card.logoUrl = c.logoUrl || null;
+  card.bannerUrl = c.bannerUrl || null;
   card.contacts = Array.isArray(c.contacts) ? c.contacts : [];
 }
 
@@ -654,6 +710,7 @@ $('save').onclick = async function(){
       slug:session.slug,
       name:card.name, jobTitle:card.role, companyName:card.company,
       birthday:card.birthday, bio:card.bio, accentColor:card.color,
+      logoUrl:card.logoUrl, bannerUrl:card.bannerUrl,
       contacts:card.contacts.filter(function(c){ return (c.value || '').trim(); })
     });
     $('save-state').textContent = 'Gespeichert';
@@ -684,22 +741,36 @@ function resizeImage(file, maxDim, quality){
   });
 }
 
-$('f-photo').onchange = async function(e){
-  var f = e.target.files[0];
-  if (!f) return;
-  $('photo-label').textContent = 'Wird verkleinert …';
-  try {
-    f = await resizeImage(f, 480, 0.82);
-  } catch (err) { $('photo-label').textContent = 'max. 4 MB'; toast(err.message); return; }
-  $('photo-label').textContent = 'Lädt hoch …';
-  var fd = new FormData();
-  fd.append('slug', session.slug); fd.append('photo', f);
-  try {
-    var r = await api('/api/upload-photo', fd, true);
-    card.photoUrl = r.photoUrl;
-    $('photo-label').textContent = f.name;
-    renderPreview();
-  } catch (err) { $('photo-label').textContent = 'max. 4 MB'; toast(err.message); }
+function wireImageUpload(inputId, labelId, maxDim, quality, endpoint, formField, stateKey){
+  $(inputId).onchange = async function(e){
+    var f = e.target.files[0];
+    if (!f) return;
+    $(labelId).textContent = 'Wird verkleinert …';
+    try {
+      f = await resizeImage(f, maxDim, quality);
+    } catch (err) { $(labelId).textContent = 'max. 4 MB'; toast(err.message); return; }
+    $(labelId).textContent = 'Lädt hoch …';
+    var fd = new FormData();
+    fd.append('slug', session.slug); fd.append(formField, f);
+    try {
+      var r = await api(endpoint, fd, true);
+      card[stateKey] = r[stateKey];
+      $(labelId).textContent = f.name;
+      if (stateKey === 'bannerUrl') $('banner-remove').style.display = 'inline-flex';
+      renderPreview();
+    } catch (err) { $(labelId).textContent = 'max. 4 MB'; toast(err.message); }
+  };
+}
+
+wireImageUpload('f-photo', 'photo-label', 480, 0.82, '/api/upload-photo', 'photo', 'photoUrl');
+wireImageUpload('f-logo', 'logo-label', 300, 0.85, '/api/upload-logo', 'logo', 'logoUrl');
+wireImageUpload('f-banner', 'banner-label', 1000, 0.8, '/api/upload-banner', 'banner', 'bannerUrl');
+
+$('banner-remove').onclick = function(){
+  card.bannerUrl = null;
+  $('banner-label').textContent = 'max. 4 MB';
+  $('banner-remove').style.display = 'none';
+  renderPreview();
 };
 
 /* ═══ Link, QR, NFC ═══ */

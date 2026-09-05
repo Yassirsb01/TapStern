@@ -112,7 +112,7 @@
   .nav-cta:hover{background:var(--primary-bright);}
 
   .nav-links{
-    display:flex; align-items:center; gap:28px;
+    display:flex; align-items:center; gap:24px;
   }
   .nav-links a{
     color:var(--ink-soft); text-decoration:none; font-size:0.92rem; font-weight:500;
@@ -143,7 +143,7 @@
   .nav-links-mobile a:last-child{border-bottom:none;}
   .nav-links-mobile.open{display:flex;}
 
-  @media (max-width: 820px){
+  @media (max-width: 900px){
     .nav-links{display:none;}
     .menu-toggle{display:flex;}
   }
@@ -357,6 +357,11 @@
   /* SECTION GENERIC */
   section{padding:88px 0;}
   section:nth-of-type(even){background:var(--bg-soft);}
+  /* Explizite Hintergründe: der neue Abschnitt "digital" würde sonst den
+     Wechsel hell/dunkel aller folgenden Abschnitte umdrehen. */
+  section#vertrauen{background:var(--bg);}
+  section#faq{background:var(--bg-soft);}
+  section#kontakt{background:var(--bg);}
   .section-head{max-width:640px; margin-bottom:48px;}
   .section-head .eyebrow{margin-bottom:14px;}
   h2.display{font-size:clamp(1.7rem,2.6vw,2.3rem); color:var(--ink);}
@@ -446,6 +451,7 @@
   .config-visual{
     position:relative; border-radius:16px; overflow:hidden;
     border:1px solid var(--line); aspect-ratio:4/3; background:var(--navy);
+    display:flex; align-items:center; justify-content:center;
   }
   .config-visual img{
     width:100%; height:100%; object-fit:cover; display:block;
@@ -475,13 +481,102 @@
   .config-panel ul{list-style:none; padding:0; margin:0 0 26px;}
   .config-panel li{padding:9px 0; border-top:1px solid var(--line); font-size:0.94rem; color:var(--ink-soft);}
   .config-panel li:first-child{border-top:none;}
-  .qty-row{display:flex; align-items:center; gap:16px; margin-bottom:24px;}
+  .qty-row{display:flex; align-items:center; gap:16px; margin-bottom:10px;}
   .qty-label{font-size:0.85rem; color:var(--ink-soft);}
   .qty-stepper{display:flex; align-items:center; border:1px solid var(--line); border-radius:100px; overflow:hidden;}
   .qty-stepper button{width:38px; height:38px; border:none; background:transparent; color:var(--ink); font-size:1.1rem; cursor:pointer;}
   .qty-stepper button:hover{background:rgba(22,26,44,0.05);}
   .qty-stepper input{width:44px; text-align:center; border:none; background:transparent; color:var(--ink); font-family:'Space Grotesk',sans-serif; font-size:0.95rem;}
   .qty-stepper input:focus{outline:none;}
+  .qty-note{font-size:0.82rem; color:var(--ink-soft); margin:0 0 22px;}
+
+  /* DIGITALE KARTE (kostenlos) */
+  section#digital{
+    background:linear-gradient(150deg, #1a1f3d 0%, #202750 45%, #16374a 100%);
+    color:#eef0fb;
+    padding:80px 0;
+  }
+  .digital-grid{
+    display:grid; grid-template-columns:1.02fr 0.98fr; gap:56px; align-items:center;
+  }
+  .digital-copy h2{font-size:clamp(1.7rem,2.7vw,2.35rem); color:#fff; line-height:1.12;}
+  .digital-copy .eyebrow{color:#67e8f9;}
+  .digital-copy p.lead{
+    margin-top:16px; color:rgba(238,240,251,0.72); font-size:1.02rem; max-width:48ch;
+  }
+  .digital-points{list-style:none; padding:0; margin:26px 0 0; display:grid; gap:12px;}
+  .digital-points li{
+    display:flex; gap:12px; align-items:flex-start;
+    font-size:0.94rem; color:rgba(238,240,251,0.85);
+  }
+  .digital-points .mark{
+    flex-shrink:0; width:20px; height:20px; margin-top:2px; border-radius:6px;
+    background:rgba(103,232,249,0.16); color:#67e8f9;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .digital-points .mark svg{width:12px; height:12px;}
+  .digital-actions{margin-top:32px; display:flex; gap:14px; flex-wrap:wrap; align-items:center;}
+  .btn-bright{
+    background:#fff; color:#1a1f3d; font-weight:600;
+    padding:14px 26px; border-radius:12px; text-decoration:none; font-size:0.98rem;
+    display:inline-block; transition:transform 0.15s ease, box-shadow 0.2s ease;
+    box-shadow:0 14px 30px -14px rgba(0,0,0,0.7);
+  }
+  .btn-bright:hover{transform:translateY(-1px); box-shadow:0 18px 34px -14px rgba(0,0,0,0.75);}
+  .btn-outline-light{
+    border:1px solid rgba(238,240,251,0.28); color:#eef0fb;
+    padding:14px 24px; border-radius:12px; text-decoration:none;
+    font-size:0.98rem; font-weight:500; transition:border-color 0.2s ease, background 0.2s ease;
+  }
+  .btn-outline-light:hover{border-color:#67e8f9; background:rgba(103,232,249,0.10);}
+  .digital-hint{margin-top:18px; font-size:0.84rem; color:rgba(238,240,251,0.5);}
+
+  /* Mini-Vorschau der digitalen Karte, wie sie beim Empfänger aussieht */
+  .vk-preview{
+    width:275px; margin:0 auto;
+    border-radius:22px; overflow:hidden;
+    background:#232532;
+    box-shadow:0 34px 60px -26px rgba(0,0,0,0.85), 0 0 0 1px rgba(238,240,251,0.10);
+  }
+  .vk-banner{
+    height:76px;
+    background:linear-gradient(120deg, #6366f1, #22d3ee);
+    position:relative;
+  }
+  .vk-logo{
+    position:absolute; top:10px; left:12px;
+    width:26px; height:26px; border-radius:7px;
+    background:rgba(0,0,0,0.28);
+    box-shadow:0 0 0 1px rgba(255,255,255,0.22);
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.6rem; font-weight:700; color:#fff;
+  }
+  .vk-body{padding:0 18px 18px; margin-top:-28px; text-align:center;}
+  .vk-avatar{
+    width:60px; height:60px; margin:0 auto 10px; border-radius:50%;
+    background:linear-gradient(140deg,#4c5397,#6366f1);
+    box-shadow:0 0 0 4px #232532;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.2rem; color:#eef0fb;
+  }
+  .vk-name{font-family:'Space Grotesk',sans-serif; font-size:1.05rem; font-weight:600; color:#eef0fb;}
+  .vk-role{font-size:0.76rem; color:rgba(238,240,251,0.62); margin-top:2px;}
+  .vk-save{
+    display:inline-block; margin-top:14px;
+    padding:8px 18px; border-radius:9px;
+    border:1px solid #9184d9; color:#b5abfc;
+    font-size:0.8rem; font-weight:500;
+  }
+  .vk-rows{padding:12px 18px 18px; display:grid; gap:2px; text-align:left;}
+  .vk-row{display:flex; gap:10px; align-items:center; padding:6px 0;}
+  .vk-ico{
+    flex-shrink:0; width:28px; height:28px; border-radius:7px;
+    background:rgba(238,240,251,0.07); color:#9184d9;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .vk-ico svg{width:14px; height:14px;}
+  .vk-lbl{font-size:0.58rem; letter-spacing:0.09em; text-transform:uppercase; color:rgba(238,240,251,0.42);}
+  .vk-val{font-size:0.78rem; color:#eef0fb; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 
   /* FEATURE STRIP */
   .feature-strip{
@@ -611,6 +706,8 @@
     .trust-grid{grid-template-columns:repeat(2,1fr);}
     .feature-strip{grid-template-columns:repeat(2,1fr);}
     .cta-section{grid-template-columns:1fr; padding:36px 26px;}
+    .digital-grid{grid-template-columns:1fr; gap:40px;}
+    .vk-preview{order:-1;}
   }
 </style>
 </head>
@@ -642,6 +739,8 @@
     <div class="nav-links" id="navLinks">
       <a href="index.html">Bewertungskarten</a>
       <a href="visitenkarten.html" class="active">Visitenkarten</a>
+      <a href="produkte.html">Alle Produkte</a>
+      <a href="app.html">Meine Karte</a>
     </div>
 
     <div style="display:flex; align-items:center;">
@@ -659,6 +758,8 @@
   <div class="nav-links-mobile" id="navLinksMobile">
     <a href="index.html">Bewertungskarten</a>
     <a href="visitenkarten.html" class="active">Visitenkarten</a>
+    <a href="produkte.html">Alle Produkte</a>
+    <a href="app.html">Meine Karte</a>
   </div>
 </nav>
 
@@ -670,7 +771,7 @@
       <p class="lead">Papier-Visitenkarten landen in der Schublade oder im Müll. Deine NFC-Visitenkarte überträgt deine Kontaktdaten direkt ins Handy deines Gegenübers — kein Abtippen, kein Foto, kein Verlieren.</p>
       <div class="hero-actions">
         <a class="btn-primary" href="#preise">Jetzt bestellen</a>
-        <a class="btn-ghost" href="#ablauf">So funktioniert's</a>
+        <a class="btn-ghost" href="#digital">Digitale Karte kostenlos testen</a>
       </div>
     </div>
     <div class="tap-demo">
@@ -792,6 +893,71 @@
   </div>
 </section>
 
+<section id="digital">
+  <div class="wrap digital-grid">
+    <div class="digital-copy">
+      <span class="eyebrow">Kostenlos, ohne Karte</span>
+      <h2 class="display">Deine digitale Visitenkarte kannst du sofort selbst anlegen</h2>
+      <p class="lead">Leg dir in wenigen Minuten ein Profil an: Foto, Firmenlogo, Kontaktdaten und Links zu deinen Social-Media-Kanälen. Du bekommst einen eigenen Link und einen QR-Code, den du sofort teilen kannst — auch ohne physische Karte.</p>
+
+      <ul class="digital-points">
+        <li>
+          <span class="mark"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg></span>
+          <span>Kostenlos anlegen, kein Abo und keine Zahlungsdaten nötig</span>
+        </li>
+        <li>
+          <span class="mark"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg></span>
+          <span>Eigener Link und QR-Code zum Teilen per WhatsApp, Mail oder Signatur</span>
+        </li>
+        <li>
+          <span class="mark"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg></span>
+          <span>Farben, Logo und Bannerbild passend zu deinem Betrieb einstellen</span>
+        </li>
+        <li>
+          <span class="mark"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg></span>
+          <span>Daten jederzeit ändern — der Link bleibt derselbe</span>
+        </li>
+      </ul>
+
+      <div class="digital-actions">
+        <a class="btn-bright" href="app.html">Digitale Visitenkarte kostenlos erstellen</a>
+        <a class="btn-outline-light" href="/vk/yassir-sbai" target="_blank" rel="noopener">Beispiel ansehen</a>
+      </div>
+      <p class="digital-hint">Die NFC-Karte kannst du jederzeit später dazubestellen — sie verlinkt dann genau auf dieses Profil.</p>
+    </div>
+
+    <div class="vk-preview" aria-hidden="true">
+      <div class="vk-banner">
+        <div class="vk-logo">TS</div>
+      </div>
+      <div class="vk-body">
+        <div class="vk-avatar">MM</div>
+        <div class="vk-name">Max Mustermann</div>
+        <div class="vk-role">Verkaufsberater · Musterfirma</div>
+        <span class="vk-save">Kontakt speichern</span>
+      </div>
+      <div class="vk-rows">
+        <div class="vk-row">
+          <span class="vk-ico"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3h3l1.5 3.5-2 1.5a9 9 0 0 0 4 4l1.5-2L18 11.5v3c0 .8-.7 1.5-1.5 1.5A12.5 12.5 0 0 1 4 4.5C4 3.7 4.7 3 5.5 3z"/></svg></span>
+          <span style="min-width:0"><span class="vk-lbl" style="display:block">Mobil</span><span class="vk-val" style="display:block">+49 176 000 0000</span></span>
+        </div>
+        <div class="vk-row">
+          <span class="vk-ico"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h14v9H3zM3 6l7 5 7-5"/></svg></span>
+          <span style="min-width:0"><span class="vk-lbl" style="display:block">Arbeit</span><span class="vk-val" style="display:block">max@musterfirma.de</span></span>
+        </div>
+        <div class="vk-row">
+          <span class="vk-ico"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM3 10h14M10 3c2 2.2 2 11.8 0 14M10 3C8 5.2 8 14.8 10 17"/></svg></span>
+          <span style="min-width:0"><span class="vk-lbl" style="display:block">Website</span><span class="vk-val" style="display:block">musterfirma.de</span></span>
+        </div>
+        <div class="vk-row">
+          <span class="vk-ico"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12l4-4M7.5 10.5l-1.7 1.7a2.4 2.4 0 0 0 3.4 3.4l1.7-1.7M12.5 9.5l1.7-1.7a2.4 2.4 0 0 0-3.4-3.4L9.1 6.1"/></svg></span>
+          <span style="min-width:0"><span class="vk-lbl" style="display:block">Instagram</span><span class="vk-val" style="display:block">@musterfirma</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="preise">
   <div class="wrap">
     <div class="section-head">
@@ -814,7 +980,7 @@
         <span class="eyebrow" style="display:block;">Neu</span>
         <h3>NFC-Visitenkarte</h3>
         <div class="price">
-          <span style="text-decoration:line-through; color:var(--ink-soft); font-size:1.1rem; margin-right:8px; font-weight:400;">30 €</span>20 € <small>einmalig — Einführungspreis</small>
+          <span style="text-decoration:line-through; color:var(--ink-soft); font-size:1.1rem; margin-right:8px; font-weight:400;">30 €</span>20 € <small>pro Karte — Einführungspreis</small>
         </div>
         <ul>
           <li>Kontaktdaten werden per Antippen direkt im Handy des Gegenübers gespeichert</li>
@@ -825,11 +991,12 @@
           <span class="qty-label">Menge</span>
           <div class="qty-stepper">
             <button type="button" id="vkQtyMinus" aria-label="Menge verringern">–</button>
-            <input type="number" id="vkQtyInput" value="1" min="1" aria-label="Menge">
+            <input type="number" id="vkQtyInput" value="3" min="3" aria-label="Menge">
             <button type="button" id="vkQtyPlus" aria-label="Menge erhöhen">+</button>
           </div>
         </div>
-        <a class="btn-primary" id="vkCta" href="bestellen.html?paket=Visitenkarte&menge=1" style="display:block; text-align:center;">Jetzt bestellen</a>
+        <p class="qty-note">Mindestbestellmenge: 3 Karten — individuell bedruckte Karten sind in Kleinstmengen unverhältnismäßig teuer in der Herstellung.</p>
+        <a class="btn-primary" id="vkCta" href="bestellen.html?paket=Visitenkarte&menge=3" style="display:block; text-align:center;">Jetzt bestellen</a>
         <p style="text-align:center; margin-top:14px; color:var(--ink-soft); font-size:0.85rem;">
           Für mehrere Mitarbeiter auf einmal? Kurz anfragen — ich mache dir ein gutes Angebot.
         </p>
@@ -878,6 +1045,10 @@
         <p>Ein Kontakteintrag mit den Daten, die du angibst — z. B. Name, Position, Telefonnummer, E-Mail. Er wird direkt im Adressbuch gespeichert, ganz ohne Zwischenschritt.</p>
       </details>
       <details class="faq-item">
+        <summary>Was kostet die digitale Visitenkarte?</summary>
+        <p>Nichts. Du kannst dein Profil kostenlos anlegen und den Link sowie den QR-Code sofort nutzen. Die physische NFC-Karte ist das kostenpflichtige Produkt — die brauchst du aber nur, wenn du deine Daten per Antippen übergeben möchtest.</p>
+      </details>
+      <details class="faq-item">
         <summary>Muss die andere Person eine App installieren?</summary>
         <p>Nein. Handy kurz an die Karte halten genügt, der Kontakt wird direkt angeboten — ganz ohne App.</p>
       </details>
@@ -887,11 +1058,15 @@
       </details>
       <details class="faq-item">
         <summary>Kann ich meine Daten später ändern lassen?</summary>
-        <p>Ja — z. B. bei einem neuen Jobtitel oder einer neuen Telefonnummer. Melde dich einfach, ich richte die Karte neu ein.</p>
+        <p>Ja — z. B. bei einem neuen Jobtitel oder einer neuen Telefonnummer. Im digitalen Profil änderst du das jederzeit selbst, der Link bleibt gleich. Bei Fragen zur Karte melde dich einfach.</p>
       </details>
       <details class="faq-item">
         <summary>Kann ich mein eigenes Logo und Design verwenden?</summary>
-        <p>Ja, das ist im Preis bereits enthalten — ich richte die Karte passend zu deinem Namen und deinem Corporate Design ein.</p>
+        <p>Ja, das ist im Preis bereits enthalten — ich richte die Karte passend zu deinem Namen und deinem Corporate Design ein. Im digitalen Profil kannst du Logo, Bannerbild und Farben zusätzlich selbst einstellen.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Warum gibt es eine Mindestbestellmenge von 3 Karten?</summary>
+        <p>Individuell bedruckte Karten haben in der Herstellung Fixkosten pro Auftrag. Bei ein oder zwei Karten stehen diese Kosten in keinem Verhältnis zum Preis. Ab drei Karten lässt sich der günstige Stückpreis halten.</p>
       </details>
       <details class="faq-item">
         <summary>Was passiert, wenn der Chip mal nicht funktioniert?</summary>
@@ -961,22 +1136,28 @@
 </footer>
 
 <script>
-  // Visitenkarte: simple quantity stepper, updates the order link
+  // Visitenkarte: quantity stepper, updates the order link.
+  // Mindestmenge 3 — muss zur Prüfung in bestellen.html passen.
+  const VK_MIN_QTY = 3;
   const vkQtyInput = document.getElementById('vkQtyInput');
   const vkCta = document.getElementById('vkCta');
   function renderVk(){
-    const qty = Math.max(1, parseInt(vkQtyInput.value, 10) || 1);
+    const qty = Math.max(VK_MIN_QTY, parseInt(vkQtyInput.value, 10) || VK_MIN_QTY);
     vkCta.href = `bestellen.html?paket=Visitenkarte&menge=${qty}`;
   }
   document.getElementById('vkQtyMinus').addEventListener('click', () => {
-    vkQtyInput.value = Math.max(1, (parseInt(vkQtyInput.value, 10) || 1) - 1);
+    vkQtyInput.value = Math.max(VK_MIN_QTY, (parseInt(vkQtyInput.value, 10) || VK_MIN_QTY) - 1);
     renderVk();
   });
   document.getElementById('vkQtyPlus').addEventListener('click', () => {
-    vkQtyInput.value = (parseInt(vkQtyInput.value, 10) || 1) + 1;
+    vkQtyInput.value = Math.max(VK_MIN_QTY, (parseInt(vkQtyInput.value, 10) || VK_MIN_QTY) + 1);
     renderVk();
   });
   vkQtyInput.addEventListener('input', renderVk);
+  vkQtyInput.addEventListener('blur', () => {
+    if ((parseInt(vkQtyInput.value, 10) || 0) < VK_MIN_QTY) vkQtyInput.value = VK_MIN_QTY;
+    renderVk();
+  });
   renderVk();
 </script>
 

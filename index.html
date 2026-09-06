@@ -57,7 +57,7 @@
   [data-theme="dark"] .logo-icon-light{display:none;}
   [data-theme="dark"] .logo-icon-dark{display:inline-block !important;}
   *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;}
+  html{scroll-behavior:smooth; overflow-x:hidden;}
   body{
     margin:0; overflow-x:hidden;
     background:var(--bg);
@@ -464,12 +464,18 @@
     .hero-mockup{order:-1;}
     .mock-screen{width:100%; max-width:290px;}
     .feature-strip{grid-template-columns:repeat(2,1fr);}
+    .solution-grid{grid-template-columns:1fr;}
     .price-grid{grid-template-columns:repeat(2,1fr);}
     .steps{grid-template-columns:1fr;}
     .trust-grid{grid-template-columns:repeat(2,1fr);}
     .cta-section{grid-template-columns:1fr; padding:36px 26px;}
     section#visitenkarte-modul .band{grid-template-columns:1fr; padding:36px 26px; gap:32px;}
     .vk-preview{order:-1;}
+  }
+  @media (max-width:480px){
+    .price-grid{grid-template-columns:1fr;}
+    .trust-grid{grid-template-columns:1fr;}
+    .feature-strip{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -486,7 +492,7 @@
 
 <div class="announce-bar">
   <div class="wrap">
-    <span>14 Tage Geld-zurück-Garantie</span><span class="arrow">→</span><span>Aktuell: Einführungspreis auf NFC-Visitenkarten</span>
+    <span>14 Tage Geld-zurück-Garantie</span><span class="arrow">→</span><span>Jetzt digitalisieren</span>
   </div>
 </div>
 

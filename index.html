@@ -59,7 +59,7 @@
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
   body{
-    margin:0;
+    margin:0; overflow-x:hidden;
     background:var(--bg);
     color:var(--ink);
     font-family:'Inter', sans-serif;
@@ -207,6 +207,15 @@
     align-items:center; justify-content:center; cursor:pointer;
   }
   .menu-toggle svg{width:18px; height:18px;}
+  @media (max-width:480px){
+    nav .wrap{padding:14px 16px;}
+    .logo{font-size:1.12rem; gap:6px;}
+    .logo img{height:24px !important;}
+    .theme-toggle{width:34px; height:34px; margin-right:6px;}
+    .nav-cta{padding:8px 12px; font-size:0.82rem;}
+    .menu-toggle{width:34px; height:34px; margin-left:6px;}
+  }
+
 
   .nav-links-mobile{
     display:none;
@@ -452,7 +461,8 @@
 
   @media (max-width:820px){
     .hero-grid{grid-template-columns:1fr;}
-    .tap-demo{min-height:240px; order:-1;}
+    .hero-mockup{order:-1;}
+    .mock-screen{width:100%; max-width:290px;}
     .feature-strip{grid-template-columns:repeat(2,1fr);}
     .price-grid{grid-template-columns:repeat(2,1fr);}
     .steps{grid-template-columns:1fr;}
@@ -476,7 +486,7 @@
 
 <div class="announce-bar">
   <div class="wrap">
-    <span>Bestellen</span><span class="arrow">→</span><span>Vor Ort testen</span><span class="arrow">→</span><span>Erst dann bezahlen</span>
+    <span>14 Tage Geld-zurück-Garantie</span><span class="arrow">→</span><span>Aktuell: Einführungspreis auf NFC-Visitenkarten</span>
   </div>
 </div>
 

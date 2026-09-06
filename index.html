@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tapstern — Mehr Google-Bewertungen mit einem Antippen</title>
+<title>Tapstern — NFC-Lösungen für lokale Betriebe</title>
 <link rel="icon" type="image/png" href="tapstern-favicon.png">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=space-grotesk:500,600,700|inter:400,500,600&display=swap" rel="stylesheet">
@@ -33,7 +33,6 @@
   }
   [data-theme="dark"] nav{background:rgba(13,16,32,0.85);}
   [data-theme="dark"] .btn-ghost{border-color:rgba(238,240,251,0.2);}
-  [data-theme="dark"] .qty-stepper button:hover{background:rgba(238,240,251,0.06);}
   [data-theme="dark"] header.hero{
     background-image:
       radial-gradient(circle, rgba(238,240,251,0.07) 1px, transparent 1.5px),
@@ -103,7 +102,6 @@
     padding:16px 28px;
   }
   .logo{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1.3rem; letter-spacing:-0.02em; color:var(--ink);}
-  .logo span{color:var(--primary-bright);}
   .nav-cta{
     background:var(--primary); color:#fff; font-weight:600; font-size:0.9rem;
     padding:9px 18px; border-radius:10px; text-decoration:none;
@@ -111,16 +109,96 @@
   }
   .nav-cta:hover{background:var(--primary-bright);}
 
-  .nav-links{
-    display:flex; align-items:center; gap:28px;
-  }
-  .nav-links a{
+  .nav-links{display:flex; align-items:center; gap:8px;}
+  .nav-item{position:relative;}
+  .nav-link{
     color:var(--ink-soft); text-decoration:none; font-size:0.92rem; font-weight:500;
+    display:flex; align-items:center; gap:5px; padding:10px 8px;
     transition:color 0.15s ease;
   }
-  .nav-links a:hover{color:var(--ink);}
-  .nav-links a.active{color:var(--primary-bright); font-weight:600;}
+  .nav-link:hover{color:var(--ink);}
+  .nav-link.active{color:var(--primary-bright); font-weight:600;}
   .nav-links-mobile a.active{color:var(--primary-bright); font-weight:700;}
+
+  .dropdown-menu{
+    position:absolute; top:calc(100% + 6px); left:0;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:8px; min-width:250px;
+    box-shadow:0 14px 34px -10px rgba(0,0,0,0.18);
+    display:none; flex-direction:column; gap:2px; z-index:60;
+  }
+  .nav-item:hover .dropdown-menu{display:flex;}
+  .dropdown-item{
+    padding:10px 12px; border-radius:8px; display:flex; flex-direction:column;
+    text-decoration:none; color:inherit; transition:background 0.15s ease;
+  }
+  .dropdown-item:hover, .dropdown-item.active{background:var(--bg-soft);}
+  .dropdown-title{font-weight:600; font-size:0.88rem; color:var(--ink);}
+  .dropdown-desc{font-size:0.76rem; color:var(--ink-soft); margin-top:2px;}
+
+  /* PILL BADGE & CHIP TAGS */
+  .pill-badge{
+    display:inline-flex; align-items:center; gap:8px;
+    background:rgba(99,102,241,0.08); color:var(--primary-bright);
+    padding:6px 14px; border-radius:100px; font-size:0.74rem;
+    font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:18px;
+  }
+  .pill-badge .dot{width:6px; height:6px; border-radius:50%; background:var(--primary-bright);}
+  [data-theme="dark"] .pill-badge{background:rgba(129,140,248,0.15);}
+  .badge-row{display:flex; flex-wrap:wrap; gap:8px; margin:26px 0 0;}
+  .chip-tag{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--card); border:1px solid var(--line);
+    padding:6px 12px; border-radius:8px; font-size:0.8rem; font-weight:600; color:var(--ink);
+  }
+
+  /* SOLUTIONS */
+  .solution-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px;}
+  .solution-card{
+    background:var(--card); border:1px solid var(--line); border-radius:18px;
+    padding:30px 26px; display:flex; flex-direction:column;
+    transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .solution-card:hover{transform:translateY(-3px); box-shadow:0 18px 40px -16px rgba(0,0,0,0.10); border-color:rgba(99,102,241,0.3);}
+  .solution-icon{
+    width:46px; height:46px; border-radius:12px; background:rgba(99,102,241,0.10); color:var(--primary-bright);
+    display:flex; align-items:center; justify-content:center; margin-bottom:20px;
+  }
+  .solution-icon svg{width:23px; height:23px;}
+  .solution-card h3{font-size:1.15rem; color:var(--ink); margin-bottom:8px;}
+  .solution-card p{color:var(--ink-soft); font-size:0.9rem; line-height:1.6; margin-bottom:20px; flex-grow:1;}
+  .solution-points{list-style:none; padding:0; margin:0 0 24px; display:grid; gap:8px;}
+  .solution-points li{display:flex; align-items:center; gap:8px; font-size:0.84rem; color:var(--ink-soft);}
+  .solution-points svg{width:14px; height:14px; color:var(--accent); flex-shrink:0;}
+  .btn-card{
+    background:var(--bg-soft); color:var(--ink); font-weight:600;
+    padding:11px; border-radius:10px; text-align:center; font-size:0.88rem; text-decoration:none;
+    transition:background 0.15s ease, color 0.15s ease;
+  }
+  .solution-card:hover .btn-card{background:var(--primary); color:#fff;}
+
+  /* HERO DASHBOARD MOCKUP (Beispiel, keine erfundenen Live-Zahlen) */
+  .hero-mockup{display:flex; justify-content:center; position:relative;}
+  .mock-screen{
+    width:290px; background:var(--card); border-radius:22px;
+    border:1px solid var(--line);
+    box-shadow:0 28px 60px -20px rgba(0,0,0,0.18);
+    padding:20px; position:relative; overflow:hidden;
+  }
+  .mock-head{display:flex; justify-content:space-between; align-items:center; padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:14px;}
+  .mock-title{font-size:0.82rem; font-weight:700; color:var(--ink);}
+  .mock-example{font-size:0.68rem; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em;}
+  .mock-stat-row{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px;}
+  .mock-stat{background:var(--bg-soft); border-radius:10px; padding:10px 8px; text-align:center;}
+  .mock-stat .num{font-size:1.15rem; font-weight:700; color:var(--ink); font-family:'Space Grotesk',sans-serif;}
+  .mock-stat .sub{font-size:0.62rem; color:var(--ink-soft); margin-top:2px;}
+  .mock-label{font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); margin-bottom:10px;}
+  .mock-rows{display:flex; flex-direction:column; gap:7px;}
+  .mock-row{display:flex; justify-content:space-between; align-items:center; padding:9px 10px; border-radius:9px; background:var(--bg-soft); border:1px solid var(--line); font-size:0.8rem;}
+  .mock-row-name{display:flex; align-items:center; gap:7px; font-weight:500; color:var(--ink);}
+  .mock-row-ico{width:22px; height:22px; border-radius:6px; background:rgba(99,102,241,0.12); color:var(--primary-bright); display:flex; align-items:center; justify-content:center;}
+  .mock-row-ico svg{width:12px; height:12px;}
+  .mock-row-val{font-size:0.74rem; color:var(--ink-soft);}
 
   .menu-toggle{
     display:none;
@@ -143,14 +221,14 @@
   .nav-links-mobile a:last-child{border-bottom:none;}
   .nav-links-mobile.open{display:flex;}
 
-  @media (max-width: 820px){
+  @media (max-width: 900px){
     .nav-links{display:none;}
     .menu-toggle{display:flex;}
   }
 
   /* HERO */
   header.hero{
-    padding:96px 0 72px;
+    padding:88px 0 64px;
     position:relative;
     overflow:hidden;
     border-bottom:1px solid var(--line);
@@ -162,51 +240,23 @@
     background-size: 26px 26px, 100% 100%, 100% 100%;
     background-repeat: repeat, no-repeat, no-repeat;
   }
-  .hero-grid{
-    display:grid;
-    grid-template-columns:1.05fr 0.95fr;
-    gap:56px;
-    align-items:center;
-  }
+  .hero-grid{display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center;}
   .eyebrow{
-    color:var(--accent);
-    font-size:0.78rem;
-    letter-spacing:0.12em;
-    text-transform:uppercase;
-    font-weight:600;
-    margin-bottom:18px;
-    display:block;
+    color:var(--accent); font-size:0.78rem; letter-spacing:0.12em; text-transform:uppercase;
+    font-weight:600; margin-bottom:18px; display:block;
   }
-  h1.display{
-    font-size:clamp(2.3rem, 4.4vw, 3.6rem);
-    line-height:1.06;
-    color:var(--ink);
-  }
+  h1.display{font-size:clamp(2.2rem, 4.2vw, 3.4rem); line-height:1.08; color:var(--ink);}
   h1.display em{
     font-style:normal;
     background:linear-gradient(90deg, var(--primary-bright), var(--accent));
-    -webkit-background-clip:text;
-    background-clip:text;
-    color:transparent;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
   }
-  .hero p.lead{
-    margin-top:22px;
-    font-size:1.08rem;
-    color:var(--ink-soft);
-    max-width:46ch;
-  }
-  .hero-actions{
-    margin-top:32px;
-    display:flex;
-    gap:14px;
-    flex-wrap:wrap;
-  }
+  .hero p.lead{margin-top:22px; font-size:1.06rem; color:var(--ink-soft); max-width:48ch;}
+  .hero-actions{margin-top:32px; display:flex; gap:14px; flex-wrap:wrap;}
   .btn-primary{
     background:var(--primary); color:#fff; font-weight:600;
-    padding:14px 26px; border-radius:12px; text-decoration:none;
-    font-size:0.98rem;
-    transition:transform 0.15s ease, background 0.2s ease;
-    display:inline-block;
+    padding:14px 26px; border-radius:12px; text-decoration:none; font-size:0.98rem;
+    transition:transform 0.15s ease, background 0.2s ease; display:inline-block;
     box-shadow:0 12px 28px -12px rgba(99,102,241,0.6);
   }
   .btn-primary:hover{background:var(--primary-bright); transform:translateY(-1px);}
@@ -214,315 +264,153 @@
     border:1px solid rgba(22,26,44,0.18); color:var(--ink);
     padding:14px 26px; border-radius:12px; text-decoration:none;
     font-size:0.98rem; font-weight:500;
-    transition:border-color 0.2s ease, background 0.2s ease;
-    background:transparent;
+    transition:border-color 0.2s ease, background 0.2s ease; background:transparent;
   }
   .btn-ghost:hover{border-color:var(--primary-bright); background:rgba(99,102,241,0.10);}
 
-  /* SIGNATURE: tap demo */
-  .tap-demo{
-    position:relative;
-    display:flex; align-items:center; justify-content:center;
-    min-height:340px;
-  }
+  /* Hero visual: generic "one tap" demo, product-agnostic */
+  .tap-demo{position:relative; display:flex; align-items:center; justify-content:center; min-height:320px;}
   .tap-demo::before{
-    content:"";
-    position:absolute;
-    top:50%; left:50%;
-    width:360px; height:360px;
-    transform:translate(-50%,-50%);
-    border-radius:50%;
+    content:""; position:absolute; top:50%; left:50%; width:340px; height:340px;
+    transform:translate(-50%,-50%); border-radius:50%;
     background:radial-gradient(circle, rgba(99,102,241,0.30), rgba(34,211,238,0.16) 55%, transparent 74%);
-    filter:blur(4px);
-    z-index:0;
+    filter:blur(4px); z-index:0;
   }
-  .tap-stage{
-    position:relative;
-    z-index:1;
-    width:260px; height:260px;
-  }
-  .ripple{
-    position:absolute; inset:0;
-    border-radius:50%;
-    border:1.5px solid var(--accent);
-    opacity:0;
-    animation:rippleOut 2.4s ease-out infinite;
-  }
-  .ripple.r2{animation-delay:0.8s;}
-  .ripple.r3{animation-delay:1.6s;}
-  @keyframes rippleOut{
-    0%{ transform:scale(0.35); opacity:0.5; }
-    100%{ transform:scale(1.15); opacity:0; }
-  }
+  .tap-stage{position:relative; z-index:1; width:250px; height:250px;}
+  .ripple{position:absolute; inset:0; border-radius:50%; border:1.5px solid var(--accent); opacity:0; animation:rippleOut 2.4s ease-out infinite;}
+  .ripple.r2{animation-delay:0.8s;} .ripple.r3{animation-delay:1.6s;}
+  @keyframes rippleOut{0%{transform:scale(0.35); opacity:0.5;} 100%{transform:scale(1.15); opacity:0;}}
   .tap-card{
-    position:absolute;
-    left:50%; top:50%;
-    transform:translate(-50%,-58%) rotate(-6deg);
-    width:190px; height:118px;
-    border-radius:14px;
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-58%) rotate(-6deg);
+    width:184px; height:112px; border-radius:14px;
     background:linear-gradient(150deg, #2b3157, var(--navy));
     border:1px solid rgba(238,240,251,0.15);
     box-shadow:0 24px 48px -18px rgba(0,0,0,0.7), 0 0 40px -10px rgba(99,102,241,0.3);
-    padding:16px;
-    display:flex; flex-direction:column; justify-content:space-between;
+    padding:16px; display:flex; flex-direction:column; justify-content:space-between;
   }
   .tap-card .brand{font-size:0.72rem; letter-spacing:0.08em; color:#a5b4fc; font-weight:600; text-transform:uppercase;}
-  .tap-card .chip{
-    width:28px; height:20px; border-radius:4px;
-    background:linear-gradient(135deg, #22d3ee, #6366f1);
-  }
-  .tap-card .stars{font-size:0.95rem; letter-spacing:2px;}
-  .star{color:rgba(255,255,255,0.22); transition:color 0.35s ease;}
-  .star.lit{color:#fbbf24;}
+  .tap-card .chip{width:26px; height:19px; border-radius:4px; background:linear-gradient(135deg, #22d3ee, #6366f1);}
+  .tap-card .tags{display:flex; gap:6px; flex-wrap:wrap;}
+  .tap-card .tag-pill{font-size:0.6rem; color:#c7d2fe; border:1px solid rgba(197,205,254,0.3); border-radius:100px; padding:2px 8px;}
   .phone{
-    position:absolute;
-    left:50%; top:50%;
-    transform:translate(-72%,-18%) rotate(8deg);
-    width:64px; height:118px;
-    border-radius:16px;
-    background:#eef0fb;
-    border:5px solid #060811;
-    box-shadow:0 18px 30px -14px rgba(0,0,0,0.6);
-    animation:tapMove 2.4s ease-in-out infinite;
-    display:flex; align-items:center; justify-content:center;
-    overflow:hidden;
+    position:absolute; left:50%; top:50%; transform:translate(-72%,-16%) rotate(8deg);
+    width:62px; height:114px; border-radius:16px; background:#eef0fb; border:5px solid #060811;
+    box-shadow:0 18px 30px -14px rgba(0,0,0,0.6); animation:tapMove 2.4s ease-in-out infinite;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
   }
-  .phone-stars{
-    position:relative; z-index:2;
-    display:flex; gap:1px;
+  .phone-check{
+    position:relative; z-index:2; font-size:1.4rem; color:#22c55e; font-weight:700;
+    opacity:0; transform:scale(0.3); animation:checkPop 2.4s ease-in-out infinite;
   }
-  .ps{
-    font-size:0.6rem; color:#f5a524; display:inline-block;
-    opacity:0; transform:scale(0.3) translateY(3px);
-    animation:starPop 2.4s ease-in-out infinite;
-  }
-  @keyframes starPop{
-    0%,30%{opacity:0; transform:scale(0.3) translateY(3px);}
-    42%{opacity:1; transform:scale(1.35) translateY(-1px);}
-    50%{opacity:1; transform:scale(1) translateY(0);}
-    64%,100%{opacity:0; transform:scale(0.3) translateY(3px);}
+  @keyframes checkPop{
+    0%,30%{opacity:0; transform:scale(0.3);}
+    42%{opacity:1; transform:scale(1.3);}
+    50%{opacity:1; transform:scale(1);}
+    64%,100%{opacity:0; transform:scale(0.3);}
   }
   .phone-flash{
     position:absolute; inset:0; z-index:0;
-    background:radial-gradient(circle, rgba(245,165,36,0.45), transparent 70%);
-    opacity:0;
-    animation:phoneFlash 2.4s ease-out infinite;
+    background:radial-gradient(circle, rgba(34,197,94,0.35), transparent 70%);
+    opacity:0; animation:phoneFlash 2.4s ease-out infinite;
   }
-  @keyframes phoneFlash{
-    0%,36%{opacity:0;}
-    46%{opacity:1;}
-    60%,100%{opacity:0;}
-  }
-  .spark{
-    position:absolute; top:50%; left:50%; z-index:1;
-    width:3px; height:3px; border-radius:50%;
-    background:#f5a524; opacity:0;
-  }
-  .spark-a{animation:sparkA 2.4s ease-out infinite;}
-  .spark-b{animation:sparkB 2.4s ease-out infinite;}
-  .spark-c{animation:sparkC 2.4s ease-out infinite;}
-  .spark-d{animation:sparkD 2.4s ease-out infinite;}
-  @keyframes sparkA{
-    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
-    46%{opacity:1; transform:translate(-50%,-50%) translate(-7px,-5px) scale(1);}
-    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(-14px,-10px) scale(0.3);}
-  }
-  @keyframes sparkB{
-    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
-    46%{opacity:1; transform:translate(-50%,-50%) translate(7px,-5px) scale(1);}
-    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(14px,-10px) scale(0.3);}
-  }
-  @keyframes sparkC{
-    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
-    46%{opacity:1; transform:translate(-50%,-50%) translate(-6px,6px) scale(1);}
-    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(-12px,10px) scale(0.3);}
-  }
-  @keyframes sparkD{
-    0%,38%{opacity:0; transform:translate(-50%,-50%) translate(0,0) scale(0.4);}
-    46%{opacity:1; transform:translate(-50%,-50%) translate(6px,6px) scale(1);}
-    62%,100%{opacity:0; transform:translate(-50%,-50%) translate(12px,10px) scale(0.3);}
-  }
+  @keyframes phoneFlash{0%,36%{opacity:0;} 46%{opacity:1;} 60%,100%{opacity:0;}}
   @keyframes tapMove{
-    0%,18%{ transform:translate(-72%,-42%) rotate(8deg); }
-    40%,58%{ transform:translate(-72%,-6%) rotate(2deg); }
-    80%,100%{ transform:translate(-72%,-42%) rotate(8deg); }
+    0%,18%{transform:translate(-72%,-40%) rotate(8deg);}
+    40%,58%{transform:translate(-72%,-4%) rotate(2deg);}
+    80%,100%{transform:translate(-72%,-40%) rotate(8deg);}
   }
 
   /* SECTION GENERIC */
-  section{padding:88px 0;}
+  section{padding:80px 0;}
   section:nth-of-type(even){background:var(--bg-soft);}
-  .section-head{max-width:640px; margin-bottom:48px;}
+  section#visitenkarte-modul{background:var(--bg);}
+  section#vertrauen{background:var(--bg-soft);}
+  section#kontakt{background:var(--bg);}
+  .section-head{max-width:640px; margin-bottom:44px;}
   .section-head .eyebrow{margin-bottom:14px;}
-  h2.display{font-size:clamp(1.7rem,2.6vw,2.3rem); color:var(--ink);}
+  h2.display{font-size:clamp(1.65rem,2.5vw,2.2rem); color:var(--ink);}
   .section-head p{color:var(--ink-soft); margin-top:14px; font-size:1.02rem;}
 
-  /* PROBLEM */
-  .stat-row{
-    display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
-    background:var(--line);
-    border:1px solid var(--line);
-    border-radius:16px;
-    overflow:hidden;
-  }
-  .stat{background:var(--card); padding:32px 26px;}
-  .stat .num{
-    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:2.4rem;
-    background:linear-gradient(90deg, var(--primary-bright), var(--accent));
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-    display:inline-block;
-  }
-  .stat p{margin:8px 0 0; color:var(--ink-soft); font-size:0.92rem;}
-
-  /* HOW IT WORKS */
-  .steps{
-    display:grid; grid-template-columns:repeat(3,1fr); gap:28px;
-  }
-  .step{
-    background:var(--card); border:1px solid var(--line); border-radius:16px;
-    padding:30px 26px;
-  }
-  .step .idx{
-    font-family:'Space Grotesk',sans-serif; font-size:0.85rem; color:var(--accent);
-    font-weight:600; letter-spacing:0.04em;
-  }
-  .step h3{font-size:1.15rem; margin-top:14px; color:var(--ink);}
-  .step p{margin-top:10px; color:var(--ink-soft); font-size:0.94rem;}
-
-  /* PRICING */
-  .price-grid{
-    display:grid; grid-template-columns:repeat(3,1fr); gap:24px;
-  }
-  .price-card{
-    border:1px solid var(--line); border-radius:18px; padding:32px 28px;
-    background:var(--card);
-    display:flex; flex-direction:column;
-  }
-  .price-card.featured{
-    background:linear-gradient(170deg, #232a52, #1c2f4a);
-    border-color:rgba(129,140,248,0.45);
-    position:relative;
-    box-shadow:0 0 50px -18px rgba(99,102,241,0.4);
-  }
-  .price-card.featured::before{
-    content:"Beliebt";
-    position:absolute; top:-12px; right:24px;
-    background:linear-gradient(90deg, var(--primary), var(--accent));
-    color:#fff;
-    font-size:0.72rem; font-weight:600; padding:5px 12px; border-radius:100px;
-  }
-  .price-visual{
-    margin:-8px 0 20px;
-    border-radius:12px;
-    overflow:hidden;
-    border:1px solid var(--line);
-  }
-  .price-visual img{display:block; width:100%; height:auto;}
-  .price-card h3{font-size:1.2rem; color:var(--ink);}
-  .price{
-    font-family:'Space Grotesk',sans-serif; font-size:2.1rem; font-weight:700; color:var(--primary-bright);
-    margin:14px 0 4px;
-  }
-  .price small{font-size:0.85rem; color:var(--ink-soft); font-weight:400; font-family:'Inter',sans-serif;}
-  .price-card ul{list-style:none; padding:0; margin:20px 0 26px; flex-grow:1;}
-  .price-card li{
-    padding:9px 0; border-top:1px solid var(--line);
-    font-size:0.92rem; color:var(--ink-soft);
-  }
-  .price-card li:first-child{border-top:none;}
-  .price-card .btn-ghost, .price-card .btn-primary{text-align:center;}
-
-  /* CONFIGURATOR */
-  .configurator{
-    display:grid; grid-template-columns:0.9fr 1.1fr; gap:40px;
-    background:var(--card); border:1px solid var(--line); border-radius:22px;
-    padding:36px; align-items:center;
-  }
-  .config-visual{
-    position:relative; border-radius:16px; overflow:hidden;
-    border:1px solid var(--line); aspect-ratio:4/3; background:var(--navy);
-  }
-  .config-visual img{
-    width:100%; height:100%; object-fit:cover; display:block;
-    transition:opacity 0.2s ease;
-  }
-  .config-visual img.fading{opacity:0;}
-  .pkg-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:22px;}
-  .pkg-pill{
-    position:relative; border:1px solid var(--line); background:transparent;
-    color:var(--ink-soft); font-family:'Inter',sans-serif; font-size:0.88rem; font-weight:600;
-    padding:10px 18px; border-radius:100px; cursor:pointer;
-    transition:border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-  }
-  .pkg-pill:hover{border-color:var(--primary-bright);}
-  .pkg-pill.active{background:var(--primary); border-color:var(--primary); color:#fff;}
-  .pkg-pill .tag{
-    position:absolute; top:-11px; right:-6px;
-    background:linear-gradient(90deg, var(--primary), var(--accent));
-    color:#fff; font-size:0.6rem; font-weight:700; padding:3px 8px; border-radius:100px;
-  }
-  .config-panel h3{font-size:1.3rem; color:var(--ink); margin-bottom:2px;}
-  .config-panel .price{
-    font-family:'Space Grotesk',sans-serif; font-size:2.2rem; font-weight:700;
-    color:var(--primary-bright); margin:12px 0 18px;
-  }
-  .config-panel .price small{font-size:0.85rem; color:var(--ink-soft); font-weight:400; font-family:'Inter',sans-serif;}
-  .config-panel ul{list-style:none; padding:0; margin:0 0 26px;}
-  .config-panel li{padding:9px 0; border-top:1px solid var(--line); font-size:0.94rem; color:var(--ink-soft);}
-  .config-panel li:first-child{border-top:none;}
-  .qty-row{display:flex; align-items:center; gap:16px; margin-bottom:24px;}
-  .qty-label{font-size:0.85rem; color:var(--ink-soft);}
-  .qty-stepper{display:flex; align-items:center; border:1px solid var(--line); border-radius:100px; overflow:hidden;}
-  .qty-stepper button{width:38px; height:38px; border:none; background:transparent; color:var(--ink); font-size:1.1rem; cursor:pointer;}
-  .qty-stepper button:hover{background:rgba(22,26,44,0.05);}
-  .qty-stepper input{width:44px; text-align:center; border:none; background:transparent; color:var(--ink); font-family:'Space Grotesk',sans-serif; font-size:0.95rem;}
-  .qty-stepper input:focus{outline:none;}
-
   /* FEATURE STRIP */
-  .feature-strip{
-    display:grid; grid-template-columns:repeat(4,1fr); gap:18px;
-  }
-  .feature-item{
-    background:var(--card); border:1px solid var(--line); border-radius:14px;
-    padding:22px; display:flex; flex-direction:column; gap:12px;
-  }
-  .feature-item .icon{
-    width:38px; height:38px; border-radius:10px;
-    background:rgba(99,102,241,0.15); color:var(--primary-bright);
-    display:flex; align-items:center; justify-content:center;
-  }
+  .feature-strip{display:grid; grid-template-columns:repeat(4,1fr); gap:18px;}
+  .feature-item{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; display:flex; flex-direction:column; gap:12px;}
+  .feature-item .icon{width:38px; height:38px; border-radius:10px; background:rgba(99,102,241,0.15); color:var(--primary-bright); display:flex; align-items:center; justify-content:center;}
   .feature-item .icon svg{width:19px; height:19px;}
   .feature-item h4{font-size:0.95rem; color:var(--ink); margin:0;}
   .feature-item p{font-size:0.85rem; color:var(--ink-soft); margin:0; line-height:1.5;}
 
-  /* STEP ICON */
-  .step-icon{
-    width:34px; height:34px; border-radius:9px;
-    background:rgba(34,211,238,0.14); color:var(--accent);
-    display:flex; align-items:center; justify-content:center;
-    margin-bottom:14px;
+  /* PRODUCT TILES (dynamic, from Google Sheet) */
+  .price-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:22px;}
+  .price-card{border:1px solid var(--line); border-radius:16px; background:var(--card); display:flex; flex-direction:column; overflow:hidden;}
+  .price-visual{aspect-ratio:4/3; background:var(--bg-soft); overflow:hidden;}
+  .price-visual img{display:block; width:100%; height:100%; object-fit:cover;}
+  .price-visual.empty{display:flex; align-items:center; justify-content:center; color:var(--ink-soft);}
+  .price-visual.empty svg{width:26px; height:26px; opacity:0.5;}
+  .price-body{padding:18px 20px 22px; display:flex; flex-direction:column; flex-grow:1;}
+  .price-badge{
+    display:inline-block; align-self:flex-start; font-size:0.68rem; font-weight:600;
+    letter-spacing:0.04em; text-transform:uppercase; color:var(--accent);
+    background:rgba(14,116,144,0.10); padding:3px 9px; border-radius:100px; margin-bottom:10px;
   }
-  .step-icon svg{width:18px; height:18px;}
+  [data-theme="dark"] .price-badge{background:rgba(34,211,238,0.14);}
+  .price-card h3{font-size:1.02rem; color:var(--ink);}
+  .price-line{font-family:'Space Grotesk',sans-serif; font-weight:700; margin:10px 0 2px; display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;}
+  .price-line .now{font-size:1.4rem; color:var(--primary-bright);}
+  .price-line .was{font-size:0.85rem; color:var(--ink-soft); text-decoration:line-through; font-weight:500; font-family:'Inter',sans-serif;}
+  .price-line small{font-size:0.76rem; color:var(--ink-soft); font-weight:400; font-family:'Inter',sans-serif;}
+  .price-card p.desc{color:var(--ink-soft); font-size:0.86rem; margin:8px 0 18px; flex-grow:1; line-height:1.5;}
+  .price-card .btn-ghost{padding:9px 16px; font-size:0.86rem; text-align:center;}
+  .state-msg{color:var(--ink-soft); font-size:0.95rem; padding:20px 0; grid-column:1/-1;}
+  .products-more{text-align:center; margin-top:32px;}
 
-  /* FAQ */
-  .faq-list{display:flex; flex-direction:column; gap:10px;}
-  .faq-item{
-    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:2px 22px;
+  /* VISITENKARTE MODUL (dunkles, hervorgehobenes Band) */
+  section#visitenkarte-modul .band{
+    background:linear-gradient(150deg, #1a1f3d 0%, #202750 45%, #16374a 100%);
+    border-radius:24px; padding:56px 48px; color:#eef0fb;
+    display:grid; grid-template-columns:1.05fr 0.95fr; gap:48px; align-items:center;
   }
-  .faq-item summary{
-    cursor:pointer; padding:18px 0; font-weight:600; color:var(--ink); font-size:0.98rem;
-    list-style:none; display:flex; justify-content:space-between; align-items:center; gap:16px;
+  .band .eyebrow{color:#67e8f9;}
+  .band h2{font-size:clamp(1.6rem,2.4vw,2.1rem); color:#fff; line-height:1.14;}
+  .band p.lead{margin-top:14px; color:rgba(238,240,251,0.72); font-size:1rem; max-width:44ch;}
+  .band-actions{margin-top:26px; display:flex; gap:12px; flex-wrap:wrap;}
+  .btn-bright{
+    background:#fff; color:#1a1f3d; font-weight:600; padding:13px 24px; border-radius:12px;
+    text-decoration:none; font-size:0.94rem; display:inline-block;
+    transition:transform 0.15s ease, box-shadow 0.2s ease; box-shadow:0 14px 30px -14px rgba(0,0,0,0.7);
   }
-  .faq-item summary::-webkit-details-marker{display:none;}
-  .faq-item summary::after{
-    content:"+"; color:var(--primary-bright); font-size:1.4rem; font-weight:400; flex-shrink:0;
+  .btn-bright:hover{transform:translateY(-1px);}
+  .btn-outline-light{
+    border:1px solid rgba(238,240,251,0.28); color:#eef0fb; padding:13px 22px; border-radius:12px;
+    text-decoration:none; font-size:0.94rem; font-weight:500; transition:border-color 0.2s ease, background 0.2s ease;
   }
-  .faq-item[open] summary::after{content:"–";}
-  .faq-item p{margin:0 0 20px; color:var(--ink-soft); font-size:0.92rem; line-height:1.6;}
+  .btn-outline-light:hover{border-color:#67e8f9; background:rgba(103,232,249,0.10);}
+  .vk-preview{
+    width:250px; margin:0 auto; border-radius:20px; overflow:hidden; background:#232532;
+    box-shadow:0 30px 54px -24px rgba(0,0,0,0.85), 0 0 0 1px rgba(238,240,251,0.10);
+  }
+  .vk-banner{height:68px; background:linear-gradient(120deg, #6366f1, #22d3ee); position:relative;}
+  .vk-body{padding:0 16px 16px; margin-top:-26px; text-align:center;}
+  .vk-avatar{
+    width:54px; height:54px; margin:0 auto 8px; border-radius:50%;
+    background:linear-gradient(140deg,#4c5397,#6366f1); box-shadow:0 0 0 4px #232532;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:#eef0fb;
+  }
+  .vk-name{font-family:'Space Grotesk',sans-serif; font-size:0.98rem; font-weight:600; color:#eef0fb;}
+  .vk-role{font-size:0.72rem; color:rgba(238,240,251,0.62); margin-top:2px;}
+  .vk-save{display:inline-block; margin-top:12px; padding:7px 16px; border-radius:9px; border:1px solid #9184d9; color:#b5abfc; font-size:0.76rem; font-weight:500;}
+
+  /* STEPS */
+  .steps{display:grid; grid-template-columns:repeat(3,1fr); gap:26px;}
+  .step{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px 24px;}
+  .step-icon{width:34px; height:34px; border-radius:9px; background:rgba(34,211,238,0.14); color:var(--accent); display:flex; align-items:center; justify-content:center; margin-bottom:14px;}
+  .step-icon svg{width:18px; height:18px;}
+  .step .idx{font-family:'Space Grotesk',sans-serif; font-size:0.82rem; color:var(--accent); font-weight:600; letter-spacing:0.04em;}
+  .step h3{font-size:1.1rem; margin-top:12px; color:var(--ink);}
+  .step p{margin-top:10px; color:var(--ink-soft); font-size:0.92rem;}
 
   /* TRUST */
-  .trust-grid{
-    display:grid; grid-template-columns:repeat(4,1fr); gap:24px;
-  }
+  .trust-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:24px;}
   .trust-item{padding:8px 0;}
   .trust-item h3{font-size:1rem; color:var(--ink); margin-bottom:8px;}
   .trust-item p{font-size:0.9rem; color:var(--ink-soft);}
@@ -530,50 +418,25 @@
   /* CTA / CONTACT */
   .cta-section{
     background:linear-gradient(140deg, #232a52, #1c2340 55%, #173a4d);
-    border:1px solid rgba(129,140,248,0.3);
-    border-radius:24px;
-    padding:56px 48px;
-    display:grid;
-    grid-template-columns:1.1fr 0.9fr;
-    gap:40px;
-    align-items:center;
-    color:var(--ink);
+    border:1px solid rgba(129,140,248,0.3); border-radius:24px; padding:56px 48px;
+    display:grid; grid-template-columns:1.1fr 0.9fr; gap:40px; align-items:center; color:var(--ink);
   }
   .cta-section h2{font-size:clamp(1.6rem,2.4vw,2.1rem); color:#fff;}
   .cta-section p{color:var(--ink-soft); margin-top:14px; max-width:44ch;}
-  .contact-box{
-    background:rgba(13,16,32,0.5);
-    border:1px solid rgba(238,240,251,0.14);
-    border-radius:16px;
-    padding:26px;
-  }
-  .contact-box .row{
-    display:flex; justify-content:space-between; align-items:center;
-    padding:12px 0; border-top:1px solid rgba(238,240,251,0.10);
-    font-size:0.94rem;
-  }
-  .contact-box .row:first-child{border-top:none;}
-  .contact-box .row span{color:rgba(238,240,251,0.6);}
-  .contact-box .row a{color:#22d3ee; text-decoration:none; font-weight:600;}
-  .contact-box label{
-    display:block; font-size:0.78rem; font-weight:600;
-    color:rgba(238,240,251,0.65); margin:14px 0 6px;
-  }
+  .contact-box{background:rgba(13,16,32,0.5); border:1px solid rgba(238,240,251,0.14); border-radius:16px; padding:26px;}
+  .contact-box label{display:block; font-size:0.78rem; font-weight:600; color:rgba(238,240,251,0.65); margin:14px 0 6px;}
   .contact-box label:first-of-type{margin-top:0;}
   .contact-box .opt{font-weight:400; color:rgba(238,240,251,0.4);}
   .contact-box input, .contact-box textarea{
-    width:100%; padding:11px 12px; border-radius:9px;
-    border:1px solid rgba(238,240,251,0.18);
-    background:rgba(255,255,255,0.05);
-    color:#eef0fb; font-family:'Inter',sans-serif; font-size:0.9rem;
+    width:100%; padding:11px 12px; border-radius:9px; border:1px solid rgba(238,240,251,0.18);
+    background:rgba(255,255,255,0.05); color:#eef0fb; font-family:'Inter',sans-serif; font-size:0.9rem;
   }
   .contact-box input::placeholder, .contact-box textarea::placeholder{color:rgba(238,240,251,0.35);}
   .contact-box textarea{resize:vertical; min-height:70px;}
   .contact-box input:focus, .contact-box textarea:focus{outline:2px solid var(--primary-bright); outline-offset:1px;}
   .contact-box button{
     width:100%; margin-top:16px; padding:13px; border-radius:10px; border:none;
-    background:var(--primary); color:#fff; font-weight:600; font-size:0.92rem; cursor:pointer;
-    font-family:'Inter',sans-serif;
+    background:var(--primary); color:#fff; font-weight:600; font-size:0.92rem; cursor:pointer; font-family:'Inter',sans-serif;
   }
   .contact-box button:hover{background:var(--primary-bright);}
   .contact-box button:disabled{opacity:0.6; cursor:not-allowed;}
@@ -581,30 +444,22 @@
   .contact-confirmation{display:none; text-align:center; padding:6px 0;}
   .contact-confirmation.show{display:block;}
   .contact-confirmation p{color:#eef0fb; font-size:0.92rem; line-height:1.6; margin:0;}
-  .contact-direct{
-    display:flex; justify-content:space-between; gap:10px; margin-top:18px;
-    padding-top:16px; border-top:1px solid rgba(238,240,251,0.10);
-  }
+  .contact-direct{display:flex; justify-content:space-between; gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid rgba(238,240,251,0.10);}
   .contact-direct a{color:#22d3ee; text-decoration:none; font-size:0.82rem; font-weight:600;}
 
-  footer{
-    border-top:1px solid var(--line);
-    padding:32px 0 48px;
-    font-size:0.82rem;
-    color:var(--ink-soft);
-  }
+  footer{border-top:1px solid var(--line); padding:32px 0 48px; font-size:0.82rem; color:var(--ink-soft);}
   footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
 
   @media (max-width:820px){
     .hero-grid{grid-template-columns:1fr;}
-    .tap-demo{min-height:260px; order:-1;}
-    .stat-row{grid-template-columns:1fr;}
-    .steps{grid-template-columns:1fr;}
-    .price-grid{grid-template-columns:1fr;}
-    .configurator{grid-template-columns:1fr; padding:24px;}
-    .trust-grid{grid-template-columns:repeat(2,1fr);}
+    .tap-demo{min-height:240px; order:-1;}
     .feature-strip{grid-template-columns:repeat(2,1fr);}
+    .price-grid{grid-template-columns:repeat(2,1fr);}
+    .steps{grid-template-columns:1fr;}
+    .trust-grid{grid-template-columns:repeat(2,1fr);}
     .cta-section{grid-template-columns:1fr; padding:36px 26px;}
+    section#visitenkarte-modul .band{grid-template-columns:1fr; padding:36px 26px; gap:32px;}
+    .vk-preview{order:-1;}
   }
 </style>
 </head>
@@ -627,17 +482,34 @@
 
 <nav>
   <div class="wrap">
-    <div class="logo" style="display:flex; align-items:center; gap:9px;">
+    <a href="index.html" class="logo" style="display:flex; align-items:center; gap:9px; text-decoration:none;">
       <img src="tapstern-icon-navy-transparent.png" alt="" class="logo-icon-light" style="height:28px; width:auto; object-fit:contain;">
       <img src="tapstern-icon-white.png" alt="" class="logo-icon-dark" style="height:28px; width:auto; object-fit:contain; display:none;">
       Tapstern
-    </div>
+    </a>
 
     <div class="nav-links" id="navLinks">
-      <a href="index.html" class="active">Bewertungskarten</a>
-      <a href="visitenkarten.html">Visitenkarten</a>
-      <a href="produkte.html">Alle Produkte</a>
-      <a href="app.html">Meine Karte</a>
+      <div class="nav-item">
+        <a href="produkte.html" class="nav-link">Produkte
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </a>
+        <div class="dropdown-menu">
+          <a href="bewertungskarten.html" class="dropdown-item">
+            <span class="dropdown-title">Bewertungskarten</span>
+            <span class="dropdown-desc">Mehr Google-Bewertungen per Antippen</span>
+          </a>
+          <a href="visitenkarten.html" class="dropdown-item">
+            <span class="dropdown-title">Visitenkarten</span>
+            <span class="dropdown-desc">NFC-Karten für Personen &amp; Teams</span>
+          </a>
+          <a href="produkte.html" class="dropdown-item">
+            <span class="dropdown-title">Alle Produkte</span>
+            <span class="dropdown-desc">Aufkleber, Aufsteller, Social Media &amp; mehr</span>
+          </a>
+        </div>
+      </div>
+      <a href="#loesungen" class="nav-link">Lösungsansätze</a>
+      <a href="app.html" class="nav-link">Meine Karte</a>
     </div>
 
     <div style="display:flex; align-items:center;">
@@ -653,7 +525,7 @@
   </div>
 
   <div class="nav-links-mobile" id="navLinksMobile">
-    <a href="index.html" class="active">Bewertungskarten</a>
+    <a href="bewertungskarten.html">Bewertungskarten</a>
     <a href="visitenkarten.html">Visitenkarten</a>
     <a href="produkte.html">Alle Produkte</a>
     <a href="app.html">Meine Karte</a>
@@ -663,34 +535,54 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow">NFC-Bewertungskarten für lokale Betriebe</span>
-      <h1 class="display">Eine Berührung. <em>Ein Stern mehr.</em></h1>
-      <p class="lead">Zufriedene Gäste bewerten selten von allein — nicht weil sie nicht wollen, sondern weil das Suchen nach der richtigen Google-Seite nervt. Tapstern macht daraus einen einzigen Antipp: Handy an die Karte, Bewertungsseite öffnet sich, fertig.</p>
+      <div class="pill-badge"><span class="dot"></span> NFC-Lösungen für lokale Betriebe</div>
+      <h1 class="display">Bewertungen, Social Media und Kontakte — <em>aus einer Hand.</em></h1>
+      <p class="lead">Tapstern verbindet langlebige NFC-Aufsteller, Aufkleber und smarte Visitenkarten mit deinen digitalen Profilen. Ein Antippen genügt — direkt ins Smartphone deines Kunden, ganz ohne App.</p>
       <div class="hero-actions">
-        <a class="btn-primary" href="#preise">Infos &amp; Preise anfragen</a>
-        <a class="btn-ghost" href="#ablauf">So funktioniert's</a>
+        <a class="btn-primary" href="#loesungen">Lösungen entdecken</a>
+        <a class="btn-ghost" href="produkte.html">Produkte ansehen</a>
+      </div>
+      <div class="badge-row">
+        <span class="chip-tag">Google-Bewertungen</span>
+        <span class="chip-tag">Instagram &amp; Facebook</span>
+        <span class="chip-tag">Visitenkarten</span>
+        <span class="chip-tag">Multi-Link-Karte</span>
       </div>
     </div>
-    <div class="tap-demo">
-      <div class="tap-stage">
-        <div class="ripple r1"></div>
-        <div class="ripple r2"></div>
-        <div class="ripple r3"></div>
-        <div class="tap-card">
-          <div class="brand">Tapstern</div>
-          <div class="chip"></div>
-          <div class="stars" id="starRow">
-            <span class="star" data-i="1">★</span><span class="star" data-i="2">★</span><span class="star" data-i="3">★</span><span class="star" data-i="4">★</span><span class="star" data-i="5">★</span>
-          </div>
+
+    <div class="hero-mockup">
+      <div class="mock-screen">
+        <div class="mock-head">
+          <span class="mock-title">Dashboard-Vorschau</span>
+          <span class="mock-example">Beispiel</span>
         </div>
-        <div class="phone">
-          <span class="phone-flash"></span>
-          <span class="spark spark-a"></span>
-          <span class="spark spark-b"></span>
-          <span class="spark spark-c"></span>
-          <span class="spark spark-d"></span>
-          <div class="phone-stars">
-            <span class="ps" style="animation-delay:0s">★</span><span class="ps" style="animation-delay:0.05s">★</span><span class="ps" style="animation-delay:0.1s">★</span><span class="ps" style="animation-delay:0.15s">★</span><span class="ps" style="animation-delay:0.2s">★</span>
+        <div class="mock-stat-row">
+          <div class="mock-stat"><div class="num">128</div><div class="sub">Aufrufe</div></div>
+          <div class="mock-stat"><div class="num">41</div><div class="sub">Kontakt gespeichert</div></div>
+          <div class="mock-stat"><div class="num">9</div><div class="sub">Anrufe &amp; Mails</div></div>
+        </div>
+        <div class="mock-label">So sieht dein Dashboard aus</div>
+        <div class="mock-rows">
+          <div class="mock-row">
+            <div class="mock-row-name">
+              <span class="mock-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M7 12a5 5 0 0 1 5-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></span>
+              NFC-Tap
+            </div>
+            <span class="mock-row-val">heute, 14:22</span>
+          </div>
+          <div class="mock-row">
+            <div class="mock-row-name">
+              <span class="mock-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M9 12l2 2 4-4"/></svg></span>
+              Kontakt gespeichert
+            </div>
+            <span class="mock-row-val">gestern</span>
+          </div>
+          <div class="mock-row">
+            <div class="mock-row-name">
+              <span class="mock-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 3h3l1.5 3.5-2 1.5a9 9 0 0 0 4 4l1.5-2L18 11.5v3c0 .8-.7 1.5-1.5 1.5A12.5 12.5 0 0 1 4 4.5C4 3.7 4.7 3 5.5 3z"/></svg></span>
+              Angerufen
+            </div>
+            <span class="mock-row-val">vor 2 Tagen</span>
           </div>
         </div>
       </div>
@@ -698,63 +590,89 @@
   </div>
 </header>
 
-<section id="features" style="padding:64px 0 0;">
+<section class="solutions" id="loesungen">
   <div class="wrap">
-    <div class="feature-strip">
-      <div class="feature-item">
-        <div class="icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M7 12a5 5 0 0 1 5-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
-        </div>
-        <h4>Moderne NFC-Technologie</h4>
-        <p>Ein Antippen genügt — kein Scannen, kein Tippen nötig.</p>
+    <div class="section-head">
+      <span class="eyebrow">Lösungsansätze</span>
+      <h2 class="display">Für jede Anforderung das passende System</h2>
+      <p>Egal ob du mehr Google-Bewertungen an der Kasse brauchst, Social Media auf den Tischen pushen willst oder dein Netzwerk erweitern möchtest.</p>
+    </div>
+    <div class="solution-grid">
+      <div class="solution-card">
+        <div class="solution-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/></svg></div>
+        <h3>Google-Bewertungen</h3>
+        <p>Gäste halten kurz ihr Smartphone an die Karte oder den Aufsteller — die Google-Bewertungsseite öffnet sich direkt. Kein Suchen, kein Abtippen.</p>
+        <ul class="solution-points">
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Aufsteller für Theke &amp; Kasse</li>
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Einmalig kaufen, kein Abo</li>
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Fertig programmiert geliefert</li>
+        </ul>
+        <a href="bewertungskarten.html" class="btn-card">Mehr erfahren →</a>
       </div>
-      <div class="feature-item">
-        <div class="icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
-        </div>
-        <h4>Keine App nötig</h4>
-        <p>Funktioniert direkt im Smartphone-Browser, ganz ohne Installation.</p>
+      <div class="solution-card">
+        <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></div>
+        <h3>Multi-Link-Karte</h3>
+        <p>Eine Karte, mehrere Ziele: Google-Bewertung, Instagram, Facebook und Telefonnummer in einem einzigen Antippen — ideal für Cafés, Salons und Bars.</p>
+        <ul class="solution-points">
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Bis zu 6 Ziele in einer Karte</li>
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Einmalig kaufen, kein Abo</li>
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Perfekt für Tische &amp; Theken</li>
+        </ul>
+        <a href="produkte.html" class="btn-card">Mehr erfahren →</a>
       </div>
-      <div class="feature-item">
-        <div class="icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 7l3-3a5 5 0 0 0-7-7"/><path d="M14 11a5 5 0 0 0-7-7L4 7a5 5 0 0 0 7 7"/></svg>
-        </div>
-        <h4>Fertig verlinkt</h4>
-        <p>Jede Karte wird individuell auf deine Google-Seite programmiert.</p>
-      </div>
-      <div class="feature-item">
-        <div class="icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/></svg>
-        </div>
-        <h4>Ehrliches Vertrauen</h4>
-        <p>Echte Bewertungen von echten Gästen — ohne Anreiz oder Trick.</p>
+      <div class="solution-card">
+        <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h6M7 16h8"/></svg></div>
+        <h3>Smarte Visitenkarten</h3>
+        <p>Schluss mit Papierkarten, die im Müll landen. Deine NFC-Visitenkarte überträgt deine Kontaktdaten per Tap direkt ins Adressbuch deines Gegenübers.</p>
+        <ul class="solution-points">
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Kostenloses digitales Profil inklusive</li>
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Daten jederzeit selbst ändern</li>
+          <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Hochwertige NFC-Karte</li>
+        </ul>
+        <a href="visitenkarten.html" class="btn-card">Mehr erfahren →</a>
       </div>
     </div>
   </div>
 </section>
 
-<section id="problem">
+<section id="produkte">
   <div class="wrap">
     <div class="section-head">
-      <span class="eyebrow">Das Problem</span>
-      <h2 class="display">Zufriedene Gäste bewerten trotzdem nicht — reine Bequemlichkeit</h2>
-      <p>Das Google-Profil suchen, den Namen richtig eintippen, zum Bewertungsformular scrollen — bei jedem Schritt springt ein Teil der Gäste ab. Nicht, weil sie unzufrieden waren, sondern weil es an der Kasse oder auf dem Weg zur Tür schlicht zu viel Aufwand ist, extra das Handy rauszuholen und zu suchen. Die meisten vergessen es einfach.</p>
+      <span class="eyebrow">Alle Produkte</span>
+      <h2 class="display">Direkt im Überblick</h2>
+      <p>Als Aufkleber, Aufsteller oder Karte, mit oder ohne eigenem Design — hier siehst du das aktuelle Sortiment.</p>
     </div>
-    <div class="stat-row">
-      <div class="stat">
-        <div class="num">5x</div>
-        <p>mehr Anfragen bei Betrieben mit deutlich mehr positiven Bewertungen</p>
+    <div id="homeProductGrid" class="price-grid">
+      <p class="state-msg">Produkte werden geladen…</p>
+    </div>
+    <div class="products-more">
+      <a class="btn-ghost" href="produkte.html">Alle Produkte ansehen</a>
+    </div>
+  </div>
+</section>
+
+<section id="visitenkarte-modul">
+  <div class="wrap">
+    <div class="band">
+      <div>
+        <span class="eyebrow">Flaggschiff-Produkt</span>
+        <h2>Die NFC-Visitenkarte — mit kostenlosem digitalen Profil</h2>
+        <p class="lead">Kontaktdaten per Antippen direkt im Handy des Gegenübers speichern. Dein digitales Profil (Foto, Logo, Links) legst du kostenlos selbst an, die physische Karte bestellst du dazu.</p>
+        <div class="band-actions">
+          <a class="btn-bright" href="visitenkarten.html">Visitenkarte ansehen &amp; bestellen</a>
+          <a class="btn-outline-light" href="app.html">Digitale Karte kostenlos erstellen</a>
+        </div>
       </div>
-      <div class="stat">
-        <div class="num">1 Tipp</div>
-        <p>statt Suchen, Tippen und Scrollen bis zum Bewertungsformular</p>
-      </div>
-      <div class="stat">
-        <div class="num">0 €</div>
-        <p>laufende Kosten — einmal aufstellen, unbegrenzt nutzen</p>
+      <div class="vk-preview" aria-hidden="true">
+        <div class="vk-banner"></div>
+        <div class="vk-body">
+          <div class="vk-avatar">MM</div>
+          <div class="vk-name">Max Mustermann</div>
+          <div class="vk-role">Verkaufsberater · Musterfirma</div>
+          <span class="vk-save">Kontakt speichern</span>
+        </div>
       </div>
     </div>
-    <p style="margin-top:28px; font-weight:600; color:var(--ink); font-size:1.02rem;">Genau das behebt Tapstern: Handy an die Karte halten, Profil öffnet sich sofort — kein Suchen, kein Vergessen mehr.</p>
   </div>
 </section>
 
@@ -762,79 +680,26 @@
   <div class="wrap">
     <div class="section-head">
       <span class="eyebrow">Ablauf</span>
-      <h2 class="display">In drei Schritten zur Bewertung</h2>
+      <h2 class="display">In drei Schritten einsatzbereit</h2>
     </div>
     <div class="steps">
       <div class="step">
-        <div class="step-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="15" rx="1.5"/><path d="M6 18l-2 3h16l-2-3"/></svg>
-        </div>
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="15" rx="1.5"/><path d="M6 18l-2 3h16l-2-3"/></svg></div>
         <div class="idx">Schritt 1</div>
-        <h3>Karte auf die Theke</h3>
-        <p>Karte oder Aufsteller sichtbar an der Kasse, im Wartezimmer oder auf dem Tisch platzieren.</p>
+        <h3>Produkt auswählen &amp; bestellen</h3>
+        <p>Aufkleber, Aufsteller oder Karte — für Google, Social Media oder Kontaktdaten.</p>
       </div>
       <div class="step">
-        <div class="step-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M7 12a5 5 0 0 1 5-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
-        </div>
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M7 12a5 5 0 0 1 5-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></div>
         <div class="idx">Schritt 2</div>
         <h3>Handy antippen</h3>
-        <p>Der Gast hält sein Smartphone kurz an die Karte — ganz ohne App oder QR-Scanner-Umweg.</p>
+        <p>Dein Gast oder Kunde hält sein Smartphone kurz an die Karte — ganz ohne App.</p>
       </div>
       <div class="step">
-        <div class="step-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/></svg>
-        </div>
+        <div class="step-icon"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/></svg></div>
         <div class="idx">Schritt 3</div>
-        <h3>Bewertung abgeben</h3>
-        <p>Die Google-Bewertungsseite öffnet sich direkt. Sterne vergeben, Text schreiben, fertig.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="preise">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="eyebrow">Preise</span>
-      <h2 class="display">Einmal kaufen, unbegrenzt nutzen</h2>
-      <p>Kein Abo, keine versteckten Kosten. Wähle das Paket, das zu deinem Betrieb passt.</p>
-      <p style="margin-top:8px; font-weight:600; color:var(--ink);">Direkt online bestellen — bezahlt wird erst nach Lieferung, wenn du zufrieden bist.</p>
-    </div>
-    <div class="configurator">
-      <div class="config-visual">
-        <img id="configImg" src="tapstern-aufkleber-standard.jpg" alt="Tapstern Aufkleber">
-      </div>
-      <div class="config-panel">
-        <span class="qty-label" style="display:block; margin-bottom:8px;">Art</span>
-        <div class="pkg-row" id="artRow">
-          <button type="button" class="pkg-pill active" data-key="art" data-value="aufkleber">Aufkleber</button>
-          <button type="button" class="pkg-pill" data-key="art" data-value="aufsteller">Aufsteller<span class="tag">Beliebt</span></button>
-        </div>
-        <span class="qty-label" style="display:block; margin:18px 0 8px;">Design</span>
-        <div class="pkg-row" id="designRow" style="margin-bottom:22px;">
-          <button type="button" class="pkg-pill active" data-key="design" data-value="standard">Standard Tapstern</button>
-          <button type="button" class="pkg-pill" data-key="design" data-value="branding">Eigenes Branding</button>
-        </div>
-        <h3 id="configTitle">Aufkleber — Standard</h3>
-        <div class="price" id="configPrice">30 € <small>einmalig</small></div>
-        <ul id="configFeatures">
-          <li>1 NFC-Aufkleber (quadratisch, selbstklebende Rückseite), neutrales Design</li>
-          <li>Fertig auf deine Google-Seite programmiert</li>
-          <li>Unbegrenzt nutzbar, kein Abo</li>
-        </ul>
-        <div class="qty-row">
-          <span class="qty-label">Menge</span>
-          <div class="qty-stepper">
-            <button type="button" id="qtyMinus" aria-label="Menge verringern">–</button>
-            <input type="number" id="qtyInput" value="1" min="1" aria-label="Menge">
-            <button type="button" id="qtyPlus" aria-label="Menge erhöhen">+</button>
-          </div>
-        </div>
-        <a class="btn-primary" id="configCta" href="bestellen.html?paket=Aufkleber-Standard&menge=1" style="display:block; text-align:center;">Jetzt bestellen</a>
-        <p style="text-align:center; margin-top:14px; color:var(--ink-soft); font-size:0.85rem;">
-          Größere Menge geplant? Kurz anfragen — ich mache dir ein gutes Angebot.
-        </p>
+        <h3>Ergebnis sofort da</h3>
+        <p>Bewertung, neuer Follower oder gespeicherter Kontakt — je nach Karte.</p>
       </div>
     </div>
   </div>
@@ -844,17 +709,17 @@
   <div class="wrap">
     <div class="section-head">
       <span class="eyebrow">Warum Tapstern</span>
-      <h2 class="display">Mehr als nur eine Karte</h2>
+      <h2 class="display">Fertige Lösung statt leerer Karte</h2>
       <p>Eine NFC-Karte allein bekommst du an vielen Orten. Bei Tapstern kaufst du keine leere Karte, die du selbst programmieren musst — du bekommst eine fertige Lösung inklusive Einrichtung, persönlichem Ansprechpartner und Garantie.</p>
     </div>
     <div class="trust-grid">
       <div class="trust-item">
         <h3>Fertig eingerichtet</h3>
-        <p>Kein Programmieren, keine App nötig — die Karte kommt startklar auf eure Google-Seite eingestellt an.</p>
+        <p>Kein Programmieren, keine App nötig — die Karte kommt startklar an.</p>
       </div>
       <div class="trust-item">
         <h3>Echter Mensch, echter Support</h3>
-        <p>Direkte WhatsApp-Nummer statt anonymem Marktplatz-Verkäufer. Fragen oder Änderungen? Ich kümmere mich persönlich darum.</p>
+        <p>Direkte WhatsApp-Nummer statt anonymem Marktplatz-Verkäufer.</p>
       </div>
       <div class="trust-item">
         <h3>Garantie inklusive</h3>
@@ -862,47 +727,8 @@
       </div>
       <div class="trust-item">
         <h3>Lieferung</h3>
-        <p>In Regensburg liefere ich persönlich vorbei. Deutschlandweit per Versand — bei größeren Bestellmengen auch persönlich nach Absprache. Bezahlt wird erst nach Lieferung, wenn du zufrieden bist.</p>
+        <p>In Regensburg liefere ich persönlich vorbei, deutschlandweit per Versand. Bezahlt wird erst nach Lieferung.</p>
       </div>
-    </div>
-  </div>
-</section>
-
-<section id="faq">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="eyebrow">Fragen &amp; Antworten</span>
-      <h2 class="display">Häufig gestellte Fragen</h2>
-    </div>
-    <div class="faq-list">
-      <details class="faq-item">
-        <summary>Muss ich etwas programmieren oder einrichten?</summary>
-        <p>Nein. Jede Karte kommt fertig auf deine Google-Bewertungsseite programmiert — einfach auspacken und aufstellen.</p>
-      </details>
-      <details class="faq-item">
-        <summary>Braucht meine Karte Strom oder eine Batterie?</summary>
-        <p>Nein, der NFC-Chip braucht keine Stromquelle und funktioniert im Prinzip unbegrenzt lange.</p>
-      </details>
-      <details class="faq-item">
-        <summary>Muss mein Kunde eine App installieren?</summary>
-        <p>Nein. Der Gast hält sein Handy einfach an die Karte, die Google-Bewertungsseite öffnet sich direkt im Browser.</p>
-      </details>
-      <details class="faq-item">
-        <summary>Funktioniert das mit jedem Smartphone?</summary>
-        <p>Mit allen gängigen Smartphones der letzten Jahre, die NFC unterstützen — bei iPhones ist das automatisch aktiv, bei Android meist unter den Einstellungen. Falls es bei einzelnen Geräten in deinem Betrieb Probleme gibt, melde dich einfach, ich helfe schnell weiter.</p>
-      </details>
-      <details class="faq-item">
-        <summary>Kann ich mein eigenes Logo und meine Farben verwenden?</summary>
-        <p>Ja, im Paket "Eigenes Branding". Ich richte Karte und Aufsteller passend zu deinem Corporate Design ein.</p>
-      </details>
-      <details class="faq-item">
-        <summary>Was passiert, wenn der Chip mal nicht funktioniert?</summary>
-        <p>Du bekommst kostenlosen Ersatz von mir — das ist bei jedem Paket inklusive.</p>
-      </details>
-      <details class="faq-item">
-        <summary>Wie lange dauert die Lieferung?</summary>
-        <p>Bei neutralem Design meist wenige Tage, bei individuellem Branding etwas länger — die genaue Zeit sage ich dir bei der Bestellung.</p>
-      </details>
     </div>
   </div>
 </section>
@@ -912,8 +738,8 @@
     <div class="cta-section">
       <div>
         <img src="tapstern-logo-full-white.png" alt="Tapstern" style="height:56px; width:auto; object-fit:contain; margin-bottom:20px;">
-        <h2 class="display">Bereit für mehr Bewertungen?</h2>
-        <p>Schreib uns kurz — wir schicken dir Produktfotos, alle Infos und die passende Empfehlung für deinen Betrieb. Unverbindlich, keine Kaufpflicht.</p>
+        <h2 class="display">Kontakt aufnehmen</h2>
+        <p>Schreib uns kurz — wir schicken dir alle Infos und die passende Empfehlung für dich oder dein Team. Unverbindlich, keine Kaufpflicht.</p>
       </div>
       <div class="contact-box">
         <form id="contactForm">
@@ -963,103 +789,38 @@
 </footer>
 
 <script>
-  // Configurator: Art (Aufkleber/Aufsteller) x Design (Standard/Branding)
-  const PRODUCTS = {
-    'aufkleber-standard': {
-      title: 'Aufkleber — Standard',
-      price: '30 €',
-      image: 'tapstern-aufkleber-standard.jpg',
-      slug: 'Aufkleber-Standard',
-      features: [
-        '1 NFC-Aufkleber (quadratisch, selbstklebende Rückseite), neutrales Design',
-        'Fertig auf deine Google-Seite programmiert',
-        'Unbegrenzt nutzbar, kein Abo'
-      ]
-    },
-    'aufsteller-standard': {
-      title: 'Aufsteller — Standard',
-      price: '30 €',
-      image: 'tapstern-aufsteller-standard.jpg',
-      slug: 'Aufsteller-Standard',
-      features: [
-        '1 NFC-Aufsteller (Acryl-Stand), neutrales Design',
-        'Fertig auf deine Google-Seite programmiert',
-        'Ideal für Kasse, Empfang, Tisch'
-      ]
-    },
-    'aufkleber-branding': {
-      title: 'Aufkleber — Eigenes Branding',
-      price: '40 €',
-      image: 'tapstern-aufkleber-branding.jpg',
-      slug: 'Aufkleber-Branding',
-      features: [
-        '1 NFC-Aufkleber mit eigenem Logo &amp; Farben',
-        'Fertig auf deine Google-Seite programmiert',
-        'Für mehrere Standorte kombinierbar'
-      ]
-    },
-    'aufsteller-branding': {
-      title: 'Aufsteller — Eigenes Branding',
-      price: '40 €',
-      image: 'tapstern-aufsteller-branding.jpg',
-      slug: 'Aufsteller-Branding',
-      features: [
-        '1 NFC-Aufsteller mit eigenem Logo &amp; Farben',
-        'Fertig auf deine Google-Seite programmiert',
-        'Für mehrere Standorte kombinierbar'
-      ]
-    }
-  };
-
-  const configState = { art: 'aufkleber', design: 'standard' };
-  const configImg = document.getElementById('configImg');
-  const configTitle = document.getElementById('configTitle');
-  const configPrice = document.getElementById('configPrice');
-  const configFeatures = document.getElementById('configFeatures');
-  const configCta = document.getElementById('configCta');
-  const qtyInput = document.getElementById('qtyInput');
-
-  function currentProductKey(){
-    return `${configState.art}-${configState.design}`;
-  }
-
-  function renderConfig(){
-    const product = PRODUCTS[currentProductKey()];
-    configImg.classList.add('fading');
-    setTimeout(() => {
-      configImg.src = product.image;
-      configImg.alt = 'Tapstern ' + product.title;
-      configImg.classList.remove('fading');
-    }, 150);
-    configTitle.textContent = product.title;
-    configPrice.innerHTML = product.price + ' <small>einmalig</small>';
-    configFeatures.innerHTML = product.features.map(f => `<li>${f}</li>`).join('');
-    const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
-    configCta.href = `bestellen.html?paket=${product.slug}&menge=${qty}`;
-  }
-
-  document.querySelectorAll('#artRow .pkg-pill, #designRow .pkg-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      configState[btn.dataset.key] = btn.dataset.value;
-      const group = btn.closest('.pkg-row');
-      group.querySelectorAll('.pkg-pill').forEach(b => b.classList.toggle('active', b === btn));
-      renderConfig();
+  // Mobile hamburger menu
+  const menuToggle = document.getElementById('menuToggle');
+  const navLinksMobile = document.getElementById('navLinksMobile');
+  menuToggle.addEventListener('click', () => {
+    const isOpen = navLinksMobile.classList.toggle('open');
+    menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+  navLinksMobile.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      navLinksMobile.classList.remove('open');
+      menuToggle.setAttribute('aria-expanded', 'false');
     });
   });
-  document.getElementById('qtyMinus').addEventListener('click', () => {
-    qtyInput.value = Math.max(1, (parseInt(qtyInput.value, 10) || 1) - 1);
-    renderConfig();
-  });
-  document.getElementById('qtyPlus').addEventListener('click', () => {
-    qtyInput.value = (parseInt(qtyInput.value, 10) || 1) + 1;
-    renderConfig();
-  });
-  qtyInput.addEventListener('input', renderConfig);
-  renderConfig();
 </script>
 
 <script>
-  // Contact form: submits via Web3Forms, same pattern as bestellen.html
+  // Theme toggle
+  const themeToggle = document.getElementById('themeToggle');
+  themeToggle.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('tapstern-theme', 'light'); } catch(e){}
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try { localStorage.setItem('tapstern-theme', 'dark'); } catch(e){}
+    }
+  });
+</script>
+
+<script>
+  // Contact form: submits via Web3Forms
   const contactForm = document.getElementById('contactForm');
   contactForm.addEventListener('submit', async function(e){
     e.preventDefault();
@@ -1104,46 +865,91 @@
 </script>
 
 <script>
-  // Mobile hamburger menu: toggles the dropdown link panel
-  const menuToggle = document.getElementById('menuToggle');
-  const navLinksMobile = document.getElementById('navLinksMobile');
-  menuToggle.addEventListener('click', () => {
-    const isOpen = navLinksMobile.classList.toggle('open');
-    menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  });
-  navLinksMobile.querySelectorAll('a').forEach(link => {
-    link.addEventListener('click', () => {
-      navLinksMobile.classList.remove('open');
-      menuToggle.setAttribute('aria-expanded', 'false');
-    });
-  });
-</script>
+  // Product tiles: same Google Sheet as produkte.html — one data source, no hardcoding.
+  // Shows the first 4 active products; the full catalog lives on produkte.html.
+  const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSiDwRui-xoVv7-Me9mQWNezPeSPgQvUZd5RsX3oVqRBblv6uuIVdhrMzrA6h97i8SHcyp-IsE0jcO0/pub?output=csv';
+  const HOME_PRODUCT_LIMIT = 4;
 
-<script>
-  // Theme toggle: switches between light (default) and dark, remembers choice
-  const themeToggle = document.getElementById('themeToggle');
-  themeToggle.addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (isDark) {
-      document.documentElement.removeAttribute('data-theme');
-      try { localStorage.setItem('tapstern-theme', 'light'); } catch(e){}
-    } else {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      try { localStorage.setItem('tapstern-theme', 'dark'); } catch(e){}
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], next = text[i + 1];
+      if (inQuotes) {
+        if (c === '"' && next === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"') { inQuotes = true; }
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\r') { /* skip */ }
+        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else { field += c; }
+      }
     }
-  });
-</script>
-
-<script>
-  // Signature star-fill animation loop, synced with the phone tap motion
-  const stars = document.querySelectorAll('#starRow .star');
-  let i = 0;
-  function tick(){
-    stars.forEach((s, idx) => s.classList.toggle('lit', idx < i));
-    i = (i % 5) + 1;
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    if (!rows.length) return [];
+    const headers = rows[0].map(h => h.trim());
+    return rows.slice(1)
+      .filter(r => r.some(cell => cell.trim() !== ''))
+      .map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
   }
-  tick();
-  setInterval(tick, 480);
+
+  function euro(n) {
+    const num = parseFloat(String(n).replace(',', '.'));
+    return isNaN(num) ? n : num.toString().replace('.', ',') + ' €';
+  }
+
+  function productCard(p) {
+    const hasIntro = p.einfuehrungspreis && p.einfuehrungspreis.trim() !== '';
+    const priceHtml = hasIntro
+      ? `<span class="now">${euro(p.einfuehrungspreis)}</span><span class="was">${euro(p.preis)}</span>`
+      : `<span class="now">${euro(p.preis)}</span>`;
+
+    const imgHtml = p.bild_url
+      ? `<div class="price-visual"><img src="${p.bild_url}" alt="${p.name}" loading="lazy"></div>`
+      : `<div class="price-visual empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
+
+    const orderPrice = hasIntro ? p.einfuehrungspreis : p.preis;
+    const orderUrl = `bestellen.html?produkt=${encodeURIComponent(p.name)}&preis=${encodeURIComponent(orderPrice)}&menge=1`;
+
+    return `
+      <div class="price-card">
+        ${imgHtml}
+        <div class="price-body">
+          <span class="price-badge">${p.art || 'Produkt'}</span>
+          <h3>${p.name}</h3>
+          <div class="price-line">${priceHtml}</div>
+          <p class="desc">${p.beschreibung || ''}</p>
+          <a class="btn-ghost" href="${orderUrl}">Ansehen &amp; bestellen</a>
+        </div>
+      </div>`;
+  }
+
+  async function loadHomeProducts() {
+    const grid = document.getElementById('homeProductGrid');
+    try {
+      const res = await fetch(SHEET_CSV_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Tabelle nicht erreichbar (' + res.status + ')');
+      const text = await res.text();
+      const rows = parseCSV(text);
+      const active = rows.filter(r => {
+        const flag = (r.aktive || r.aktiv || '').trim().toLowerCase();
+        return flag === 'ja' || flag === 'yes' || flag === 'true' || flag === '1';
+      }).slice(0, HOME_PRODUCT_LIMIT);
+
+      if (!active.length) {
+        grid.innerHTML = '<p class="state-msg">Aktuell sind keine Produkte gelistet.</p>';
+        return;
+      }
+      grid.innerHTML = active.map(productCard).join('');
+    } catch (err) {
+      grid.innerHTML = '<p class="state-msg">Produkte konnten gerade nicht geladen werden — <a href="produkte.html" style="color:var(--primary-bright);">alle Produkte hier ansehen</a>.</p>';
+      console.error(err);
+    }
+  }
+
+  loadHomeProducts();
 </script>
 
 </body>

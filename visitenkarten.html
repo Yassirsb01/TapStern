@@ -111,16 +111,32 @@
   }
   .nav-cta:hover{background:var(--primary-bright);}
 
-  .nav-links{
-    display:flex; align-items:center; gap:24px;
-  }
-  .nav-links a{
+  .nav-links{display:flex; align-items:center; gap:8px;}
+  .nav-item{position:relative;}
+  .nav-link{
     color:var(--ink-soft); text-decoration:none; font-size:0.92rem; font-weight:500;
+    display:flex; align-items:center; gap:5px; padding:10px 8px;
     transition:color 0.15s ease;
   }
-  .nav-links a:hover{color:var(--ink);}
-  .nav-links a.active{color:var(--primary-bright); font-weight:600;}
+  .nav-link:hover{color:var(--ink);}
+  .nav-link.active{color:var(--primary-bright); font-weight:600;}
   .nav-links-mobile a.active{color:var(--primary-bright); font-weight:700;}
+
+  .dropdown-menu{
+    position:absolute; top:calc(100% + 6px); left:0;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:8px; min-width:250px;
+    box-shadow:0 14px 34px -10px rgba(0,0,0,0.18);
+    display:none; flex-direction:column; gap:2px; z-index:60;
+  }
+  .nav-item:hover .dropdown-menu{display:flex;}
+  .dropdown-item{
+    padding:10px 12px; border-radius:8px; display:flex; flex-direction:column;
+    text-decoration:none; color:inherit; transition:background 0.15s ease;
+  }
+  .dropdown-item:hover, .dropdown-item.active{background:var(--bg-soft);}
+  .dropdown-title{font-weight:600; font-size:0.88rem; color:var(--ink);}
+  .dropdown-desc{font-size:0.76rem; color:var(--ink-soft); margin-top:2px;}
 
   .menu-toggle{
     display:none;
@@ -730,17 +746,34 @@
 
 <nav>
   <div class="wrap">
-    <div class="logo" style="display:flex; align-items:center; gap:9px;">
+    <a href="index.html" class="logo" style="display:flex; align-items:center; gap:9px; text-decoration:none;">
       <img src="tapstern-icon-navy-transparent.png" alt="" class="logo-icon-light" style="height:28px; width:auto; object-fit:contain;">
       <img src="tapstern-icon-white.png" alt="" class="logo-icon-dark" style="height:28px; width:auto; object-fit:contain; display:none;">
       Tapstern
-    </div>
+    </a>
 
     <div class="nav-links" id="navLinks">
-      <a href="index.html">Bewertungskarten</a>
-      <a href="visitenkarten.html" class="active">Visitenkarten</a>
-      <a href="produkte.html">Alle Produkte</a>
-      <a href="app.html">Meine Karte</a>
+      <div class="nav-item">
+        <a href="produkte.html" class="nav-link active">Produkte
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </a>
+        <div class="dropdown-menu">
+          <a href="bewertungskarten.html" class="dropdown-item">
+            <span class="dropdown-title">Bewertungskarten</span>
+            <span class="dropdown-desc">Mehr Google-Bewertungen per Antippen</span>
+          </a>
+          <a href="visitenkarten.html" class="dropdown-item active">
+            <span class="dropdown-title">Visitenkarten</span>
+            <span class="dropdown-desc">NFC-Karten für Personen &amp; Teams</span>
+          </a>
+          <a href="produkte.html" class="dropdown-item">
+            <span class="dropdown-title">Alle Produkte</span>
+            <span class="dropdown-desc">Aufkleber, Aufsteller, Social Media &amp; mehr</span>
+          </a>
+        </div>
+      </div>
+      <a href="index.html#loesungen" class="nav-link">Lösungsansätze</a>
+      <a href="app.html" class="nav-link">Meine Karte</a>
     </div>
 
     <div style="display:flex; align-items:center;">
@@ -756,9 +789,10 @@
   </div>
 
   <div class="nav-links-mobile" id="navLinksMobile">
-    <a href="index.html">Bewertungskarten</a>
+    <a href="bewertungskarten.html">Bewertungskarten</a>
     <a href="visitenkarten.html" class="active">Visitenkarten</a>
     <a href="produkte.html">Alle Produkte</a>
+    <a href="index.html#loesungen">Lösungsansätze</a>
     <a href="app.html">Meine Karte</a>
   </div>
 </nav>

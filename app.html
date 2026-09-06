@@ -731,10 +731,11 @@ $('new-card').onclick = async function(){
   catch (e) { toast(e.message); }
 };
 
-$('back-cards').onclick = function(){ show('cards'); };
+$('back-cards').onclick = function(){ session.slug = ''; buildNav(); show('cards'); };
 
 async function openCard(slug){
   session.slug = slug;
+  buildNav();
   try {
     var res = await fetch('/api/card?slug=' + encodeURIComponent(slug));
     var d = await res.json();

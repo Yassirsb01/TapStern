@@ -48,6 +48,20 @@
   .confirmation p{color:var(--ink-soft); font-size:0.95rem; line-height:1.6;}
   #formSection.hide{display:none;}
   .error{color:#dc2626; font-size:0.85rem; margin-top:14px; display:none;}
+  .hosting-opt{display:flex; flex-direction:column; gap:8px;}
+  .radio-card{
+    display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:10px;
+    border:1px solid var(--line); cursor:pointer; font-size:0.92rem; font-weight:500;
+  }
+  .radio-card:has(input:checked){border-color:var(--primary); background:rgba(79,70,229,0.06);}
+  .radio-card input{width:auto; padding:0; margin:0;}
+  .radio-card em{font-style:normal; font-weight:400; color:var(--ink-soft); font-size:0.85rem;}
+  .total-row{
+    display:flex; justify-content:space-between; align-items:baseline; margin-top:22px;
+    padding:14px 16px; border-radius:10px; background:var(--card); border:1px solid var(--line);
+    font-size:0.95rem; font-weight:600;
+  }
+  .total-row strong{font-family:'Space Grotesk',sans-serif; font-size:1.3rem; color:var(--primary);}
 </style>
 </head>
 <body>
@@ -56,7 +70,7 @@
 
     <div id="formSection">
       <h1>Bestellung aufgeben</h1>
-      <p class="sub">Fülle das Formular aus — wir bestätigen deine Bestellung per E-Mail und melden uns mit den Zahlungsdetails, sobald alles vorbereitet ist. Die Zahlung erfolgt erst nach Fertigstellung bzw. Lieferung.</p>
+      <p class="sub">Fülle das Formular aus und wähle am Ende, ob du direkt online bezahlst oder eine Rechnung möchtest.</p>
 
       <form id="orderForm">
         <input type="hidden" name="access_key" value="603ad85a-c6e5-44a6-9e2f-4b321148f8bb">
@@ -131,20 +145,38 @@
           <label for="vkLogo">Logo &amp; Farben <span class="opt">(optional)</span></label>
           <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px;">Falls gewünscht, kurz beschreiben oder in der E-Mail nach dem Absenden anhängen.</p>
           <textarea name="Visitenkarte-Design-Wünsche" id="vkLogo" placeholder="z. B. Firmenlogo anbei, Hausfarbe Dunkelblau"></textarea>
+
+          <label>Hosting für dein digitales Profil</label>
+          <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px;">Nötig, damit deine Karte auf ein aktives Profil zeigt — jederzeit selbst bearbeitbar in der App.</p>
+          <div class="hosting-opt">
+            <label class="radio-card"><input type="radio" name="Hosting" value="1 Jahr (19€)" data-price="19" checked><span>1 Jahr — 19 €</span></label>
+            <label class="radio-card"><input type="radio" name="Hosting" value="2 Jahre (34€)" data-price="34"><span>2 Jahre — 34 € <em>(spar 4 €)</em></span></label>
+          </div>
         </div>
 
-        <button type="submit" id="submitBtn">Bestellung absenden</button>
+        <div class="total-row" id="totalRow">
+          <span>Gesamtpreis</span>
+          <strong id="totalValue">0 €</strong>
+        </div>
+
+        <label>Zahlungsart</label>
+        <div class="hosting-opt">
+          <label class="radio-card"><input type="radio" name="Zahlungsart" value="Sofort online" checked><span>Jetzt online bezahlen<br><em>Karte, SEPA, Apple/Google Pay</em></span></label>
+          <label class="radio-card"><input type="radio" name="Zahlungsart" value="Rechnung"><span>Per Rechnung<br><em>Zahlung nach Erhalt der Rechnung</em></span></label>
+        </div>
+
+        <button type="submit" id="submitBtn">Weiter zur Zahlung</button>
         <div class="error" id="formError">Bitte alle Pflichtfelder ausfüllen.</div>
       </form>
 
       <div class="note">
-        Mit dem Absenden bestellst du unverbindlich vor. Wir prüfen deine Bestellung und melden uns bei dir — <strong>es wird nichts automatisch berechnet oder in Rechnung gestellt</strong>, bevor wir uns gemeldet haben. Bezahlung dann entweder per Rechnung oder vor Ort nach Lieferung.
+        Bei "Jetzt online bezahlen" wirst du zur sicheren Stripe-Zahlungsseite weitergeleitet. Bei "Per Rechnung" bestellst du unverbindlich vor und bekommst die Rechnung per E-Mail.
       </div>
     </div>
 
     <div class="confirmation" id="confirmation">
       <h2>Bestellung eingegangen</h2>
-      <p>Danke für deine Bestellung! Wir melden uns innerhalb von 1–2 Werktagen per E-Mail mit einer Bestätigung und den weiteren Schritten.</p>
+      <p>Danke für deine Bestellung! Wir melden uns innerhalb von 1–2 Werktagen per E-Mail mit der Rechnung und den weiteren Schritten.</p>
       <p id="confLogoNote" style="display:none; margin-top:14px;">Hast du ein Logo? Antworte einfach auf unsere Bestätigungsmail mit dem Logo als Anhang.</p>
       <p id="confAppNote" style="display:none; margin-top:14px; padding:14px; background:var(--card); border:1px solid var(--line); border-radius:10px; font-size:0.9rem;">
         Du kannst dein digitales Profil schon jetzt einrichten, bevor die Karte ankommt:
@@ -248,9 +280,38 @@
   paketSelect.addEventListener('change', function(){
     toggleBrandingFields();
     toggleCardFields();
+    updateTotal();
   });
   toggleBrandingFields();
   toggleCardFields();
+
+  // ─── Preisberechnung ───
+  function getProductPriceEUR() {
+    const label = getCurrentPaket();
+    if (urlProdukt && urlPreis) return parseFloat(String(urlPreis).replace(',', '.')) || 0;
+    const match = label.match(/(\d+(?:[.,]\d+)?)\s*€/);
+    return match ? parseFloat(match[1].replace(',', '.')) : 0;
+  }
+  function getHostingPriceEUR() {
+    if (!getCurrentPaket().includes('Visitenkarte')) return 0;
+    const checked = document.querySelector('input[name="Hosting"]:checked');
+    return checked ? parseFloat(checked.dataset.price) : 0;
+  }
+  function computeTotalEUR() {
+    const menge = parseInt(document.getElementById('menge').value, 10) || 1;
+    return getProductPriceEUR() * menge + getHostingPriceEUR();
+  }
+  function updateTotal() {
+    const total = computeTotalEUR();
+    document.getElementById('totalValue').textContent = total.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    const isOnline = document.querySelector('input[name="Zahlungsart"]:checked')?.value === 'Sofort online';
+    document.getElementById('submitBtn').textContent = isOnline ? 'Weiter zur Zahlung' : 'Bestellung absenden';
+  }
+  document.getElementById('menge').addEventListener('input', updateTotal);
+  document.querySelectorAll('input[name="Hosting"]').forEach(el => el.addEventListener('change', updateTotal));
+  document.querySelectorAll('input[name="Zahlungsart"]').forEach(el => el.addEventListener('change', updateTotal));
+  updateTotal();
+
   document.getElementById('orderForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const form = e.target;
@@ -264,10 +325,47 @@
     }
     errorEl.style.display = 'none';
     btn.disabled = true;
-    btn.textContent = 'Wird gesendet…';
 
+    const zahlungsart = document.querySelector('input[name="Zahlungsart"]:checked')?.value || 'Rechnung';
+
+    if (zahlungsart === 'Sofort online') {
+      btn.textContent = 'Weiterleitung zu Stripe …';
+      try {
+        const totalEUR = computeTotalEUR();
+        const items = [{
+          name: getCurrentPaket() + ' × ' + (document.getElementById('menge').value || 1),
+          unitAmount: Math.round(totalEUR * 100),
+          quantity: 1
+        }];
+        const res = await fetch('/api/create-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items,
+            customerEmail: document.getElementById('email').value,
+            metadata: {
+              Betrieb: document.getElementById('firma').value,
+              Paket: getCurrentPaket(),
+              Menge: document.getElementById('menge').value
+            }
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.url) throw new Error(data.error || 'Zahlung konnte nicht gestartet werden');
+        window.location.href = data.url;
+      } catch (err) {
+        errorEl.textContent = 'Fehler: ' + err.message + ' — bitte versuch es erneut oder wähle "Per Rechnung".';
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Weiter zur Zahlung';
+      }
+      return;
+    }
+
+    btn.textContent = 'Wird gesendet…';
     try {
       const formData = new FormData(form);
+      formData.append('Gesamtpreis', computeTotalEUR().toLocaleString('de-DE', { minimumFractionDigits: 2 }) + ' €');
       const response = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',
         headers: { 'Accept': 'application/json' },
@@ -293,6 +391,18 @@
       btn.textContent = 'Bestellung absenden';
     }
   });
+
+  // ─── Rückkehr von Stripe ───
+  const zahlungStatus = urlParams.get('zahlung');
+  if (zahlungStatus === 'erfolg') {
+    document.getElementById('formSection').classList.add('hide');
+    document.getElementById('confirmation').classList.add('show');
+    document.querySelector('#confirmation h2').textContent = 'Zahlung erfolgreich';
+    document.querySelector('#confirmation p').textContent = 'Danke für deine Bestellung! Du bekommst gleich eine Bestätigung per E-Mail.';
+  } else if (zahlungStatus === 'abgebrochen') {
+    document.getElementById('formError').textContent = 'Die Zahlung wurde abgebrochen. Du kannst es erneut versuchen oder "Per Rechnung" wählen.';
+    document.getElementById('formError').style.display = 'block';
+  }
 </script>
 </body>
 </html>

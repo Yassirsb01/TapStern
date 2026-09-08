@@ -29,6 +29,7 @@ export default {
       if (method === 'POST' && path === '/api/remove-logo') return handleRemoveLogo(request, env);
       if (method === 'POST' && path === '/api/remove-banner') return handleRemoveBanner(request, env);
       if (method === 'POST' && path === '/api/track') return handleTrack(request, env);
+      if (method === 'POST' && path === '/api/create-checkout') return handleCreateCheckout(request, env);
       if (method === 'GET' && path === '/api/stats') return handleStats(request, env);
       if (method === 'GET' && path === '/api/card') return handleCard(request, env);
 
@@ -404,6 +405,68 @@ async function handleTrack(request, env) {
   const action = ['view', 'save', 'call', 'mail', 'web'].includes(data.action) ? data.action : 'view';
   await logEvent(env, str(data.slug), action, source(request, str(data.source)), request);
   return json({ success: true });
+}
+
+/* ───────────────────────── /api/create-checkout ───────────────────── */
+// Erstellt eine Stripe Checkout Session für "Jetzt online bezahlen" auf
+// bestellen.html. Ruft die Stripe-API direkt per fetch auf (kein SDK nötig
+// in Workers). Braucht STRIPE_SECRET_KEY als Secret (wrangler secret put).
+//
+// SICHERHEITSHINWEIS: Die Preise kommen hier vom Browser (Client), nicht aus
+// einer serverseitigen Preisliste. Für den Start ok, aber jemand könnte
+// theoretisch den Preis im Netzwerk-Request manipulieren, bevor er zu Stripe
+// geht. Für mehr Sicherheit später: Preise serverseitig anhand einer festen
+// Produktliste nachrechnen statt dem Client zu vertrauen.
+async function handleCreateCheckout(request, env) {
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet (STRIPE_SECRET_KEY fehlt)' }, 500);
+
+  const data = await readJson(request);
+  if (!data || !Array.isArray(data.items) || !data.items.length) {
+    return json({ error: 'Ungültige Anfrage' }, 400);
+  }
+
+  const origin = new URL(request.url).origin;
+  const params = new URLSearchParams();
+  params.set('mode', 'payment');
+  params.set('success_url', origin + (data.successPath || '/bestellen.html?zahlung=erfolg'));
+  params.set('cancel_url', origin + (data.cancelPath || '/bestellen.html?zahlung=abgebrochen'));
+  if (data.customerEmail) params.set('customer_email', str(data.customerEmail));
+
+  data.items.slice(0, 10).forEach((item, i) => {
+    const name = str(item.name).slice(0, 200) || 'Tapstern-Bestellung';
+    const unitAmount = Math.round(Number(item.unitAmount));
+    const quantity = Math.max(1, Math.round(Number(item.quantity) || 1));
+    if (!(unitAmount > 0)) return;
+    params.set(`line_items[${i}][price_data][currency]`, 'eur');
+    params.set(`line_items[${i}][price_data][product_data][name]`, name);
+    params.set(`line_items[${i}][price_data][unit_amount]`, String(unitAmount));
+    params.set(`line_items[${i}][quantity]`, String(quantity));
+  });
+
+  if (data.metadata && typeof data.metadata === 'object') {
+    let n = 0;
+    for (const [key, value] of Object.entries(data.metadata)) {
+      if (n >= 20) break;
+      params.set(`metadata[${str(key).slice(0, 40)}]`, str(value).slice(0, 490));
+      n++;
+    }
+  }
+
+  try {
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString()
+    });
+    const session = await res.json();
+    if (!res.ok) return json({ error: session.error?.message || 'Stripe-Fehler' }, 502);
+    return json({ url: session.url });
+  } catch (e) {
+    return json({ error: 'Zahlung konnte nicht gestartet werden: ' + e.message }, 500);
+  }
 }
 
 /* ───────────────────────────── /api/card ──────────────────────────── */

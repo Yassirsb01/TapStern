@@ -256,6 +256,25 @@
           <label>Akzentfarbe auf der Kunden-Ansicht</label>
           <div class="swatches" id="swatches"></div>
         </div>
+        <div class="field">
+          <label>Logo</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <label class="btn-ghost" style="width:auto; padding:9px 16px; cursor:pointer; display:inline-block;">Datei wählen<input type="file" id="f-logo" accept="image/*" hidden></label>
+            <span id="logo-status" style="font-size:0.8rem; color:var(--muted);">kein Logo</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Bannerbild <span style="font-weight:400;">(optional)</span></label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <label class="btn-ghost" style="width:auto; padding:9px 16px; cursor:pointer; display:inline-block;">Datei wählen<input type="file" id="f-banner" accept="image/*" hidden></label>
+            <span id="banner-status" style="font-size:0.8rem; color:var(--muted);">kein Banner</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Zusätzlicher Link-Button <span style="font-weight:400;">(optional, z. B. Speisekarte oder Instagram)</span></label>
+          <input type="text" id="set-link-label" placeholder="Button-Text, z. B. Speisekarte ansehen" style="margin-bottom:8px;">
+          <input type="text" id="set-link-url" placeholder="Ziel-Adresse, z. B. instagram.com/deincafe">
+        </div>
         <button class="btn btn-primary" style="width:auto; padding:11px 24px;" id="saveSettings">Speichern</button>
         <span id="saveMsg" style="font-size:0.85rem; color:var(--muted);"></span>
       </div>
@@ -390,8 +409,51 @@
   async function loadSettingsForm() {
     $('set-threshold').value = shop.reward_threshold;
     $('set-reward').value = shop.reward_text;
+    $('set-link-label').value = shop.extra_link_label || '';
+    $('set-link-url').value = shop.extra_link_url || '';
+    $('logo-status').textContent = shop.logo_key ? 'Logo gesetzt' : 'kein Logo';
+    $('banner-status').textContent = shop.banner_key ? 'Banner gesetzt' : 'kein Banner';
     document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.c === shop.accent_color));
   }
+
+  function resizeImage(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+        else if (h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => blob ? resolve(new File([blob], 'img.jpg', { type: 'image/jpeg' })) : reject(new Error('Bild konnte nicht verarbeitet werden')), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Bild konnte nicht gelesen werden')); };
+      img.src = url;
+    });
+  }
+
+  function wireImageUpload(inputId, statusId, maxDim, endpoint, formField, stateKey, setLabel) {
+    $(inputId).onchange = async e => {
+      const f0 = e.target.files[0];
+      if (!f0) return;
+      $(statusId).textContent = 'Lädt hoch …';
+      try {
+        const f = await resizeImage(f0, maxDim, 0.82);
+        const fd = new FormData();
+        fd.append(formField, f);
+        const res = await fetch(endpoint, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Fehler beim Hochladen');
+        shop[stateKey] = data[stateKey];
+        $(statusId).textContent = setLabel;
+      } catch (err) { $(statusId).textContent = err.message; }
+    };
+  }
+  wireImageUpload('f-logo', 'logo-status', 300, '/api/stempel/upload-logo', 'logo', 'logoUrl', 'Logo gesetzt');
+  wireImageUpload('f-banner', 'banner-status', 1000, '/api/stempel/upload-banner', 'banner', 'bannerUrl', 'Banner gesetzt');
 
   $('saveSettings').onclick = async () => {
     const selected = document.querySelector('.swatch.on');
@@ -399,7 +461,9 @@
       await api('/api/stempel/settings', { method: 'PUT', body: JSON.stringify({
         reward_threshold: $('set-threshold').value,
         reward_text: $('set-reward').value,
-        accent_color: selected ? selected.dataset.c : shop.accent_color
+        accent_color: selected ? selected.dataset.c : shop.accent_color,
+        extra_link_label: $('set-link-label').value,
+        extra_link_url: $('set-link-url').value
       })});
       shop.reward_threshold = parseInt($('set-threshold').value);
       shop.reward_text = $('set-reward').value;

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tapstempel — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#121118;
+    --ink-soft:#1c1a24;
+    --surface:#211f29;
+    --surface-2:#2a2733;
+    --paper:#f6f1e7;
+    --text:#f3f0ea;
+    --muted:#948d9c;
+    --stamp:#d1512d;
+    --stamp-bright:#e8663d;
+    --stamp-dim: color-mix(in srgb, var(--stamp) 22%, transparent);
+    --line: color-mix(in srgb, var(--text) 10%, transparent);
+    --radius:14px;
+  }
+  *,*::before,*::after{box-sizing:border-box;}
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important;} }
+
+  body{
+    margin:0; min-height:100vh; background:var(--ink); color:var(--text);
+    font-family:'Inter',system-ui,sans-serif; font-size:15px; line-height:1.55;
+  }
+  h1,h2,h3{font-weight:700; letter-spacing:-0.01em; margin:0;}
+  a{color:inherit;}
+  .hide{display:none !important;}
+
+  .wrap{max-width:1040px; margin:0 auto; padding:0 24px 80px;}
+
+  /* NAV */
+  nav{
+    display:flex; align-items:center; gap:20px; padding:18px 24px;
+    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10;
+    background:color-mix(in srgb, var(--ink) 90%, transparent); backdrop-filter:blur(10px);
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:1.05rem; margin-right:auto;}
+  .brand .mark{
+    width:28px; height:28px; border-radius:50%; border:2.5px solid var(--stamp);
+    display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:800; color:var(--stamp);
+    transform:rotate(-8deg);
+  }
+  .nav-links{display:flex; gap:4px;}
+  .nav-links button{
+    font:inherit; font-size:0.9rem; font-weight:500; color:var(--muted); background:none; border:none;
+    padding:8px 14px; border-radius:9px; cursor:pointer;
+  }
+  .nav-links button.on{color:var(--text); background:var(--surface);}
+  .logout{font:inherit; font-size:0.85rem; color:var(--muted); background:none; border:1px solid var(--line); border-radius:9px; padding:7px 14px; cursor:pointer;}
+
+  /* AUTH */
+  .auth-wrap{max-width:400px; margin:80px auto; padding:0 24px;}
+  .auth-card{background:var(--surface); border-radius:var(--radius); padding:32px; border:1px solid var(--line);}
+  .seg{display:flex; background:var(--ink-soft); border-radius:10px; padding:3px; margin-bottom:24px;}
+  .seg button{flex:1; font:inherit; font-size:0.88rem; padding:9px; border:none; border-radius:8px; background:none; color:var(--muted); cursor:pointer;}
+  .seg button.on{background:var(--surface-2); color:var(--text); font-weight:600;}
+  .field{display:grid; gap:5px; margin-bottom:14px;}
+  .field label{font-size:0.78rem; color:var(--muted); font-weight:500;}
+  .field input, .field select, .field textarea{
+    font:inherit; font-size:0.92rem; color:var(--text); background:var(--ink-soft);
+    border:1px solid var(--line); border-radius:9px; padding:10px 12px; width:100%;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--stamp); outline-offset:1px;}
+  .btn{
+    font:inherit; font-size:0.92rem; font-weight:600; border-radius:10px; border:none;
+    padding:12px; cursor:pointer; width:100%; transition:transform 0.15s ease, background 0.15s ease;
+  }
+  .btn-primary{background:var(--stamp); color:#fff;}
+  .btn-primary:hover{background:var(--stamp-bright);}
+  .btn-primary:active{transform:scale(0.98);}
+  .btn-ghost{background:none; border:1px solid var(--line); color:var(--text);}
+  .err{color:#f2765a; font-size:0.85rem; margin-top:10px; display:none;}
+
+  /* HERO STAMP */
+  .hero{padding:56px 0 40px; display:flex; flex-direction:column; align-items:center; text-align:center;}
+  .stamp-ring{position:relative; width:220px; height:220px; margin-bottom:22px;}
+  .stamp-ring svg{width:100%; height:100%; transform:rotate(-90deg);}
+  .stamp-ring circle{fill:none; stroke-width:10; stroke-linecap:round;}
+  .stamp-ring .track{stroke:var(--surface-2);}
+  .stamp-ring .fill{stroke:var(--stamp); stroke-dasharray:597; stroke-dashoffset:597; animation:fillRing 1.1s cubic-bezier(.16,1,.3,1) 0.15s forwards;}
+  @keyframes fillRing{ to{ stroke-dashoffset:var(--offset); } }
+  .stamp-ring .center{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    transform:scale(0.7) rotate(-6deg); opacity:0; animation:stampHit 0.5s cubic-bezier(.34,1.56,.64,1) 0.5s forwards;
+  }
+  @keyframes stampHit{ 60%{ transform:scale(1.08) rotate(2deg); opacity:1;} 100%{ transform:scale(1) rotate(0deg); opacity:1;} }
+  .stamp-ring .num{font-size:2.6rem; font-weight:800; line-height:1;}
+  .stamp-ring .lbl{font-size:0.8rem; color:var(--muted); margin-top:4px;}
+  .hero h1{font-size:1.3rem;}
+  .hero p{color:var(--muted); margin:6px 0 0; max-width:38ch;}
+
+  /* STAT TILES */
+  .tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:36px;}
+  .tile{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px;}
+  .tile .n{font-size:1.5rem; font-weight:700;}
+  .tile .l{font-size:0.8rem; color:var(--muted); margin-top:2px;}
+
+  /* CHART */
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:22px; margin-top:16px;}
+  .panel h3{font-size:0.95rem; margin-bottom:16px;}
+  .chart{display:flex; align-items:flex-end; gap:6px; height:120px;}
+  .chart .bar{flex:1; background:var(--stamp-dim); border-radius:4px 4px 0 0; position:relative; transform:scaleY(0); transform-origin:bottom;}
+  .chart .bar.animate{animation:barGrow 0.5s ease forwards;}
+  @keyframes barGrow{ to{ transform:scaleY(1); } }
+
+  /* TABLE */
+  table{width:100%; border-collapse:collapse; font-size:0.88rem;}
+  th{text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line);}
+  td{padding:11px 10px; border-bottom:1px solid var(--line);}
+  .stamp-dots{display:inline-flex; gap:3px;}
+  .stamp-dots span{width:7px; height:7px; border-radius:50%; background:var(--surface-2); display:inline-block;}
+  .stamp-dots span.on{background:var(--stamp);}
+
+  /* SETTINGS */
+  .settings-grid{display:grid; gap:16px;}
+  .swatches{display:flex; gap:10px;}
+  .swatch{width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
+  .swatch.on{border-color:var(--text);}
+
+  /* NFC LINK PAGE */
+  .link-box{
+    font-family:ui-monospace,monospace; font-size:0.85rem; color:var(--stamp-bright);
+    background:var(--ink-soft); border:1px dashed var(--line); border-radius:10px; padding:14px; word-break:break-all;
+  }
+  #qr{background:var(--paper); border-radius:10px; padding:14px; display:inline-block;}
+
+  @media (max-width:640px){
+    .tiles{grid-template-columns:1fr;}
+    .stamp-ring{width:180px; height:180px;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ AUTH ═══ -->
+<section id="s-auth" class="auth-wrap">
+  <div class="brand" style="justify-content:center; margin-bottom:10px;">
+    <span class="mark">S</span> Tapstempel
+  </div>
+  <div style="text-align:center; margin-bottom:24px;">
+    <a href="index.html" style="font-size:0.8rem; color:var(--muted); text-decoration:none;">← Zur Tapstern-Startseite</a>
+  </div>
+  <div class="auth-card">
+    <div class="seg">
+      <button id="tab-login" class="on">Anmelden</button>
+      <button id="tab-signup">Registrieren</button>
+    </div>
+
+    <div id="pane-login">
+      <div class="field"><label>E-Mail</label><input type="email" id="li-email"></div>
+      <div class="field"><label>Passwort</label><input type="password" id="li-pw"></div>
+      <button class="btn btn-primary" id="do-login">Anmelden</button>
+    </div>
+
+    <div id="pane-signup" class="hide">
+      <div class="field"><label>Ladenname</label><input type="text" id="su-name" placeholder="Café Sonnenblick"></div>
+      <div class="field"><label>Branche</label>
+        <select id="su-branche">
+          <option>Café</option><option>Restaurant</option><option>Shishabar</option>
+          <option>Bar</option><option>Sonstiges</option>
+        </select>
+      </div>
+      <div class="field"><label>E-Mail</label><input type="email" id="su-email"></div>
+      <div class="field"><label>Passwort</label><input type="password" id="su-pw" placeholder="mind. 8 Zeichen"></div>
+      <button class="btn btn-primary" id="do-signup">Konto anlegen</button>
+    </div>
+    <div class="err" id="auth-err"></div>
+  </div>
+</section>
+
+<!-- ═══ APP ═══ -->
+<div id="s-app" class="hide">
+  <nav>
+    <div class="brand"><span class="mark">S</span> Tapstempel</div>
+    <div class="nav-links" id="navLinks">
+      <button data-go="home" class="on">Übersicht</button>
+      <button data-go="customers">Kunden</button>
+      <button data-go="card">NFC-Karte</button>
+      <button data-go="settings">Einstellungen</button>
+    </div>
+    <button class="logout" id="logout">Abmelden</button>
+  </nav>
+
+  <div class="wrap">
+    <!-- HOME -->
+    <section id="p-home">
+      <div class="hero">
+        <div class="stamp-ring">
+          <svg viewBox="0 0 220 220">
+            <circle class="track" cx="110" cy="110" r="95"/>
+            <circle class="fill" id="ringFill" cx="110" cy="110" r="95"/>
+          </svg>
+          <div class="center">
+            <div class="num" id="heroNum">0</div>
+            <div class="lbl">Stempel diese Woche</div>
+          </div>
+        </div>
+        <h1 id="heroShopName">Dein Laden</h1>
+        <p>So läuft dein Treueprogramm gerade — Kunden sammeln, Belohnungen lösen ein.</p>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><div class="n" id="tileCustomers">0</div><div class="l">Kunden gesamt</div></div>
+        <div class="tile"><div class="n" id="tileRedeemed">0</div><div class="l">Belohnungen eingelöst</div></div>
+        <div class="tile"><div class="n" id="tileAvg">0</div><div class="l">Ø Stempel pro Kunde</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>Stempel der letzten 14 Tage</h3>
+        <div class="chart" id="chart"></div>
+      </div>
+    </section>
+
+    <!-- CUSTOMERS -->
+    <section id="p-customers" class="hide">
+      <h2 style="margin-bottom:18px;">Kunden</h2>
+      <div class="panel" style="padding:0; overflow:hidden;">
+        <table>
+          <thead><tr><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
+          <tbody id="customerRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- NFC CARD -->
+    <section id="p-card" class="hide">
+      <h2 style="margin-bottom:18px;">Deine NFC-Karte</h2>
+      <div class="panel">
+        <p style="color:var(--muted); margin-top:0;">Dieser Link liegt auf der NFC-Karte an deiner Kasse. Jeder Tap gibt einen Stempel — neue Kunden werden automatisch angelegt.</p>
+        <div class="link-box" id="tapLink"></div>
+        <div style="margin-top:18px;" id="qr"></div>
+        <button class="btn btn-ghost" style="width:auto; padding:10px 20px; margin-top:14px;" id="copyLink">Link kopieren</button>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="p-settings" class="hide">
+      <h2 style="margin-bottom:18px;">Einstellungen</h2>
+      <div class="panel settings-grid">
+        <div class="field">
+          <label>Stempel bis zur Belohnung</label>
+          <input type="number" id="set-threshold" min="1" max="30">
+        </div>
+        <div class="field">
+          <label>Belohnung</label>
+          <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Kaffee deiner Wahl">
+        </div>
+        <div class="field">
+          <label>Akzentfarbe auf der Kunden-Ansicht</label>
+          <div class="swatches" id="swatches"></div>
+        </div>
+        <button class="btn btn-primary" style="width:auto; padding:11px 24px;" id="saveSettings">Speichern</button>
+        <span id="saveMsg" style="font-size:0.85rem; color:var(--muted);"></span>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  let shop = null;
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Fehler ' + res.status);
+    return data;
+  }
+
+  /* ── Auth ── */
+  $('tab-login').onclick = () => { $('tab-login').classList.add('on'); $('tab-signup').classList.remove('on'); $('pane-login').classList.remove('hide'); $('pane-signup').classList.add('hide'); };
+  $('tab-signup').onclick = () => { $('tab-signup').classList.add('on'); $('tab-login').classList.remove('on'); $('pane-signup').classList.remove('hide'); $('pane-login').classList.add('hide'); };
+
+  $('do-signup').onclick = async () => {
+    try {
+      await api('/api/stempel/signup', { method: 'POST', body: JSON.stringify({
+        name: $('su-name').value, branche: $('su-branche').value, email: $('su-email').value, password: $('su-pw').value
+      })});
+      const r = await api('/api/stempel/login', { method: 'POST', body: JSON.stringify({ email: $('su-email').value, password: $('su-pw').value }) });
+      boot(r.shop);
+    } catch (e) { $('auth-err').textContent = e.message; $('auth-err').style.display = 'block'; }
+  };
+  $('do-login').onclick = async () => {
+    try {
+      const r = await api('/api/stempel/login', { method: 'POST', body: JSON.stringify({ email: $('li-email').value, password: $('li-pw').value }) });
+      boot(r.shop);
+    } catch (e) { $('auth-err').textContent = e.message; $('auth-err').style.display = 'block'; }
+  };
+  $('logout').onclick = () => { document.cookie = 'stempel_session=; Max-Age=0; Path=/'; location.reload(); };
+
+  /* ── Navigation ── */
+  document.querySelectorAll('#navLinks button').forEach(b => b.onclick = () => showPage(b.dataset.go));
+  function showPage(name) {
+    ['home', 'customers', 'card', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== name));
+    document.querySelectorAll('#navLinks button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
+    if (name === 'customers') loadCustomers();
+    if (name === 'card') loadCard();
+  }
+
+  /* ── Boot ── */
+  async function boot(shopData) {
+    shop = shopData;
+    $('s-auth').classList.add('hide');
+    $('s-app').classList.remove('hide');
+    $('heroShopName').textContent = shop.name;
+    await loadHome();
+  }
+
+  async function loadHome() {
+    const { customers } = await api('/api/stempel/customers');
+    const totalStamps = customers.reduce((s, c) => s + c.stamps, 0);
+    const redeemed = customers.reduce((s, c) => s + c.redeemed_count, 0);
+    const avg = customers.length ? (totalStamps / customers.length).toFixed(1) : '0';
+    const weekStamps = customers.filter(c => c.last_stamp_at && (Date.now() - new Date(c.last_stamp_at + 'Z')) < 7 * 86400000).length;
+
+    animateNumber($('heroNum'), weekStamps);
+    animateNumber($('tileCustomers'), customers.length);
+    animateNumber($('tileRedeemed'), redeemed);
+    $('tileAvg').textContent = avg;
+
+    const target = Math.min(1, weekStamps / 50);
+    const circumference = 2 * Math.PI * 95;
+    $('ringFill').style.setProperty('--offset', circumference * (1 - target));
+
+    renderChart(customers);
+  }
+
+  function animateNumber(el, target) {
+    const dur = 700, start = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - start) / dur);
+      el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function renderChart(customers) {
+    const days = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (13 - i));
+      return d.toISOString().slice(0, 10);
+    });
+    const counts = days.map(d => customers.filter(c => c.last_stamp_at && c.last_stamp_at.startsWith(d)).length);
+    const max = Math.max(1, ...counts);
+    $('chart').innerHTML = counts.map(c =>
+      `<div class="bar animate" style="height:${Math.max(4, (c / max) * 100)}%"></div>`
+    ).join('');
+  }
+
+  async function loadCustomers() {
+    const { customers } = await api('/api/stempel/customers');
+    $('customerRows').innerHTML = customers.map(c => {
+      const dots = Array.from({ length: shop.reward_threshold || 10 }, (_, i) =>
+        `<span class="${i < c.stamps ? 'on' : ''}"></span>`).join('');
+      const status = c.stamps >= (shop.reward_threshold || 10) ? 'Belohnung bereit' : c.stamps + '/' + (shop.reward_threshold || 10);
+      return `<tr><td><span class="stamp-dots">${dots}</span></td><td>${status}</td>
+        <td>${new Date(c.created_at + 'Z').toLocaleDateString('de-DE')}</td>
+        <td>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleDateString('de-DE') : '—'}</td></tr>`;
+    }).join('') || '<tr><td colspan="4" style="color:var(--muted)">Noch keine Kunden.</td></tr>';
+  }
+
+  function loadCard() {
+    const url = location.origin + '/s/' + shop.slug;
+    $('tapLink').textContent = url;
+    QRCode.toCanvas(url, { width: 180, margin: 1 }, (err, canvas) => {
+      if (!err) { $('qr').innerHTML = ''; $('qr').appendChild(canvas); }
+    });
+  }
+  $('copyLink').onclick = () => { navigator.clipboard.writeText($('tapLink').textContent); $('copyLink').textContent = 'Kopiert!'; setTimeout(() => $('copyLink').textContent = 'Link kopieren', 1500); };
+
+  /* ── Settings ── */
+  const COLORS = ['#6366f1', '#d1512d', '#0e7490', '#16a34a', '#9333ea'];
+  function renderSwatches() {
+    $('swatches').innerHTML = COLORS.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
+    document.querySelectorAll('.swatch').forEach(s => s.onclick = () => {
+      document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+      s.classList.add('on'); s.dataset.selected = 'true';
+    });
+  }
+  renderSwatches();
+
+  async function loadSettingsForm() {
+    $('set-threshold').value = shop.reward_threshold;
+    $('set-reward').value = shop.reward_text;
+    document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.c === shop.accent_color));
+  }
+
+  $('saveSettings').onclick = async () => {
+    const selected = document.querySelector('.swatch.on');
+    try {
+      await api('/api/stempel/settings', { method: 'PUT', body: JSON.stringify({
+        reward_threshold: $('set-threshold').value,
+        reward_text: $('set-reward').value,
+        accent_color: selected ? selected.dataset.c : shop.accent_color
+      })});
+      shop.reward_threshold = parseInt($('set-threshold').value);
+      shop.reward_text = $('set-reward').value;
+      $('saveMsg').textContent = 'Gespeichert.';
+      setTimeout(() => $('saveMsg').textContent = '', 2000);
+    } catch (e) { $('saveMsg').textContent = e.message; }
+  };
+  document.querySelector('[data-go="settings"]').addEventListener('click', loadSettingsForm);
+
+  /* ── Start ── */
+  (async () => {
+    try {
+      const r = await api('/api/stempel/me');
+      boot(r.shop);
+    } catch (e) { /* nicht angemeldet, Auth-Screen bleibt */ }
+  })();
+</script>
+</body>
+</html>

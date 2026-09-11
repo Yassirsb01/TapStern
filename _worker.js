@@ -33,6 +33,16 @@ export default {
       if (method === 'GET' && path === '/api/stats') return handleStats(request, env);
       if (method === 'GET' && path === '/api/card') return handleCard(request, env);
 
+      /* ── Stempel (Treueprogramm) ── */
+      if (method === 'POST' && path === '/api/stempel/signup') return handleStempelSignup(request, env);
+      if (method === 'POST' && path === '/api/stempel/login') return handleStempelLogin(request, env);
+      if (method === 'GET'  && path === '/api/stempel/me') return handleStempelMe(request, env);
+      if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env);
+      if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
+
+      const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
+      if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
+
       const vcardMatch = path.match(/^\/vk\/([^/]+)\/vcard$/);
       if (method === 'GET' && vcardMatch) return handleVcard(request, env, ctx, vcardMatch[1]);
 
@@ -1062,4 +1072,222 @@ function json(obj, status = 200, cookie) {
   const headers = { 'Content-Type': 'application/json; charset=UTF-8' };
   if (cookie) headers['Set-Cookie'] = cookie;
   return new Response(JSON.stringify(obj), { status, headers });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Stempel — digitales Treueprogramm für lokale Läden
+   Tabellen: stempel_shops, stempel_customers, stempel_events
+   (eigene Tabellennamen, kollidieren nicht mit users/businesscards)
+   ══════════════════════════════════════════════════════════════ */
+
+function stempelCookie(shopId, token) {
+  return `stempel_session=${shopId}:${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`;
+}
+function stempelSessionFromRequest(request) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_session=([^;]+)/);
+  return m ? m[1] : '';
+}
+async function currentShop(env, request) {
+  const raw = stempelSessionFromRequest(request);
+  if (!raw) return null;
+  const [shopId, token] = raw.split(':');
+  const row = await env.DB.prepare(
+    `SELECT * FROM stempel_shops WHERE id = ? AND session_token_hash = ?`
+  ).bind(shopId, await sha256(token || '')).first();
+  return row || null;
+}
+
+async function handleStempelSignup(request, env) {
+  const data = await request.json();
+  const email = str(data.email).toLowerCase();
+  const name = str(data.name);
+  const password = str(data.password);
+  const branche = str(data.branche);
+
+  if (!email || !name || password.length < 8) {
+    return json({ error: 'Bitte Name, gültige E-Mail und Passwort (min. 8 Zeichen) angeben' }, 400);
+  }
+  const existing = await env.DB.prepare('SELECT id FROM stempel_shops WHERE email = ?').bind(email).first();
+  if (existing) return json({ error: 'Diese E-Mail ist schon registriert' }, 400);
+
+  const slug = name.toLowerCase()
+    .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[c]))
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Math.random().toString(36).slice(2, 6);
+
+  const id = crypto.randomUUID();
+  const passwordHash = await hashPassword(password);
+  await env.DB.prepare(
+    `INSERT INTO stempel_shops (id, slug, name, email, password_hash, branche) VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(id, slug, name, email, passwordHash, branche).run();
+
+  return json({ success: true });
+}
+
+async function handleStempelLogin(request, env) {
+  const data = await request.json();
+  const email = str(data.email).toLowerCase();
+  const password = str(data.password);
+
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE email = ?').bind(email).first();
+  if (!shop || !(await verifyPassword(password, shop.password_hash))) {
+    return json({ error: 'E-Mail oder Passwort falsch' }, 401);
+  }
+
+  const token = randomToken();
+  await env.DB.prepare('UPDATE stempel_shops SET session_token_hash = ? WHERE id = ?')
+    .bind(await sha256(token), shop.id).run();
+
+  const { password_hash, session_token_hash, ...safe } = shop;
+  return json({ success: true, shop: safe }, 200, stempelCookie(shop.id, token));
+}
+
+async function handleStempelMe(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { password_hash, session_token_hash, ...safe } = shop;
+  return json({ shop: safe });
+}
+
+async function handleStempelSettings(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const data = await request.json();
+
+  await env.DB.prepare(
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ? WHERE id = ?`
+  ).bind(
+    Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
+    str(data.reward_text) || shop.reward_text,
+    str(data.accent_color) || shop.accent_color,
+    shop.id
+  ).run();
+
+  return json({ success: true });
+}
+
+async function handleStempelCustomers(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { results } = await env.DB.prepare(
+    `SELECT id, stamps, redeemed_count, created_at, last_stamp_at FROM stempel_customers WHERE shop_id = ? ORDER BY last_stamp_at DESC LIMIT 200`
+  ).bind(shop.id).all();
+  return json({ customers: results });
+}
+
+/* Der Kern: NFC-Tap an der Laden-Karte, GET /s/:slug */
+async function handleStempelTap(request, env, slug) {
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+
+  const cookieMatch = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_device=([^;]+)/);
+  const deviceToken = cookieMatch ? cookieMatch[1] : null;
+  let customer = deviceToken
+    ? await env.DB.prepare('SELECT * FROM stempel_customers WHERE device_token = ? AND shop_id = ?').bind(deviceToken, shop.id).first()
+    : null;
+
+  const headers = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
+  let isNew = false, cooldownHit = false;
+
+  if (!customer) {
+    isNew = true;
+    const newToken = crypto.randomUUID();
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO stempel_customers (id, shop_id, device_token, stamps, last_stamp_at) VALUES (?, ?, ?, 1, datetime('now'))`
+    ).bind(id, shop.id, newToken).run();
+    await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`).bind(crypto.randomUUID(), id, shop.id).run();
+    customer = { id, stamps: 1, redeemed_count: 0 };
+    headers.append('Set-Cookie', `stempel_device=${newToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000`);
+  } else {
+    const lastStamp = customer.last_stamp_at ? new Date(customer.last_stamp_at + 'Z').getTime() : 0;
+    if (Date.now() - lastStamp < 2 * 60 * 1000) {
+      cooldownHit = true;
+    } else if (customer.stamps >= shop.reward_threshold) {
+      await env.DB.prepare(
+        `UPDATE stempel_customers SET stamps = 1, redeemed_count = redeemed_count + 1, last_stamp_at = datetime('now') WHERE id = ?`
+      ).bind(customer.id).run();
+      customer.stamps = 1; customer.redeemed_count += 1;
+    } else {
+      await env.DB.prepare(
+        `UPDATE stempel_customers SET stamps = stamps + 1, last_stamp_at = datetime('now') WHERE id = ?`
+      ).bind(customer.id).run();
+      customer.stamps += 1;
+      await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`).bind(crypto.randomUUID(), customer.id, shop.id).run();
+    }
+  }
+
+  // TODO: sobald Apple/Google-Zertifikate als Secrets gesetzt sind, hier
+  // echte Wallet-Karte erzeugen (isNew) bzw. per Push aktualisieren.
+
+  const rewardReached = customer.stamps >= shop.reward_threshold;
+  const html = renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached });
+  return new Response(html, { headers });
+}
+
+function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }) {
+  const accent = shop.accent_color || '#6366f1';
+  const message = cooldownHit
+    ? 'Dieser Stempel wurde gerade schon erfasst — versuch es beim nächsten Besuch nochmal.'
+    : rewardReached
+      ? `Belohnung erreicht: ${escapeHtml(shop.reward_text)}`
+      : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
+  const newestIndex = cooldownHit ? -1 : customer.stamps - 1;
+
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(shop.name)} — Treueprogramm</title>
+<style>
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important;} }
+  body{margin:0; font-family:'Inter',system-ui,sans-serif; background:#14131a; color:#f3f0ea;
+       min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden;}
+  .card{background:#211f29; border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:36px 28px;
+        max-width:360px; width:100%; text-align:center; position:relative; z-index:1;
+        animation:cardIn 0.5s cubic-bezier(.16,1,.3,1);}
+  @keyframes cardIn{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
+  h1{font-size:1.25rem; margin:0 0 4px; font-weight:700;}
+  .msg{color:${accent}; font-weight:600; margin:14px 0 24px; font-size:0.95rem;}
+  .stamps{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:0 0 6px;}
+  .dot{aspect-ratio:1; border-radius:50%; border:2px solid ${accent}; position:relative; display:flex; align-items:center; justify-content:center;}
+  .dot.filled{background:${accent};}
+  .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
+  @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
+  .count{font-size:0.85rem; color:#948d9c; margin-top:14px;}
+</style></head>
+<body>
+  <canvas id="confetti" style="position:fixed; inset:0; pointer-events:none; z-index:0;"></canvas>
+  <div class="card">
+    <h1>${escapeHtml(shop.name)}</h1>
+    <div class="msg">${message}</div>
+    <div class="stamps">
+      ${Array.from({ length: shop.reward_threshold }, (_, i) =>
+        `<div class="dot ${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}"></div>`
+      ).join('')}
+    </div>
+    <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
+  </div>
+<script>
+  ${rewardReached ? `
+  (function(){
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var c = document.getElementById('confetti'), ctx = c.getContext('2d');
+    c.width = innerWidth; c.height = innerHeight;
+    var colors = ['${accent}', '#f3f0ea', '#e8663d'];
+    var pieces = Array.from({length: 90}, function(){
+      return { x: Math.random()*c.width, y: -20 - Math.random()*200, r: 3+Math.random()*4,
+        c: colors[Math.floor(Math.random()*colors.length)], vy: 2+Math.random()*3, vx: -1.5+Math.random()*3, rot: Math.random()*360, vr: -6+Math.random()*12 };
+    });
+    var start = performance.now();
+    function frame(t){
+      ctx.clearRect(0,0,c.width,c.height);
+      pieces.forEach(function(p){
+        p.y += p.vy; p.x += p.vx; p.rot += p.vr;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+        ctx.fillStyle = p.c; ctx.fillRect(-p.r,-p.r,p.r*2,p.r*2); ctx.restore();
+      });
+      if (t - start < 2600) requestAnimationFrame(frame); else ctx.clearRect(0,0,c.width,c.height);
+    }
+    requestAnimationFrame(frame);
+  })();` : ''}
+</script>
+</body></html>`;
 }

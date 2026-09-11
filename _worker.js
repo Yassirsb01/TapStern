@@ -39,6 +39,10 @@ export default {
       if (method === 'GET'  && path === '/api/stempel/me') return handleStempelMe(request, env);
       if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env);
       if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
+      if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' });
+      if (method === 'POST' && path === '/api/stempel/upload-banner') return handleStempelUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'stempel-banner', resultKey: 'bannerUrl' });
+      if (method === 'POST' && path === '/api/stempel/remove-logo') return handleStempelRemoveImage(request, env, 'logo_key');
+      if (method === 'POST' && path === '/api/stempel/remove-banner') return handleStempelRemoveImage(request, env, 'banner_key');
 
       const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
       if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
@@ -1154,14 +1158,48 @@ async function handleStempelSettings(request, env) {
   const data = await request.json();
 
   await env.DB.prepare(
-    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ? WHERE id = ?`
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ? WHERE id = ?`
   ).bind(
     Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
     str(data.reward_text) || shop.reward_text,
     str(data.accent_color) || shop.accent_color,
+    str(data.extra_link_url) || null,
+    str(data.extra_link_label) || null,
     shop.id
   ).run();
 
+  return json({ success: true });
+}
+
+/* Logo/Banner-Uploads fürs Stempel-Profil — nutzt denselben PHOTOS-Bucket wie die Karten-App */
+async function handleStempelUploadImage(request, env, opts) {
+  let form;
+  try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
+
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+
+  const file = form.get(opts.formField);
+  if (!file) return json({ error: 'Fehlende Angaben' }, 400);
+  if (!file.type || !file.type.startsWith('image/')) return json({ error: 'Bitte ein Bild hochladen' }, 400);
+  if (file.size > 4 * 1024 * 1024) return json({ error: 'Bild darf maximal 4 MB groß sein' }, 400);
+
+  const ext = (file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+  const key = `${opts.prefix}-${shop.slug}-${Date.now()}.${ext}`;
+  await env.PHOTOS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
+
+  const oldKey = shop[opts.column];
+  if (oldKey) { try { await env.PHOTOS.delete(oldKey); } catch (e) {} }
+
+  await env.DB.prepare(`UPDATE stempel_shops SET ${opts.column} = ? WHERE id = ?`).bind(key, shop.id).run();
+  return json({ success: true, [opts.resultKey]: `/photo/${key}` });
+}
+
+async function handleStempelRemoveImage(request, env, column) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  if (shop[column]) { try { await env.PHOTOS.delete(shop[column]); } catch (e) {} }
+  await env.DB.prepare(`UPDATE stempel_shops SET ${column} = NULL WHERE id = ?`).bind(shop.id).run();
   return json({ success: true });
 }
 
@@ -1224,6 +1262,23 @@ async function handleStempelTap(request, env, slug) {
   return new Response(html, { headers });
 }
 
+/* Branchen-Symbol fürs Hintergrundmuster — Farbe kommt vom Laden, Form von der Branche */
+function brancheIconPath(branche) {
+  const icons = {
+    'Café': '<path d="M8 9 L9.5 20 Q9.7 22 11.5 22 L16.5 22 Q18.3 22 18.5 20 L20 9 Z" fill="C"/><path d="M20 11 Q25 11 25 15 Q25 19 20 18.3" fill="none" stroke="C" stroke-width="1.6"/>',
+    'Restaurant': '<line x1="8" y1="3" x2="8" y2="13" stroke="C" stroke-width="1.6"/><line x1="6" y1="3" x2="6" y2="9" stroke="C" stroke-width="1.6"/><line x1="10" y1="3" x2="10" y2="9" stroke="C" stroke-width="1.6"/><line x1="8" y1="13" x2="8" y2="23" stroke="C" stroke-width="1.6"/><path d="M21 3 L21 11 Q21 13 19 13 L19 23" fill="none" stroke="C" stroke-width="1.6"/>',
+    'Bar': '<path d="M6 5 L19 5 L12.5 14 Z" fill="none" stroke="C" stroke-width="1.6"/><line x1="12.5" y1="14" x2="12.5" y2="22" stroke="C" stroke-width="1.6"/><line x1="8.5" y1="22" x2="16.5" y2="22" stroke="C" stroke-width="1.6"/>',
+    'Shishabar': '<path d="M12 22 Q6 22 6 16.5 Q6 11 12.5 11 Q17 11 17 6.5 Q17 3 12.5 3" fill="none" stroke="C" stroke-width="1.6" stroke-linecap="round"/>',
+  };
+  return icons[branche] || '<path d="M13 2 L15.3 9.7 L23 12 L15.3 14.3 L13 22 L10.7 14.3 L3 12 L10.7 9.7 Z" fill="C"/>';
+}
+
+function patternBackgroundCss(branche, colorHex) {
+  const raw = brancheIconPath(branche).replace(/C/g, colorHex);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72'><g opacity='0.16'>${raw}</g><g opacity='0.16' transform='translate(36 36)'>${raw}</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
 function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }) {
   const accent = shop.accent_color || '#6366f1';
   const message = cooldownHit
@@ -1232,18 +1287,37 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
       ? `Belohnung erreicht: ${escapeHtml(shop.reward_text)}`
       : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
   const newestIndex = cooldownHit ? -1 : customer.stamps - 1;
+  const patternCss = patternBackgroundCss(shop.branche, accent);
+  const bannerHtml = shop.banner_key
+    ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(shop.banner_key)}')"></div>` : '';
+  const logoHtml = shop.logo_key
+    ? `<div class="logo-badge"><img src="/photo/${escapeAttr(shop.logo_key)}" alt=""></div>` : '';
+  const linkHtml = (shop.extra_link_url && shop.extra_link_label)
+    ? `<a class="extra-link" href="${escapeAttr(normalizeUrl(shop.extra_link_url))}" target="_blank" rel="noopener">${escapeHtml(shop.extra_link_label)}</a>` : '';
 
   return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(shop.name)} — Treueprogramm</title>
 <style>
   @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important;} }
-  body{margin:0; font-family:'Inter',system-ui,sans-serif; background:#14131a; color:#f3f0ea;
-       min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden;}
-  .card{background:#211f29; border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:36px 28px;
-        max-width:360px; width:100%; text-align:center; position:relative; z-index:1;
-        animation:cardIn 0.5s cubic-bezier(.16,1,.3,1);}
+  body{
+    margin:0; font-family:'Inter',system-ui,sans-serif; background-color:#14131a; color:#f3f0ea;
+    background-image:${patternCss}; background-repeat:repeat;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden;
+  }
+  .card{
+    background:#211f29; border:1px solid rgba(255,255,255,0.08); border-radius:20px; overflow:hidden;
+    max-width:360px; width:100%; text-align:center; position:relative; z-index:1;
+    animation:cardIn 0.5s cubic-bezier(.16,1,.3,1);
+  }
   @keyframes cardIn{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
+  .banner{height:96px; background-size:cover; background-position:center;}
+  .logo-badge{
+    width:52px; height:52px; border-radius:12px; overflow:hidden; margin:${shop.banner_key ? '-30px auto 6px' : '24px auto 6px'};
+    background:#2a2733; box-shadow:0 0 0 3px #211f29; position:relative; z-index:2;
+  }
+  .logo-badge img{width:100%; height:100%; object-fit:cover;}
+  .body-pad{padding:${shop.banner_key || shop.logo_key ? '0 28px 32px' : '32px 28px'};}
   h1{font-size:1.25rem; margin:0 0 4px; font-weight:700;}
   .msg{color:${accent}; font-weight:600; margin:14px 0 24px; font-size:0.95rem;}
   .stamps{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:0 0 6px;}
@@ -1252,18 +1326,27 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
   .count{font-size:0.85rem; color:#948d9c; margin-top:14px;}
+  .extra-link{
+    display:inline-block; margin-top:20px; padding:11px 22px; border-radius:10px;
+    border:1px solid ${accent}; color:${accent}; text-decoration:none; font-size:0.88rem; font-weight:600;
+  }
 </style></head>
 <body>
   <canvas id="confetti" style="position:fixed; inset:0; pointer-events:none; z-index:0;"></canvas>
   <div class="card">
-    <h1>${escapeHtml(shop.name)}</h1>
-    <div class="msg">${message}</div>
-    <div class="stamps">
-      ${Array.from({ length: shop.reward_threshold }, (_, i) =>
-        `<div class="dot ${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}"></div>`
-      ).join('')}
+    ${bannerHtml}
+    <div class="body-pad">
+      ${logoHtml}
+      <h1>${escapeHtml(shop.name)}</h1>
+      <div class="msg">${message}</div>
+      <div class="stamps">
+        ${Array.from({ length: shop.reward_threshold }, (_, i) =>
+          `<div class="dot ${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}"></div>`
+        ).join('')}
+      </div>
+      <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
+      ${linkHtml}
     </div>
-    <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
   </div>
 <script>
   ${rewardReached ? `

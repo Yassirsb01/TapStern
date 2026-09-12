@@ -47,6 +47,32 @@ export default {
       const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
       if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
 
+      /* ── Business Hub ── */
+      if (method === 'POST' && path === '/api/hub/submit') return handleHubSubmit(request, env);
+      if (method === 'POST' && path === '/api/hub/admin/login') return handleHubAdminLogin(request, env);
+      if (method === 'GET'  && path === '/api/hub/admin/list') return handleHubAdminList(request, env);
+      const hubPageMatch = path.match(/^\/api\/hub\/admin\/page\/([^/]+)$/);
+      if (hubPageMatch && method === 'GET') return handleHubAdminGetPage(request, env, hubPageMatch[1]);
+      if (hubPageMatch && method === 'PUT') return handleHubAdminUpdatePage(request, env, hubPageMatch[1]);
+      const hubUploadMatch = path.match(/^\/api\/hub\/admin\/page\/([^/]+)\/(logo|banner)$/);
+      if (hubUploadMatch && method === 'POST') return handleHubAdminUploadImage(request, env, hubUploadMatch[1], hubUploadMatch[2]);
+      const hubPublishMatch = path.match(/^\/api\/hub\/admin\/page\/([^/]+)\/(publish|unpublish)$/);
+      if (hubPublishMatch && method === 'POST') return handleHubAdminSetPublished(request, env, hubPublishMatch[1], hubPublishMatch[2] === 'publish');
+      const hubReadyMatch = path.match(/^\/api\/hub\/admin\/page\/([^/]+)\/ready$/);
+      if (hubReadyMatch && method === 'POST') return handleHubAdminMarkReady(request, env, hubReadyMatch[1]);
+      const hubPaidMatch = path.match(/^\/api\/hub\/admin\/page\/([^/]+)\/mark-paid$/);
+      if (hubPaidMatch && method === 'POST') return handleHubAdminMarkPaid(request, env, hubPaidMatch[1]);
+      const hubDeleteMatch = path.match(/^\/api\/hub\/admin\/page\/([^/]+)$/);
+      if (hubDeleteMatch && method === 'DELETE') return handleHubAdminDeletePage(request, env, hubDeleteMatch[1]);
+
+      const hubPreviewMatch = path.match(/^\/hub-preview\/([^/]+)$/);
+      if (method === 'GET' && hubPreviewMatch) return handleHubPreviewPage(request, env, hubPreviewMatch[1]);
+      const hubCheckoutMatch = path.match(/^\/api\/hub\/preview\/([^/]+)\/checkout$/);
+      if (method === 'POST' && hubCheckoutMatch) return handleHubPreviewCheckout(request, env, hubCheckoutMatch[1]);
+
+      const hubPublicMatch = path.match(/^\/hub\/([^/]+)$/);
+      if (method === 'GET' && hubPublicMatch) return handleHubPublicPage(request, env, hubPublicMatch[1]);
+
       const vcardMatch = path.match(/^\/vk\/([^/]+)\/vcard$/);
       if (method === 'GET' && vcardMatch) return handleVcard(request, env, ctx, vcardMatch[1]);
 
@@ -1158,13 +1184,14 @@ async function handleStempelSettings(request, env) {
   const data = await request.json();
 
   await env.DB.prepare(
-    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ? WHERE id = ?`
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ? WHERE id = ?`
   ).bind(
     Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
     str(data.reward_text) || shop.reward_text,
     str(data.accent_color) || shop.accent_color,
     str(data.extra_link_url) || null,
     str(data.extra_link_label) || null,
+    Math.max(10, parseInt(data.min_stamp_interval_minutes) || shop.min_stamp_interval_minutes),
     shop.id
   ).run();
 
@@ -1238,7 +1265,8 @@ async function handleStempelTap(request, env, slug) {
     headers.append('Set-Cookie', `stempel_device=${newToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000`);
   } else {
     const lastStamp = customer.last_stamp_at ? new Date(customer.last_stamp_at + 'Z').getTime() : 0;
-    if (Date.now() - lastStamp < 2 * 60 * 1000) {
+    const cooldownMs = (shop.min_stamp_interval_minutes || 240) * 60 * 1000;
+    if (Date.now() - lastStamp < cooldownMs) {
       cooldownHit = true;
     } else if (customer.stamps >= shop.reward_threshold) {
       await env.DB.prepare(
@@ -1373,4 +1401,416 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   })();` : ''}
 </script>
 </body></html>`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Business Hub — Multi-Link-Landingpage
+   Kein Kunden-Login: Kunde bestellt + beschreibt seine Wunsch-Seite,
+   Yassir trägt es im eigenen Admin-Bereich ein und veröffentlicht.
+   Tabellen: hub_pages, hub_links, hub_admin_sessions
+   ══════════════════════════════════════════════════════════════ */
+
+const HUB_MAX_LINKS = 10;
+const HUB_ADMIN_SESSION_DAYS = 14;
+
+function hubAdminCookie(token) {
+  return `hub_admin_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${HUB_ADMIN_SESSION_DAYS * 86400}`;
+}
+async function requireHubAdmin(request, env) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)hub_admin_session=([^;]+)/);
+  if (!m) return false;
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM hub_admin_sessions WHERE token_hash = ? AND expires_at > datetime('now')`
+  ).bind(await sha256(m[1])).first();
+  return !!row;
+}
+
+async function hubUniqueSlug(env, businessName) {
+  const base = str(businessName).toLowerCase()
+    .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[c]))
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'hub';
+  let slug = base, n = 1;
+  while (await env.DB.prepare('SELECT 1 FROM hub_pages WHERE slug = ?').bind(slug).first()) {
+    n++; slug = base + '-' + n;
+  }
+  return slug;
+}
+
+function parseHubLinks(raw) {
+  let links;
+  try { links = JSON.parse(raw || '[]'); } catch (e) { return []; }
+  if (!Array.isArray(links)) return [];
+  return links
+    .filter(l => l && str(l.label) && str(l.url))
+    .slice(0, HUB_MAX_LINKS)
+    .map(l => ({ description: str(l.description).slice(0, 200), label: str(l.label).slice(0, 60), url: str(l.url).slice(0, 500) }));
+}
+
+/* ── Bestellung / Erstanlage durch den Kunden ── */
+async function handleHubSubmit(request, env) {
+  let form;
+  try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
+
+  const businessName = str(form.get('business_name'));
+  const contactEmail = str(form.get('contact_email'));
+  const contactPhone = str(form.get('contact_phone'));
+  const bgColor = /^#[0-9a-fA-F]{6}$/.test(str(form.get('bg_color'))) ? str(form.get('bg_color')) : '#161826';
+  const links = parseHubLinks(form.get('links'));
+  const cardQuantity = [10, 20, 50, 100].includes(parseInt(form.get('card_quantity'))) ? parseInt(form.get('card_quantity')) : 10;
+
+  if (!businessName) return json({ error: 'Bitte einen Firmen-/Betriebsnamen angeben' }, 400);
+  if (contactEmail && !validEmail(contactEmail)) return json({ error: 'Bitte eine gültige E-Mail-Adresse angeben' }, 400);
+
+  // Bilder vorab prüfen, bevor irgendetwas in der Datenbank landet
+  const logoFile = form.get('logo');
+  const bannerFile = form.get('banner');
+  for (const f of [logoFile, bannerFile]) {
+    if (f && typeof f === 'object' && f.size > 0) {
+      if (!f.type || !f.type.startsWith('image/')) return json({ error: 'Logo/Banner müssen Bilddateien sein' }, 400);
+      if (f.size > 5 * 1024 * 1024) return json({ error: 'Bilder dürfen maximal 5 MB groß sein' }, 400);
+    }
+  }
+
+  const id = crypto.randomUUID();
+  const slug = await hubUniqueSlug(env, businessName);
+  const previewToken = crypto.randomUUID();
+
+  let logoKey = null, bannerKey = null;
+  try {
+    if (logoFile && typeof logoFile === 'object' && logoFile.size > 0) {
+      logoKey = `hub-logo-${slug}-${Date.now()}.${(logoFile.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`;
+      await env.PHOTOS.put(logoKey, await logoFile.arrayBuffer(), { httpMetadata: { contentType: logoFile.type } });
+    }
+    if (bannerFile && typeof bannerFile === 'object' && bannerFile.size > 0) {
+      bannerKey = `hub-banner-${slug}-${Date.now()}.${(bannerFile.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`;
+      await env.PHOTOS.put(bannerKey, await bannerFile.arrayBuffer(), { httpMetadata: { contentType: bannerFile.type } });
+    }
+  } catch (e) {
+    return json({ error: 'Bild-Upload fehlgeschlagen: ' + e.message }, 500);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO hub_pages (id, slug, business_name, contact_email, contact_phone, logo_key, banner_key, bg_color, card_quantity, preview_token, published)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+  ).bind(id, slug, businessName, contactEmail || null, contactPhone || null, logoKey, bannerKey, bgColor, cardQuantity, previewToken).run();
+
+  for (let i = 0; i < links.length; i++) {
+    await env.DB.prepare(
+      `INSERT INTO hub_links (id, page_id, description, label, url, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(crypto.randomUUID(), id, links[i].description || null, links[i].label, links[i].url, i).run();
+  }
+
+  if (env.MAIL_FROM) {
+    const adminUrl = new URL(request.url).origin + '/hub-admin.html';
+    sendMail(env, parseSender(env.MAIL_FROM).email, 'Neue Business-Hub-Bestellung: ' + businessName,
+      'Neue Bestellung eingegangen',
+      `${businessName} hat einen Business Hub bestellt. ${links.length} Link(s) angegeben. Jetzt im Admin-Bereich prüfen und veröffentlichen.`,
+      'Zum Admin-Bereich', adminUrl
+    ).catch(() => {});
+  }
+
+  return json({ success: true });
+}
+
+/* ── Admin-Bereich (nur Yassir) ── */
+async function handleHubAdminLogin(request, env) {
+  const data = await request.json();
+  if (!env.HUB_ADMIN_PASSWORD) return json({ error: 'Admin-Zugang ist noch nicht eingerichtet' }, 500);
+  if (str(data.password) !== env.HUB_ADMIN_PASSWORD) return json({ error: 'Falsches Passwort' }, 401);
+
+  const token = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO hub_admin_sessions (token_hash, expires_at) VALUES (?, datetime('now', '+${HUB_ADMIN_SESSION_DAYS} days'))`
+  ).bind(await sha256(token)).run();
+
+  return json({ success: true }, 200, hubAdminCookie(token));
+}
+
+async function handleHubAdminList(request, env) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const { results } = await env.DB.prepare(
+    `SELECT id, slug, business_name, published, created_at FROM hub_pages ORDER BY created_at DESC`
+  ).all();
+  return json({ pages: results });
+}
+
+async function handleHubAdminGetPage(request, env, id) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+  const { results: links } = await env.DB.prepare(
+    `SELECT id, description, label, url FROM hub_links WHERE page_id = ? ORDER BY sort_order`
+  ).bind(id).all();
+  return json({ page, links });
+}
+
+async function handleHubAdminUpdatePage(request, env, id) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT id FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+
+  const data = await request.json();
+  const businessName = str(data.business_name);
+  if (!businessName) return json({ error: 'Firmenname darf nicht leer sein' }, 400);
+  const bgColor = /^#[0-9a-fA-F]{6}$/.test(str(data.bg_color)) ? str(data.bg_color) : '#161826';
+  const cardQuantity = [10, 20, 50, 100].includes(parseInt(data.card_quantity)) ? parseInt(data.card_quantity) : 10;
+  const links = parseHubLinks(JSON.stringify(data.links || []));
+
+  await env.DB.prepare(
+    `UPDATE hub_pages SET business_name = ?, contact_email = ?, contact_phone = ?, bg_color = ?, card_quantity = ?, updated_at = datetime('now') WHERE id = ?`
+  ).bind(businessName, str(data.contact_email) || null, str(data.contact_phone) || null, bgColor, cardQuantity, id).run();
+
+  await env.DB.prepare(`DELETE FROM hub_links WHERE page_id = ?`).bind(id).run();
+  for (let i = 0; i < links.length; i++) {
+    await env.DB.prepare(
+      `INSERT INTO hub_links (id, page_id, description, label, url, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(crypto.randomUUID(), id, links[i].description || null, links[i].label, links[i].url, i).run();
+  }
+  return json({ success: true });
+}
+
+async function handleHubAdminUploadImage(request, env, id, kind) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+
+  let form;
+  try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
+  const file = form.get('file');
+  if (!file || !file.type || !file.type.startsWith('image/')) return json({ error: 'Bitte ein Bild hochladen' }, 400);
+  if (file.size > 5 * 1024 * 1024) return json({ error: 'Bild darf maximal 5 MB groß sein' }, 400);
+
+  const column = kind === 'logo' ? 'logo_key' : 'banner_key';
+  const key = `hub-${kind}-${page.slug}-${Date.now()}.${(file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`;
+  await env.PHOTOS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } });
+
+  if (page[column]) { try { await env.PHOTOS.delete(page[column]); } catch (e) {} }
+  await env.DB.prepare(`UPDATE hub_pages SET ${column} = ?, updated_at = datetime('now') WHERE id = ?`).bind(key, id).run();
+  return json({ success: true, url: `/photo/${key}` });
+}
+
+async function handleHubAdminSetPublished(request, env, id, published) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT id FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+  await env.DB.prepare(`UPDATE hub_pages SET published = ?, updated_at = datetime('now') WHERE id = ?`)
+    .bind(published ? 1 : 0, id).run();
+  return json({ success: true });
+}
+
+/* Yassir ist mit dem Bauen fertig — Kunde bekommt den Vorschau-Link per Mail */
+async function handleHubAdminMarkReady(request, env, id) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+  if (!page.contact_email) return json({ error: 'Für diese Seite ist keine Kunden-E-Mail hinterlegt' }, 400);
+
+  await env.DB.prepare(`UPDATE hub_pages SET ready_for_review = 1, updated_at = datetime('now') WHERE id = ?`).bind(id).run();
+
+  const previewUrl = new URL(request.url).origin + '/hub-preview/' + page.preview_token;
+  await sendMail(env, page.contact_email, 'Deine Business-Hub-Seite ist fertig zur Ansicht',
+    'Deine Seite ist startklar',
+    `Wir haben deine Business-Hub-Landingpage für ${page.business_name} fertiggestellt. Schau sie dir unverbindlich an — bestellen kannst du erst, wenn sie dir gefällt.`,
+    'Vorschau ansehen', previewUrl
+  );
+  return json({ success: true });
+}
+
+async function handleHubAdminMarkPaid(request, env, id) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT id FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+  await env.DB.prepare(`UPDATE hub_pages SET paid = 1, updated_at = datetime('now') WHERE id = ?`).bind(id).run();
+  return json({ success: true });
+}
+
+async function handleHubAdminDeletePage(request, env, id) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE id = ?`).bind(id).first();
+  if (!page) return json({ error: 'Nicht gefunden' }, 404);
+  if (page.logo_key) { try { await env.PHOTOS.delete(page.logo_key); } catch (e) {} }
+  if (page.banner_key) { try { await env.PHOTOS.delete(page.banner_key); } catch (e) {} }
+  await env.DB.prepare(`DELETE FROM hub_links WHERE page_id = ?`).bind(id).run();
+  await env.DB.prepare(`DELETE FROM hub_pages WHERE id = ?`).bind(id).run();
+  return json({ success: true });
+}
+
+/* Preisstaffel für die Business-Hub-Karten (Menge -> Preis in EUR) */
+const HUB_CARD_PRICES = { 10: 115, 20: 180, 50: 295, 100: 350 };
+const HUB_HOSTING_PRICES = { 1: 39, 2: 69 };
+
+/* ── Vorschau-Seite für den Kunden — funktioniert unabhängig vom Veröffentlichungs-Status ── */
+async function handleHubPreviewPage(request, env, token) {
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE preview_token = ?`).bind(token).first();
+  if (!page) return new Response('Vorschau nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+
+  const { results: links } = await env.DB.prepare(
+    `SELECT description, label, url FROM hub_links WHERE page_id = ? ORDER BY sort_order`
+  ).bind(page.id).all();
+
+  const bodyHtml = renderHubBody(page, links);
+  const cardPrice = HUB_CARD_PRICES[page.card_quantity] || HUB_CARD_PRICES[10];
+
+  const approvalBar = page.paid ? `
+    <div class="approval-bar paid">✓ Bestellt — wir melden uns mit den nächsten Schritten.</div>
+  ` : `
+    <div class="approval-bar">
+      <p>Gefällt dir deine Seite so? ${page.card_quantity} Karten/Aufkleber: <strong>${cardPrice}€</strong></p>
+      <label>Hosting-Laufzeit</label>
+      <div class="hosting-choice">
+        <label><input type="radio" name="hy" value="1" checked> 1 Jahr — 39€</label>
+        <label><input type="radio" name="hy" value="2"> 2 Jahre — 69€</label>
+      </div>
+      <button id="approveBtn" class="approve-btn">Jetzt bestellen &amp; bezahlen</button>
+      <div class="approve-err" id="approveErr"></div>
+    </div>
+  `;
+
+  return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vorschau — ${escapeHtml(page.business_name)}</title>
+<style>
+  body{margin:0; font-family:'Inter',system-ui,sans-serif; background:#0d0f1a; color:#f3f0ea; min-height:100vh; padding-bottom:40px;}
+  .preview-banner{background:#6366f1; color:#fff; text-align:center; padding:10px; font-size:0.85rem; font-weight:600;}
+  ${hubPageStyles(page.bg_color)}
+  .approval-bar{max-width:420px; margin:24px auto 0; background:#211f29; border-radius:14px; padding:22px; text-align:center;}
+  .approval-bar.paid{color:#4ade80; font-weight:600;}
+  .approval-bar p{margin:0 0 14px; font-size:0.95rem;}
+  .hosting-choice{display:flex; flex-direction:column; gap:8px; text-align:left; font-size:0.88rem; margin:8px 0 16px;}
+  .approve-btn{width:100%; padding:13px; border-radius:10px; border:none; background:#6366f1; color:#fff; font-weight:600; font-size:0.95rem; cursor:pointer;}
+  .approve-btn:disabled{opacity:0.6;}
+  .approve-err{color:#f2765a; font-size:0.85rem; margin-top:10px;}
+</style></head>
+<body>
+  <div class="preview-banner">Das ist eine unverbindliche Vorschau — noch nicht öffentlich sichtbar.</div>
+  ${bodyHtml}
+  ${approvalBar}
+<script>
+  var btn = document.getElementById('approveBtn');
+  if (btn) {
+    btn.onclick = async function(){
+      btn.disabled = true; btn.textContent = 'Weiterleitung zu Stripe …';
+      var years = document.querySelector('input[name="hy"]:checked').value;
+      try {
+        var res = await fetch('/api/hub/preview/${token}/checkout', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ hosting_years: years })
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Fehler');
+        window.location.href = data.url;
+      } catch (e) {
+        document.getElementById('approveErr').textContent = e.message;
+        btn.disabled = false; btn.textContent = 'Jetzt bestellen & bezahlen';
+      }
+    };
+  }
+</script>
+</body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+/* Zahlung erst nach Zustimmung des Kunden — setzt NICHT automatisch "published",
+   das macht Yassir bewusst manuell im Admin-Bereich, nachdem er den Zahlungseingang
+   geprüft hat (schützt davor, dass jemand die Erfolgs-URL ohne echte Zahlung aufruft) */
+async function handleHubPreviewCheckout(request, env, token) {
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE preview_token = ?`).bind(token).first();
+  if (!page) return json({ error: 'Vorschau nicht gefunden' }, 404);
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet' }, 500);
+
+  const data = await readJson(request);
+  const hostingYears = [1, 2].includes(parseInt(data?.hosting_years)) ? parseInt(data.hosting_years) : 1;
+  const cardPrice = HUB_CARD_PRICES[page.card_quantity] || HUB_CARD_PRICES[10];
+  const hostingPrice = HUB_HOSTING_PRICES[hostingYears];
+  const totalCents = Math.round((cardPrice + hostingPrice) * 100);
+
+  await env.DB.prepare(`UPDATE hub_pages SET hosting_years = ? WHERE id = ?`).bind(hostingYears, page.id).run();
+
+  const origin = new URL(request.url).origin;
+  const params = new URLSearchParams();
+  params.set('mode', 'payment');
+  params.set('success_url', origin + '/hub-preview/' + token + '?zahlung=erfolg');
+  params.set('cancel_url', origin + '/hub-preview/' + token + '?zahlung=abgebrochen');
+  if (page.contact_email) params.set('customer_email', page.contact_email);
+  params.set('line_items[0][price_data][currency]', 'eur');
+  params.set('line_items[0][price_data][product_data][name]',
+    `Business Hub — ${page.card_quantity} Karten + ${hostingYears} Jahr(e) Hosting (${page.business_name})`);
+  params.set('line_items[0][price_data][unit_amount]', String(totalCents));
+  params.set('line_items[0][quantity]', '1');
+  params.set('metadata[hub_page_id]', page.id);
+
+  try {
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    const session = await res.json();
+    if (!res.ok) return json({ error: session.error?.message || 'Stripe-Fehler' }, 502);
+
+    // Zahlungsversuch als "unterwegs" markieren, damit Yassir es im Admin-Bereich sieht —
+    // "paid" wird erst nach manueller Prüfung durch Yassir gesetzt, nicht automatisch hier.
+    if (env.MAIL_FROM) {
+      sendMail(env, parseSender(env.MAIL_FROM).email, 'Business Hub: Kunde will bestellen — ' + page.business_name,
+        'Zahlung angestoßen', `${page.business_name} hat die Bestellung gestartet (${page.card_quantity} Karten, ${hostingYears} Jahr(e) Hosting). Bitte Zahlungseingang bei Stripe prüfen, bevor du im Admin-Bereich veröffentlichst.`,
+        'Zum Admin-Bereich', origin + '/hub-admin.html').catch(() => {});
+    }
+
+    return json({ url: session.url });
+  } catch (e) {
+    return json({ error: 'Zahlung konnte nicht gestartet werden: ' + e.message }, 500);
+  }
+}
+
+/* ── Öffentliche Landingpage ── */
+function hubPageStyles(bgColor) {
+  const bg = bgColor || '#161826';
+  return `
+  body{margin:0; font-family:'Inter',system-ui,sans-serif; background:${bg}; color:#f3f0ea; min-height:100vh;}
+  .page{max-width:420px; width:100%; margin:0 auto;}
+  .banner{height:150px; background-size:cover; background-position:center;}
+  .logo-badge{width:64px; height:64px; border-radius:14px; overflow:hidden; margin:auto; background:rgba(255,255,255,0.08); box-shadow:0 0 0 4px ${bg}; position:relative;}
+  .logo-badge img{width:100%; height:100%; object-fit:cover;}
+  h1{text-align:center; font-size:1.3rem; margin:0 0 26px; padding:0 20px;}
+  .link-block{padding:0 20px; margin-bottom:16px;}
+  .link-desc{font-size:0.85rem; color:rgba(243,240,234,0.65); margin:0 0 8px; text-align:center;}
+  .link-btn{display:block; text-align:center; padding:14px; border-radius:12px; background:rgba(255,255,255,0.08); color:#f3f0ea; text-decoration:none; font-weight:600; font-size:0.95rem;}
+  .link-btn:hover{background:rgba(255,255,255,0.14);}`;
+}
+
+function renderHubBody(page, links) {
+  const bannerHtml = page.banner_key ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(page.banner_key)}')"></div>` : '';
+  const logoStyle = page.banner_key ? 'margin-top:-34px; margin-bottom:14px;' : 'margin-top:40px; margin-bottom:14px;';
+  const logoHtml = page.logo_key ? `<div class="logo-badge" style="${logoStyle}"><img src="/photo/${escapeAttr(page.logo_key)}" alt=""></div>` : '<div style="height:40px;"></div>';
+  const linksHtml = (links || []).map(l => `
+    <div class="link-block">
+      ${l.description ? `<p class="link-desc">${escapeHtml(l.description)}</p>` : ''}
+      <a class="link-btn" href="${escapeAttr(normalizeUrl(l.url))}" target="_blank" rel="noopener">${escapeHtml(l.label)}</a>
+    </div>`).join('');
+
+  return `<div class="page">
+    ${bannerHtml}
+    ${logoHtml}
+    <h1>${escapeHtml(page.business_name)}</h1>
+    ${linksHtml || '<p style="text-align:center; color:rgba(243,240,234,0.5);">Noch keine Links hinterlegt.</p>'}
+  </div>`;
+}
+
+async function handleHubPublicPage(request, env, slug) {
+  const page = await env.DB.prepare(`SELECT * FROM hub_pages WHERE slug = ?`).bind(slug).first();
+  if (!page || !page.published) {
+    return new Response('Diese Seite ist nicht (mehr) verfügbar.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  const { results: links } = await env.DB.prepare(
+    `SELECT description, label, url FROM hub_links WHERE page_id = ? ORDER BY sort_order`
+  ).bind(page.id).all();
+
+  return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(page.business_name)}</title>
+<style>${hubPageStyles(page.bg_color)}
+  body{display:flex; justify-content:center; padding-bottom:40px;}
+</style></head>
+<body>
+  ${renderHubBody(page, links)}
+</body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }

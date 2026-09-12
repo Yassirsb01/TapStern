@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Hub bestellen — Tapstern</title>
+<link rel="icon" type="image/png" href="tapstern-favicon.png">
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=space-grotesk:600,700|inter:400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f5f6fb; --card:#ffffff; --ink:#161a2c; --ink-soft:#5b6079;
+    --primary:#6366f1; --primary-bright:#4338ca; --line:rgba(22,26,44,0.12);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:'Inter',sans-serif; background:var(--bg); color:var(--ink); line-height:1.55;}
+  .wrap{max-width:560px; margin:0 auto; padding:40px 24px 80px;}
+  h1{font-family:'Space Grotesk',sans-serif; font-size:1.5rem; margin:0 0 6px;}
+  .sub{color:var(--ink-soft); font-size:0.95rem; margin:0 0 32px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:26px; margin-bottom:20px;}
+  h2{font-family:'Space Grotesk',sans-serif; font-size:1.05rem; margin:0 0 16px;}
+  label{display:block; font-size:0.82rem; font-weight:600; color:var(--ink-soft); margin:14px 0 6px;}
+  label:first-of-type{margin-top:0;}
+  input[type=text], input[type=email], input[type=tel], input[type=url], textarea{
+    width:100%; padding:11px 12px; border-radius:9px; border:1px solid var(--line);
+    font:inherit; font-size:0.92rem; color:var(--ink);
+  }
+  input:focus, textarea:focus{outline:2px solid var(--primary); outline-offset:1px;}
+  .opt{font-weight:400; color:var(--ink-soft);}
+  .file-row{display:flex; align-items:center; gap:10px;}
+  .file-btn{
+    padding:9px 16px; border-radius:9px; border:1px solid var(--line); background:none;
+    font-size:0.85rem; cursor:pointer; color:var(--ink);
+  }
+  .file-status{font-size:0.8rem; color:var(--ink-soft);}
+  .swatches{display:flex; gap:10px; margin-top:2px;}
+  .swatch{width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
+  .swatch.on{border-color:var(--ink);}
+  .link-card{border:1px dashed var(--line); border-radius:12px; padding:16px; margin-bottom:12px; position:relative;}
+  .link-card .remove{position:absolute; top:10px; right:10px; background:none; border:none; color:var(--ink-soft); font-size:1.1rem; cursor:pointer;}
+  .add-link{
+    width:100%; padding:12px; border-radius:9px; border:1px dashed var(--primary); background:none;
+    color:var(--primary-bright); font-weight:600; font-size:0.9rem; cursor:pointer; margin-top:4px;
+  }
+  .btn-primary{
+    width:100%; padding:14px; border-radius:10px; border:none; background:var(--primary); color:#fff;
+    font-weight:600; font-size:0.98rem; cursor:pointer; margin-top:8px;
+  }
+  .btn-primary:hover{background:var(--primary-bright);}
+  .btn-primary:disabled{opacity:0.6; cursor:not-allowed;}
+  .error{color:#dc2626; font-size:0.85rem; margin-top:10px; display:none;}
+  .confirmation{display:none; text-align:center; padding:60px 24px;}
+  .confirmation.show{display:block;}
+  .confirmation h2{font-size:1.3rem;}
+</style>
+</head>
+<body>
+<div class="wrap" id="formSection">
+  <h1>Business Hub konfigurieren</h1>
+  <p class="sub">Beschreib uns, wie deine Landingpage aussehen soll — komplett kostenlos und unverbindlich. Wir bauen sie mit deinem Logo und deinen Links, du bekommst eine Vorschau — <strong>bestellt wird erst, wenn sie dir gefällt.</strong></p>
+
+  <form id="hubForm">
+    <div class="card">
+      <h2>Dein Betrieb</h2>
+      <label>Firmen-/Betriebsname *</label>
+      <input type="text" id="business_name" required placeholder="z. B. Café Sonnenblick">
+      <label>Deine E-Mail *</label>
+      <input type="email" id="contact_email" required placeholder="name@beispiel.de">
+      <label>Telefon <span class="opt">(optional)</span></label>
+      <input type="tel" id="contact_phone">
+      <label>Wie viele Karten/Aufkleber wirst du brauchen?</label>
+      <select id="card_quantity">
+        <option value="10">10 Stück — 115€</option>
+        <option value="20">20 Stück — 180€</option>
+        <option value="50">50 Stück — 295€</option>
+        <option value="100">100 Stück — 350€</option>
+      </select>
+      <p style="font-size:0.78rem; color:var(--ink-soft); margin:6px 0 0;">Nur zur Orientierung — bezahlt wird erst nach der Vorschau, du kannst die Menge dann noch anpassen.</p>
+    </div>
+
+    <div class="card">
+      <h2>Bild & Farbe</h2>
+      <label>Logo <span class="opt">(optional)</span></label>
+      <div class="file-row">
+        <label class="file-btn">Datei wählen<input type="file" id="f_logo" accept="image/*" hidden></label>
+        <span class="file-status" id="logo_status">keine Datei</span>
+      </div>
+      <label>Bannerbild <span class="opt">(optional)</span></label>
+      <div class="file-row">
+        <label class="file-btn">Datei wählen<input type="file" id="f_banner" accept="image/*" hidden></label>
+        <span class="file-status" id="banner_status">keine Datei</span>
+      </div>
+      <label>Hintergrundfarbe</label>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="card">
+      <h2>Links</h2>
+      <p style="font-size:0.82rem; color:var(--ink-soft); margin:-6px 0 14px;">Zum Beispiel: Social Media, Google-Bewertung, Speisekarte, eigene Webseite, Reservierung, Allergien-Liste, aktuelle Angebote — was auch immer für dich passt.</p>
+      <div id="linksList"></div>
+      <button type="button" class="add-link" id="addLink">+ Link hinzufügen</button>
+    </div>
+
+    <button type="submit" class="btn-primary" id="submitBtn">Kostenlos konfigurieren lassen</button>
+    <div class="error" id="formError"></div>
+  </form>
+</div>
+
+<div class="wrap confirmation" id="confirmation">
+  <h2>Danke für deine Angaben!</h2>
+  <p>Wir bauen deine Business-Hub-Seite und schicken dir eine Vorschau per E-Mail. Bestellt wird erst, wenn sie dir gefällt.</p>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const COLORS = ['#161826', '#6366f1', '#0e7490', '#16a34a', '#d1512d'];
+  let logoFile = null, bannerFile = null;
+
+  $('swatches').innerHTML = COLORS.map((c, i) => `<div class="swatch ${i === 0 ? 'on' : ''}" data-c="${c}" style="background:${c}"></div>`).join('');
+  document.querySelectorAll('.swatch').forEach(s => s.onclick = () => {
+    document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+    s.classList.add('on');
+  });
+
+  function resizeImage(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+        else if (h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => blob ? resolve(new File([blob], 'img.jpg', { type: 'image/jpeg' })) : reject(new Error('Bild konnte nicht verarbeitet werden')), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Bild konnte nicht gelesen werden')); };
+      img.src = url;
+    });
+  }
+
+  $('f_logo').onchange = async e => {
+    const f0 = e.target.files[0]; if (!f0) return;
+    $('logo_status').textContent = 'Wird verarbeitet …';
+    try { logoFile = await resizeImage(f0, 300, 0.85); $('logo_status').textContent = 'Logo ausgewählt'; }
+    catch (err) { $('logo_status').textContent = err.message; }
+  };
+  $('f_banner').onchange = async e => {
+    const f0 = e.target.files[0]; if (!f0) return;
+    $('banner_status').textContent = 'Wird verarbeitet …';
+    try { bannerFile = await resizeImage(f0, 1200, 0.82); $('banner_status').textContent = 'Banner ausgewählt'; }
+    catch (err) { $('banner_status').textContent = err.message; }
+  };
+
+  let linkCount = 0;
+  function addLinkRow(values) {
+    if (linkCount >= 10) { $('formError').textContent = 'Maximal 10 Links möglich.'; $('formError').style.display = 'block'; return; }
+    linkCount++;
+    const div = document.createElement('div');
+    div.className = 'link-card';
+    div.innerHTML = `
+      <button type="button" class="remove" aria-label="Link entfernen">×</button>
+      <label>Beschreibung <span class="opt">(optional, Text vor dem Button)</span></label>
+      <input type="text" class="l-desc" placeholder="z. B. Schau dir unsere Speisekarte an" value="${values && values.description ? values.description.replace(/"/g, '&quot;') : ''}">
+      <label>Button-Text *</label>
+      <input type="text" class="l-label" placeholder="z. B. Speisekarte ansehen" value="${values && values.label ? values.label.replace(/"/g, '&quot;') : ''}">
+      <label>Ziel-Adresse *</label>
+      <input type="url" class="l-url" placeholder="z. B. instagram.com/deincafe" value="${values && values.url ? values.url.replace(/"/g, '&quot;') : ''}">
+    `;
+    div.querySelector('.remove').onclick = () => { div.remove(); linkCount--; };
+    $('linksList').appendChild(div);
+  }
+  $('addLink').onclick = () => addLinkRow();
+  addLinkRow(); addLinkRow();
+
+  $('hubForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const errorEl = $('formError');
+    errorEl.style.display = 'none';
+
+    const links = Array.from(document.querySelectorAll('.link-card')).map(card => ({
+      description: card.querySelector('.l-desc').value.trim(),
+      label: card.querySelector('.l-label').value.trim(),
+      url: card.querySelector('.l-url').value.trim()
+    })).filter(l => l.label && l.url);
+
+    if (!$('business_name').value.trim() || !$('contact_email').value.trim()) {
+      errorEl.textContent = 'Bitte Betriebsname und E-Mail ausfüllen.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    const btn = $('submitBtn');
+    btn.disabled = true; btn.textContent = 'Wird gesendet …';
+
+    try {
+      const fd = new FormData();
+      fd.append('business_name', $('business_name').value.trim());
+      fd.append('contact_email', $('contact_email').value.trim());
+      fd.append('contact_phone', $('contact_phone').value.trim());
+      fd.append('bg_color', document.querySelector('.swatch.on').dataset.c);
+      fd.append('card_quantity', $('card_quantity').value);
+      fd.append('links', JSON.stringify(links));
+      if (logoFile) fd.append('logo', logoFile);
+      if (bannerFile) fd.append('banner', bannerFile);
+
+      const res = await fetch('/api/hub/submit', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Fehler beim Senden');
+
+      $('formSection').style.display = 'none';
+      $('confirmation').classList.add('show');
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Bestellung absenden';
+    }
+  });
+</script>
+</body>
+</html>

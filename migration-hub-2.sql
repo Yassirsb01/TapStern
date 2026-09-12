@@ -1,0 +1,5 @@
+ALTER TABLE hub_pages ADD COLUMN preview_token TEXT;
+ALTER TABLE hub_pages ADD COLUMN card_quantity INTEGER DEFAULT 10;
+ALTER TABLE hub_pages ADD COLUMN ready_for_review INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE hub_pages ADD COLUMN hosting_years INTEGER;
+ALTER TABLE hub_pages ADD COLUMN paid INTEGER NOT NULL DEFAULT 0;

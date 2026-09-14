@@ -126,7 +126,7 @@
   h1.display{font-size:clamp(1.9rem, 3.4vw, 2.6rem); color:var(--ink);}
   .page-head p{margin-top:14px; color:var(--ink-soft); font-size:1.02rem; max-width:56ch;}
 
-  /* 🏷️ Rabatt-Banner */
+  /* Rabatt-Banner */
   .deal-strip{
     background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(6,182,212,0.12));
     border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:12px 18px;
@@ -334,7 +334,7 @@
     <p>Von der klassischen Bewertungskarte bis zur Multi-Link-Karte für Social Media — wähle deine Produkte aus und lege sie einfach in den Warenkorb.</p>
     
     <div class="deal-strip">
-      🔥 <span><strong>Staffelrabatt:</strong> Ab 5 Stück erhältst du automatisch <strong>50 % Rabatt</strong> auf den Stückpreis im Warenkorb!</span>
+      🔥 <span><strong>Staffelrabatt:</strong> Ab 5 Stück Gesamtmenge erhältst du automatisch <strong>50 % Rabatt</strong> auf den Stückpreis im Warenkorb!</span>
     </div>
   </div>
 </div>
@@ -379,7 +379,7 @@
 
 <script>
   // ═════════════════════════════════════════════════════════════════
-  // 🛒 WARENKORB LOGIK (localStorage) MIT 50 % MENGENRABATT
+  // 🛒 WARENKORB LOGIK MIT 50 % RABATT AUF DIE GESAMT-STÜCKZAHL
   // ═════════════════════════════════════════════════════════════════
   let CART = [];
   try {
@@ -436,6 +436,7 @@
     const subtotalEl = document.getElementById('cartSubtotal');
     const footerEl = document.getElementById('cartFooter');
 
+    // 1. Gesamtzahl aller Artikel zusammenrechnen (z. B. 2 + 2 + 1 = 5)
     const totalCount = CART.reduce((sum, i) => sum + i.qty, 0);
     countEl.textContent = totalCount;
 
@@ -446,11 +447,13 @@
     }
 
     footerEl.style.display = 'block';
+
+    // 2. Greift der Rabatt ab 5 Stück insgesamt?
+    const hasDiscount = totalCount >= 5;
     let subtotal = 0;
 
     itemsEl.innerHTML = CART.map((item, idx) => {
-      const isDiscounted = item.qty >= 5;
-      const unitPrice = isDiscounted ? item.price * 0.5 : item.price;
+      const unitPrice = hasDiscount ? item.price * 0.5 : item.price;
       const itemTotal = unitPrice * item.qty;
       const originalTotal = item.price * item.qty;
       subtotal += itemTotal;
@@ -465,9 +468,9 @@
           <div class="cart-item-info">
             <div class="cart-item-title">${item.name}</div>
             <div class="cart-item-price">
-              ${isDiscounted ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:0.75rem;margin-right:6px;">${originalTotal.toFixed(2).replace('.', ',')} €</span>` : ''}
+              ${hasDiscount ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:0.75rem;margin-right:6px;">${originalTotal.toFixed(2).replace('.', ',')} €</span>` : ''}
               <span>${itemTotal.toFixed(2).replace('.', ',')} €</span>
-              ${isDiscounted ? '<span style="background:#dcfce7;color:#166534;font-size:0.7rem;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;">-50%</span>' : ''}
+              ${hasDiscount ? '<span style="background:#dcfce7;color:#166534;font-size:0.7rem;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;">-50%</span>' : ''}
             </div>
             <div class="cart-item-stepper">
               <button onclick="updateQty(${idx}, -1)">–</button>
@@ -480,7 +483,9 @@
       `;
     }).join('');
 
-    subtotalEl.textContent = subtotal.toFixed(2).replace('.', ',') + ' €';
+    subtotalEl.innerHTML = hasDiscount
+      ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:1rem;margin-right:8px;font-weight:400;">${(subtotal * 2).toFixed(2).replace('.', ',')} €</span> ${subtotal.toFixed(2).replace('.', ',')} €`
+      : `${subtotal.toFixed(2).replace('.', ',')} €`;
   }
 
   renderCart();

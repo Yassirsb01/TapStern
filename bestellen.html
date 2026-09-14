@@ -62,15 +62,30 @@
     font-size:0.95rem; font-weight:600;
   }
   .total-row strong{font-family:'Space Grotesk',sans-serif; font-size:1.3rem; color:var(--primary);}
+
+  /* Warenkorb-Zusammenfassung */
+  .cart-summary{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:16px; margin-bottom:20px;
+  }
+  .cart-summary-title{font-size:0.82rem; font-weight:700; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px;}
+  .cart-summary-item{display:flex; justify-content:space-between; font-size:0.9rem; padding:6px 0; border-bottom:1px dashed var(--line);}
+  .cart-summary-item:last-child{border-bottom:none;}
 </style>
 </head>
 <body>
   <div class="wrap">
-    <a class="back" href="index.html">← Zurück zur Startseite</a>
+    <a class="back" href="produkte.html">← Zurück zu den Produkten</a>
 
     <div id="formSection">
       <h1>Bestellung aufgeben</h1>
       <p class="sub">Fülle das Formular aus und wähle am Ende, ob du direkt online bezahlst oder eine Rechnung möchtest.</p>
+
+      <!-- WARENKORB ÜBERSICHT FALLS VORHANDEN -->
+      <div id="cartSummaryBox" style="display:none;" class="cart-summary">
+        <div class="cart-summary-title">Ausgewählte Artikel im Warenkorb</div>
+        <div id="cartSummaryList"></div>
+      </div>
 
       <form id="orderForm">
         <input type="hidden" name="access_key" value="603ad85a-c6e5-44a6-9e2f-4b321148f8bb">
@@ -93,24 +108,27 @@
           </div>
         </div>
 
-        <label for="paket">Paket</label>
-        <select name="Paket" id="paket" required>
-          <option value="">Bitte wählen</option>
-          <option value="Aufkleber – Standard (30€)">Aufkleber — Standard — 30 €</option>
-          <option value="Aufsteller – Standard (30€)">Aufsteller — Standard — 30 €</option>
-          <option value="Aufkleber – Eigenes Branding (40€)">Aufkleber — Eigenes Branding — 40 €</option>
-          <option value="Aufsteller – Eigenes Branding (40€)">Aufsteller — Eigenes Branding — 40 €</option>
-        </select>
+        <!-- EINZELPRODUKT-FELDER (werden ausgeblendet, wenn Warenkorb aktiv ist) -->
+        <div id="singleProductSection">
+          <label for="paket">Paket</label>
+          <select name="Paket" id="paket" required>
+            <option value="">Bitte wählen</option>
+            <option value="Aufkleber – Standard (30€)">Aufkleber — Standard — 30 €</option>
+            <option value="Aufsteller – Standard (30€)">Aufsteller — Standard — 30 €</option>
+            <option value="Aufkleber – Eigenes Branding (40€)">Aufkleber — Eigenes Branding — 40 €</option>
+            <option value="Aufsteller – Eigenes Branding (40€)">Aufsteller — Eigenes Branding — 40 €</option>
+          </select>
 
-        <div id="paketLocked" style="display:none;">
-          <label>Produkt</label>
-          <p id="paketLockedText" style="margin:-4px 0 0; font-weight:600; color:var(--ink);"></p>
-          <input type="hidden" name="Paket" id="paketHidden">
+          <div id="paketLocked" style="display:none;">
+            <label>Produkt</label>
+            <p id="paketLockedText" style="margin:-4px 0 0; font-weight:600; color:var(--ink);"></p>
+            <input type="hidden" name="Paket" id="paketHidden">
+          </div>
+
+          <label for="menge">Menge</label>
+          <input type="number" name="Menge" id="menge" min="1" value="1" required>
+          <p class="opt" id="mengeHinweis" style="display:none; margin-top:-2px; font-size:0.8rem; color:var(--ink-soft);"></p>
         </div>
-
-        <label for="menge">Menge</label>
-        <input type="number" name="Menge" id="menge" min="1" value="1" required>
-        <p class="opt" id="mengeHinweis" style="display:none; margin-top:-2px; font-size:0.8rem; color:var(--ink-soft);"></p>
 
         <label for="adresse">Lieferadresse <span class="opt">(oder Abholung/Regensburg angeben)</span></label>
         <textarea name="Lieferadresse" id="adresse" required placeholder="Straße, PLZ, Ort — oder 'Abholung in Regensburg'"></textarea>
@@ -182,62 +200,85 @@
         Du kannst dein digitales Profil schon jetzt einrichten, bevor die Karte ankommt:
         <a href="app.html" style="color:var(--primary); font-weight:600; text-decoration:none;">Jetzt Profil anlegen →</a>
       </p>
-      <p style="margin-top:20px;"><a href="index.html" style="color:var(--primary); font-weight:600; text-decoration:none;">← Zurück zur Startseite</a></p>
+      <p style="margin-top:20px;"><a href="produkte.html" style="color:var(--primary); font-weight:600; text-decoration:none;">← Zurück zu den Produkten</a></p>
     </div>
   </div>
 
 <script>
-  const packageMap = {
-    'Aufkleber-Standard': 'Aufkleber – Standard (30€)',
-    'Aufsteller-Standard': 'Aufsteller – Standard (30€)',
-    'Aufkleber-Branding': 'Aufkleber – Eigenes Branding (40€)',
-    'Aufsteller-Branding': 'Aufsteller – Eigenes Branding (40€)',
-    'Visitenkarte': 'NFC-Visitenkarte (20€ Einführungspreis)'
-  };
-  // Packages with only one variant get a locked, read-only product field instead of a dropdown
-  const lockedPackages = new Set(['Visitenkarte']);
+  // ─── WARENKORB ODER EINZELPRODUKT INITIALISIERUNG ───
+  let cart = [];
+  try {
+    cart = JSON.parse(localStorage.getItem('tapstern_cart')) || [];
+  } catch(e){ cart = []; }
 
   const urlParams = new URLSearchParams(window.location.search);
   const urlPaket = urlParams.get('paket');
+  const urlProdukt = urlParams.get('produkt');
+  const urlPreis = urlParams.get('preis');
+  const isCartOrder = cart.length > 0 && !urlPaket && !urlProdukt;
+
   const paketSelect = document.getElementById('paket');
   const paketLocked = document.getElementById('paketLocked');
   const paketLockedText = document.getElementById('paketLockedText');
   const paketHidden = document.getElementById('paketHidden');
+  const singleProductSection = document.getElementById('singleProductSection');
 
-  // Generic path: any product coming from produkte.html (Google-Sheet-driven).
-  // Works for products that don't exist in packageMap above, so new products
-  // never require editing this file again.
-  const urlProdukt = urlParams.get('produkt');
-  const urlPreis = urlParams.get('preis');
-
-  if (urlProdukt) {
-    const label = urlPreis ? `${decodeURIComponent(urlProdukt)} (${urlPreis} €)` : decodeURIComponent(urlProdukt);
-    paketSelect.style.display = 'none';
+  if (isCartOrder) {
+    // Warenkorb ist gefüllt: Einzelauswahl verstecken, Zusammenfassung anzeigen
+    singleProductSection.style.display = 'none';
     paketSelect.removeAttribute('required');
-    paketSelect.disabled = true;
-    paketLocked.style.display = 'block';
-    paketLockedText.textContent = label;
-    paketHidden.value = label;
-  } else if (urlPaket && packageMap[urlPaket]) {
-    if (lockedPackages.has(urlPaket)) {
+    document.getElementById('menge').removeAttribute('required');
+    
+    const summaryBox = document.getElementById('cartSummaryBox');
+    const summaryList = document.getElementById('cartSummaryList');
+    summaryBox.style.display = 'block';
+    summaryList.innerHTML = cart.map(i => `
+      <div class="cart-summary-item">
+        <span>${i.qty}× ${i.name}</span>
+        <strong>${(i.price * i.qty).toFixed(2).replace('.', ',')} €</strong>
+      </div>
+    `).join('');
+  } else {
+    // Einzelprodukt-Modus
+    const packageMap = {
+      'Aufkleber-Standard': 'Aufkleber – Standard (30€)',
+      'Aufsteller-Standard': 'Aufsteller – Standard (30€)',
+      'Aufkleber-Branding': 'Aufkleber – Eigenes Branding (40€)',
+      'Aufsteller-Branding': 'Aufsteller – Eigenes Branding (40€)',
+      'Visitenkarte': 'NFC-Visitenkarte (20€ Einführungspreis)'
+    };
+    const lockedPackages = new Set(['Visitenkarte']);
+
+    if (urlProdukt) {
+      const label = urlPreis ? `${decodeURIComponent(urlProdukt)} (${urlPreis} €)` : decodeURIComponent(urlProdukt);
       paketSelect.style.display = 'none';
       paketSelect.removeAttribute('required');
       paketSelect.disabled = true;
       paketLocked.style.display = 'block';
-      paketLockedText.textContent = packageMap[urlPaket];
-      paketHidden.value = packageMap[urlPaket];
-    } else {
-      paketSelect.value = packageMap[urlPaket];
+      paketLockedText.textContent = label;
+      paketHidden.value = label;
+    } else if (urlPaket && packageMap[urlPaket]) {
+      if (lockedPackages.has(urlPaket)) {
+        paketSelect.style.display = 'none';
+        paketSelect.removeAttribute('required');
+        paketSelect.disabled = true;
+        paketLocked.style.display = 'block';
+        paketLockedText.textContent = packageMap[urlPaket];
+        paketHidden.value = packageMap[urlPaket];
+      } else {
+        paketSelect.value = packageMap[urlPaket];
+      }
+    }
+
+    const urlMenge = urlParams.get('menge');
+    if (urlMenge && parseInt(urlMenge, 10) > 0) {
+      document.getElementById('menge').value = urlMenge;
     }
   }
 
   function getCurrentPaket() {
+    if (isCartOrder) return 'Warenkorb-Bestellung';
     return paketSelect.disabled ? paketHidden.value : paketSelect.value;
-  }
-
-  const urlMenge = urlParams.get('menge');
-  if (urlMenge && parseInt(urlMenge, 10) > 0) {
-    document.getElementById('menge').value = urlMenge;
   }
 
   function toggleBrandingFields() {
@@ -247,12 +288,9 @@
   function toggleCardFields() {
     const isCard = getCurrentPaket().includes('Visitenkarte');
     document.getElementById('cardFields').style.display = isCard ? 'block' : 'none';
-    applyMengeMinimum();
+    if (!isCartOrder) applyMengeMinimum();
   }
 
-  // Individuell bedruckte NFC-Visitenkarten sind bei Kleinstmengen beim
-  // Hersteller unverhältnismäßig teuer (Fixkosten pro Bestellung) — daher
-  // gilt hierfür eine Mindestbestellmenge, damit die Marge stimmt.
   const MIN_MENGE_VISITENKARTE = 3;
   function applyMengeMinimum() {
     const mengeInput = document.getElementById('menge');
@@ -298,9 +336,13 @@
     return checked ? parseFloat(checked.dataset.price) : 0;
   }
   function computeTotalEUR() {
+    if (isCartOrder) {
+      return cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    }
     const menge = parseInt(document.getElementById('menge').value, 10) || 1;
     return getProductPriceEUR() * menge + getHostingPriceEUR();
   }
+
   function updateTotal() {
     const total = computeTotalEUR();
     document.getElementById('totalValue').textContent = total.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -312,6 +354,7 @@
   document.querySelectorAll('input[name="Zahlungsart"]').forEach(el => el.addEventListener('change', updateTotal));
   updateTotal();
 
+  // ─── FORMULAR ABSENDEN ───
   document.getElementById('orderForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const form = e.target;
@@ -328,26 +371,41 @@
 
     const zahlungsart = document.querySelector('input[name="Zahlungsart"]:checked')?.value || 'Rechnung';
 
+    // 1. ONLINE ZAHLUNG VIA STRIPE
     if (zahlungsart === 'Sofort online') {
       btn.textContent = 'Weiterleitung zu Stripe …';
       try {
-        const totalEUR = computeTotalEUR();
-        const items = [{
-          name: getCurrentPaket() + ' × ' + (document.getElementById('menge').value || 1),
-          unitAmount: Math.round(totalEUR * 100),
-          quantity: 1
-        }];
+        let items = [];
+        let metadata = {
+          Betrieb: document.getElementById('firma').value,
+          Ansprechpartner: document.getElementById('ansprechpartner').value
+        };
+
+        if (isCartOrder) {
+          items = cart.map(i => ({
+            name: i.name,
+            unitAmount: Math.round(i.price * 100),
+            quantity: i.qty
+          }));
+          metadata['Bestelltyp'] = 'Warenkorb (' + cart.length + ' Artikel)';
+        } else {
+          const totalEUR = computeTotalEUR();
+          items = [{
+            name: getCurrentPaket() + ' × ' + (document.getElementById('menge').value || 1),
+            unitAmount: Math.round(totalEUR * 100),
+            quantity: 1
+          }];
+          metadata['Paket'] = getCurrentPaket();
+          metadata['Menge'] = document.getElementById('menge').value;
+        }
+
         const res = await fetch('/api/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             items,
             customerEmail: document.getElementById('email').value,
-            metadata: {
-              Betrieb: document.getElementById('firma').value,
-              Paket: getCurrentPaket(),
-              Menge: document.getElementById('menge').value
-            }
+            metadata
           })
         });
         const data = await res.json();
@@ -362,10 +420,14 @@
       return;
     }
 
+    // 2. KAUF AUF RECHNUNG (Web3Forms)
     btn.textContent = 'Wird gesendet…';
     try {
       const formData = new FormData(form);
       formData.append('Gesamtpreis', computeTotalEUR().toLocaleString('de-DE', { minimumFractionDigits: 2 }) + ' €');
+      if (isCartOrder) {
+        formData.append('Artikel_Warenkorb', cart.map(i => `${i.qty}x ${i.name} (je ${i.price}€)`).join(', '));
+      }
       const response = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',
         headers: { 'Accept': 'application/json' },
@@ -374,6 +436,7 @@
       const result = await response.json();
 
       if (result.success) {
+        localStorage.removeItem('tapstern_cart');
         document.getElementById('confLogoNote').style.display = document.getElementById('brandingFields').style.display !== 'none' ? 'block' : 'none';
         document.getElementById('confAppNote').style.display = document.getElementById('cardFields').style.display !== 'none' ? 'block' : 'none';
         document.getElementById('formSection').classList.add('hide');
@@ -395,6 +458,7 @@
   // ─── Rückkehr von Stripe ───
   const zahlungStatus = urlParams.get('zahlung');
   if (zahlungStatus === 'erfolg') {
+    localStorage.removeItem('tapstern_cart');
     document.getElementById('formSection').classList.add('hide');
     document.getElementById('confirmation').classList.add('show');
     document.querySelector('#confirmation h2').textContent = 'Zahlung erfolgreich';

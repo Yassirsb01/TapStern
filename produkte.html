@@ -1,4 +1,436 @@
-function renderCart() {
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alle Produkte — Tapstern</title>
+<link rel="icon" type="image/png" href="tapstern-favicon.png">
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=space-grotesk:500,600,700|inter:400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f5f6fb;
+    --bg-soft:#ecedf8;
+    --card:#ffffff;
+    --ink:#161a2c;
+    --ink-soft:#5b6079;
+    --primary:#6366f1;
+    --primary-bright:#4338ca;
+    --accent:#0e7490;
+    --navy:#1e2340;
+    --line: rgba(22,26,44,0.10);
+    --maxw: 1080px;
+  }
+  [data-theme="dark"]{
+    --bg:#0d1020;
+    --bg-soft:#12162b;
+    --card:#181d36;
+    --ink:#eef0fb;
+    --ink-soft:#9aa1bd;
+    --primary-bright:#818cf8;
+    --accent:#22d3ee;
+    --line: rgba(238,240,251,0.10);
+  }
+  [data-theme="dark"] nav{background:rgba(13,16,32,0.85);}
+  [data-theme="dark"] .btn-ghost{border-color:rgba(238,240,251,0.2);}
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth; overflow-x:hidden;}
+  body{
+    margin:0; overflow-x:hidden; background:var(--bg); color:var(--ink);
+    font-family:'Inter', sans-serif; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk', sans-serif; font-weight:600;
+    letter-spacing:-0.02em; margin:0;
+  }
+  a{color:inherit;}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 28px;}
+
+  /* NAV */
+  nav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(245,246,251,0.85);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  nav .wrap{display:flex; align-items:center; justify-content:space-between; padding:16px 28px;}
+  .logo{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1.3rem; letter-spacing:-0.02em; color:var(--ink); display:flex; align-items:center; gap:9px;}
+  .nav-links{display:flex; align-items:center; gap:8px;}
+  .nav-item{position:relative;}
+  .nav-link{color:var(--ink-soft); text-decoration:none; font-size:0.92rem; font-weight:500; display:flex; align-items:center; gap:5px; padding:10px 8px;}
+  .nav-link:hover{color:var(--ink);}
+  .nav-link.active{color:var(--primary-bright); font-weight:600;}
+  .nav-links-mobile a.active{color:var(--primary-bright); font-weight:700;}
+  .dropdown-menu{
+    position:absolute; top:calc(100% + 6px); left:0;
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:8px; min-width:250px;
+    box-shadow:0 14px 34px -10px rgba(0,0,0,0.18);
+    display:none; flex-direction:column; gap:2px; z-index:60;
+  }
+  .nav-item:hover .dropdown-menu{display:flex;}
+  .dropdown-item{padding:10px 12px; border-radius:8px; display:flex; flex-direction:column; text-decoration:none; color:inherit;}
+  .dropdown-item:hover, .dropdown-item.active{background:var(--bg-soft);}
+  .dropdown-title{font-weight:600; font-size:0.88rem; color:var(--ink);}
+  .dropdown-desc{font-size:0.76rem; color:var(--ink-soft); margin-top:2px;}
+  
+  /* WARENKORB TRIGGER IN NAV */
+  .cart-nav-btn{
+    background:transparent; border:1px solid var(--line); color:var(--ink);
+    padding:8px 14px; border-radius:10px; font-size:0.9rem; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; gap:8px; margin-right:10px;
+    transition:border-color 0.15s ease;
+  }
+  .cart-nav-btn:hover{border-color:var(--primary-bright);}
+  .cart-badge{
+    background:var(--primary); color:#fff; font-size:0.72rem; font-weight:700;
+    padding:2px 7px; border-radius:100px; min-width:18px; text-align:center;
+  }
+
+  .nav-cta{
+    background:var(--primary); color:#fff; font-weight:600; font-size:0.9rem;
+    padding:9px 18px; border-radius:10px; text-decoration:none;
+  }
+  .nav-cta:hover{background:var(--primary-bright);}
+
+  .menu-toggle{
+    display:none; width:38px; height:38px; margin-left:10px; border-radius:10px;
+    border:1px solid var(--line); background:transparent; color:var(--ink);
+    align-items:center; justify-content:center; cursor:pointer;
+  }
+  .menu-toggle svg{width:18px; height:18px;}
+  @media (max-width:480px){
+    nav .wrap{padding:14px 16px;}
+    .logo{font-size:1.12rem; gap:6px;}
+    .logo img{height:24px !important;}
+    .nav-cta{padding:8px 12px; font-size:0.82rem;}
+    .menu-toggle{width:34px; height:34px; margin-left:6px;}
+  }
+
+  .nav-links-mobile{display:none; flex-direction:column; padding:6px 28px 18px; border-top:1px solid var(--line);}
+  .nav-links-mobile a{display:block; padding:12px 0; color:var(--ink); text-decoration:none; font-size:0.98rem; font-weight:500; border-bottom:1px solid var(--line);}
+  .nav-links-mobile a:last-child{border-bottom:none;}
+  .nav-links-mobile.open{display:flex;}
+  @media (max-width: 820px){
+    .nav-links{display:none;}
+    .menu-toggle{display:flex;}
+  }
+
+  /* PAGE HEAD */
+  .page-head{padding:56px 0 8px;}
+  .eyebrow{
+    color:var(--accent); font-size:0.78rem; letter-spacing:0.12em;
+    text-transform:uppercase; font-weight:600; margin-bottom:14px; display:block;
+  }
+  h1.display{font-size:clamp(1.9rem, 3.4vw, 2.6rem); color:var(--ink);}
+  .page-head p{margin-top:14px; color:var(--ink-soft); font-size:1.02rem; max-width:56ch;}
+
+  /* 🏷️ Rabatt-Banner */
+  .deal-strip{
+    background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(6,182,212,0.12));
+    border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:12px 18px;
+    display:flex; align-items:center; gap:10px; font-size:0.9rem; font-weight:600;
+    color:#065f46; margin:20px 0 0;
+  }
+  [data-theme="dark"] .deal-strip{color:#34d399; border-color:rgba(52,211,153,0.3);}
+
+  /* PRODUCT GRID */
+  section.products{padding:40px 0 88px;}
+  .price-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:24px;}
+  .price-card{
+    border:1px solid var(--line); border-radius:18px; padding:0;
+    background:var(--card); display:flex; flex-direction:column; overflow:hidden;
+  }
+  .price-visual{aspect-ratio:4/3; background:var(--bg-soft); overflow:hidden;}
+  .price-visual img{display:block; width:100%; height:100%; object-fit:cover;}
+  .price-visual.empty{display:flex; align-items:center; justify-content:center; color:var(--ink-soft);}
+  .price-visual.empty svg{width:32px; height:32px; opacity:0.5;}
+  .price-body{padding:24px 26px 28px; display:flex; flex-direction:column; flex-grow:1;}
+  .price-badge{
+    display:inline-block; align-self:flex-start; font-size:0.72rem; font-weight:600;
+    letter-spacing:0.04em; text-transform:uppercase; color:var(--accent);
+    background:rgba(14,116,144,0.10); padding:4px 10px; border-radius:100px; margin-bottom:12px;
+  }
+  [data-theme="dark"] .price-badge{background:rgba(34,211,238,0.14);}
+  .price-card h3{font-size:1.15rem; color:var(--ink);}
+  .price-line{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; margin:12px 0 4px;
+    display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  }
+  .price-line .now{font-size:1.9rem; color:var(--primary-bright);}
+  .price-line .was{font-size:1rem; color:var(--ink-soft); text-decoration:line-through; font-weight:500; font-family:'Inter',sans-serif;}
+  .price-line small{font-size:0.85rem; color:var(--ink-soft); font-weight:400; font-family:'Inter',sans-serif;}
+  .price-card p.desc{color:var(--ink-soft); font-size:0.92rem; margin:10px 0 22px; flex-grow:1;}
+  
+  .btn-add{
+    background:var(--primary); color:#fff; font-weight:600; padding:12px 20px;
+    border-radius:12px; border:none; font-size:0.94rem; text-align:center; display:block;
+    cursor:pointer; width:100%; font-family:inherit; transition:background 0.15s ease;
+  }
+  .btn-add:hover{background:var(--primary-bright);}
+  .state-msg{color:var(--ink-soft); font-size:0.95rem; padding:20px 0;}
+
+  /* ═══ WARENKORB DRAWER (Slide-Over) ═══ */
+  .cart-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200;
+    opacity:0; visibility:hidden; transition:opacity 0.25s ease, visibility 0.25s;
+    backdrop-filter:blur(3px);
+  }
+  .cart-overlay.open{opacity:1; visibility:visible;}
+  .cart-drawer{
+    position:fixed; top:0; right:0; bottom:0; width:100%; max-width:420px;
+    background:var(--card); z-index:201; box-shadow:-10px 0 40px rgba(0,0,0,0.25);
+    transform:translateX(100%); transition:transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display:flex; flex-direction:column;
+  }
+  .cart-drawer.open{transform:translateX(0);}
+  .cart-header{
+    padding:20px 24px; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .cart-header h3{font-size:1.2rem; margin:0;}
+  .cart-close{
+    background:transparent; border:none; font-size:1.4rem; color:var(--ink-soft);
+    cursor:pointer; padding:4px 8px; border-radius:6px;
+  }
+  .cart-close:hover{color:var(--ink);}
+  .cart-body{
+    padding:20px 24px; overflow-y:auto; flex-grow:1;
+    display:flex; flex-direction:column; gap:16px;
+  }
+  .cart-item{
+    display:flex; gap:14px; align-items:center; padding-bottom:16px;
+    border-bottom:1px solid var(--line);
+  }
+  .cart-item-img{width:56px; height:56px; border-radius:10px; object-fit:cover; background:var(--bg-soft);}
+  .cart-item-info{flex-grow:1; min-width:0;}
+  .cart-item-title{font-weight:600; font-size:0.92rem; color:var(--ink); margin-bottom:2px;}
+  .cart-item-price{font-size:0.85rem; color:var(--primary-bright); font-weight:600; display:flex; align-items:center;}
+  .cart-item-stepper{display:flex; align-items:center; gap:8px; margin-top:6px;}
+  .cart-item-stepper button{
+    width:24px; height:24px; border-radius:6px; border:1px solid var(--line);
+    background:transparent; color:var(--ink); font-weight:700; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .cart-item-stepper span{font-size:0.88rem; font-weight:600; min-width:18px; text-align:center;}
+  .cart-item-del{
+    background:transparent; border:none; color:#ef4444; font-size:1.1rem;
+    cursor:pointer; padding:6px; opacity:0.7;
+  }
+  .cart-item-del:hover{opacity:1;}
+  .cart-empty{text-align:center; color:var(--ink-soft); padding:40px 0;}
+  .cart-footer{
+    padding:20px 24px; border-top:1px solid var(--line); background:var(--bg-soft);
+  }
+  .cart-subtotal{
+    display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;
+    font-size:1.02rem; font-weight:700;
+  }
+  .cart-subtotal strong{color:var(--primary-bright); font-size:1.35rem; font-family:'Space Grotesk',sans-serif;}
+  .btn-checkout{
+    width:100%; padding:14px; border-radius:12px; border:none;
+    background:var(--primary); color:#fff; font-weight:600; font-size:1rem;
+    cursor:pointer; text-align:center; text-decoration:none; display:block;
+  }
+  .btn-checkout:hover{background:var(--primary-bright);}
+
+  footer{border-top:1px solid var(--line); padding:32px 0 48px; font-size:0.82rem; color:var(--ink-soft);}
+  footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
+
+  @media (max-width:820px){
+    .price-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<script>
+  (function(){
+    try{
+      if(localStorage.getItem('tapstern-theme') === 'dark'){
+        document.documentElement.setAttribute('data-theme','dark');
+      }
+    }catch(e){}
+  })();
+</script>
+
+<!-- WARENKORB OVERLAY & DRAWER -->
+<div class="cart-overlay" id="cartOverlay" onclick="toggleCart(false)"></div>
+<div class="cart-drawer" id="cartDrawer">
+  <div class="cart-header">
+    <h3>Dein Warenkorb</h3>
+    <button class="cart-close" onclick="toggleCart(false)" aria-label="Schließen">✕</button>
+  </div>
+  <div class="cart-body" id="cartItems"></div>
+  <div class="cart-footer" id="cartFooter">
+    <div class="cart-subtotal">
+      <span>Zwischensumme:</span>
+      <strong id="cartSubtotal">0,00 €</strong>
+    </div>
+    <a href="bestellen.html" class="btn-checkout">Zur Kasse gehen →</a>
+  </div>
+</div>
+
+<nav>
+  <div class="wrap">
+    <a href="index.html" class="logo" style="text-decoration:none;">
+      <img src="tapstern-icon-navy-transparent.png" alt="" style="height:28px; width:auto; object-fit:contain;">
+      Tapstern
+    </a>
+    <div class="nav-links" id="navLinks">
+      <div class="nav-item">
+        <a href="produkte.html" class="nav-link active">Produkte
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </a>
+        <div class="dropdown-menu">
+          <a href="bewertungskarten.html" class="dropdown-item">
+            <span class="dropdown-title">Bewertungskarten</span>
+            <span class="dropdown-desc">Mehr Google-Bewertungen per Antippen</span>
+          </a>
+          <a href="visitenkarten.html" class="dropdown-item">
+            <span class="dropdown-title">Visitenkarten</span>
+            <span class="dropdown-desc">NFC-Karten für Personen &amp; Teams</span>
+          </a>
+          <a href="business-hub.html" class="dropdown-item">
+            <span class="dropdown-title">Business Hub</span>
+            <span class="dropdown-desc">Eine Landingpage, alle deine Links</span>
+          </a>
+          <a href="produkte.html" class="dropdown-item active">
+            <span class="dropdown-title">Alle Produkte</span>
+            <span class="dropdown-desc">Aufkleber, Aufsteller, Social Media &amp; mehr</span>
+          </a>
+        </div>
+      </div>
+      <a href="index.html#loesungen" class="nav-link">Lösungsansätze</a>
+      <a href="app.html" class="nav-link">Meine Karte</a>
+    </div>
+
+    <div style="display:flex; align-items:center;">
+      <!-- WARENKORB TRIGGER IN NAV -->
+      <button class="cart-nav-btn" onclick="toggleCart(true)" aria-label="Warenkorb öffnen">
+        🛒 <span class="cart-badge" id="cartCount">0</span>
+      </button>
+
+      <a class="nav-cta" href="index.html#kontakt">Jetzt anfragen</a>
+      <button type="button" class="menu-toggle" id="menuToggle" aria-label="Menü öffnen" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="nav-links-mobile" id="navLinksMobile">
+    <a href="bewertungskarten.html">Bewertungskarten</a>
+    <a href="visitenkarten.html">Visitenkarten</a>
+    <a href="business-hub.html">Business Hub</a>
+    <a href="produkte.html" class="active">Alle Produkte</a>
+    <a href="index.html#loesungen">Lösungsansätze</a>
+    <a href="app.html">Meine Karte</a>
+  </div>
+</nav>
+
+<div class="page-head">
+  <div class="wrap">
+    <span class="eyebrow">Produkte</span>
+    <h1 class="display">Alle Tapstern-Produkte auf einen Blick</h1>
+    <p>Von der klassischen Bewertungskarte bis zur Multi-Link-Karte für Social Media — wähle deine Produkte aus und lege sie einfach in den Warenkorb.</p>
+    
+    <div class="deal-strip">
+      🔥 <span><strong>Staffelrabatt:</strong> Ab 5 Stück erhältst du automatisch <strong>50 % Rabatt</strong> auf den Stückpreis im Warenkorb!</span>
+    </div>
+  </div>
+</div>
+
+<section class="products">
+  <div class="wrap">
+    <div id="productGrid" class="price-grid">
+      <p class="state-msg">Produkte werden geladen…</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="flex-direction:column; align-items:flex-start; gap:14px;">
+    <div style="display:flex; gap:18px; flex-wrap:wrap;">
+      <a href="impressum.html" style="color:var(--ink-soft); text-decoration:none;">Impressum</a>
+      <a href="datenschutz.html" style="color:var(--ink-soft); text-decoration:none;">Datenschutz</a>
+      <a href="agb.html" style="color:var(--ink-soft); text-decoration:none;">AGB</a>
+    </div>
+    <div class="wrap" style="padding:0; display:flex; justify-content:space-between; width:100%; flex-wrap:wrap;">
+      <span>© 2026 Tapstern</span>
+      <span>Kontaktiere uns für mehr</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Mobile hamburger menu
+  const menuToggle = document.getElementById('menuToggle');
+  const navLinksMobile = document.getElementById('navLinksMobile');
+  menuToggle.addEventListener('click', () => {
+    const isOpen = navLinksMobile.classList.toggle('open');
+    menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+  navLinksMobile.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      navLinksMobile.classList.remove('open');
+      menuToggle.setAttribute('aria-expanded', 'false');
+    });
+  });
+</script>
+
+<script>
+  // ═════════════════════════════════════════════════════════════════
+  // 🛒 WARENKORB LOGIK (localStorage) MIT 50 % MENGENRABATT
+  // ═════════════════════════════════════════════════════════════════
+  let CART = [];
+  try {
+    CART = JSON.parse(localStorage.getItem('tapstern_cart')) || [];
+  } catch(e){ CART = []; }
+
+  function saveCart() {
+    localStorage.setItem('tapstern_cart', JSON.stringify(CART));
+    renderCart();
+  }
+
+  function toggleCart(open) {
+    document.getElementById('cartOverlay').classList.toggle('open', open);
+    document.getElementById('cartDrawer').classList.toggle('open', open);
+  }
+
+  function addToCart(index) {
+    const p = window.LOADED_PRODUCTS[index];
+    if(!p) return;
+    const priceNum = parseFloat(String(p.einfuehrungspreis || p.preis).replace(',', '.')) || 0;
+    
+    const existing = CART.find(item => item.name === p.name);
+    if(existing) {
+      existing.qty += 1;
+    } else {
+      CART.push({
+        name: p.name,
+        price: priceNum,
+        image: p.bild_url || '',
+        qty: 1
+      });
+    }
+    saveCart();
+    toggleCart(true);
+  }
+
+  function updateQty(index, delta) {
+    if(!CART[index]) return;
+    CART[index].qty += delta;
+    if(CART[index].qty <= 0) {
+      CART.splice(index, 1);
+    }
+    saveCart();
+  }
+
+  function removeFromCart(index) {
+    CART.splice(index, 1);
+    saveCart();
+  }
+
+  function renderCart() {
     const countEl = document.getElementById('cartCount');
     const itemsEl = document.getElementById('cartItems');
     const subtotalEl = document.getElementById('cartSubtotal');
@@ -33,9 +465,9 @@ function renderCart() {
           <div class="cart-item-info">
             <div class="cart-item-title">${item.name}</div>
             <div class="cart-item-price">
-              ${isDiscounted ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:0.75rem;margin-right:4px;">${originalTotal.toFixed(2).replace('.', ',')} €</span>` : ''}
+              ${isDiscounted ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:0.75rem;margin-right:6px;">${originalTotal.toFixed(2).replace('.', ',')} €</span>` : ''}
               <span>${itemTotal.toFixed(2).replace('.', ',')} €</span>
-              ${isDiscounted ? '<span style="background:#dcfce7;color:#166534;font-size:0.7rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:700;">-50%</span>' : ''}
+              ${isDiscounted ? '<span style="background:#dcfce7;color:#166534;font-size:0.7rem;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;">-50%</span>' : ''}
             </div>
             <div class="cart-item-stepper">
               <button onclick="updateQty(${idx}, -1)">–</button>
@@ -50,3 +482,94 @@ function renderCart() {
 
     subtotalEl.textContent = subtotal.toFixed(2).replace('.', ',') + ' €';
   }
+
+  renderCart();
+
+  // ═════════════════════════════════════════════════════════════════
+  // GOOGLE SHEET LADEN
+  // ═════════════════════════════════════════════════════════════════
+  const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSiDwRui-xoVv7-Me9mQWNezPeSPgQvUZd5RsX3oVqRBblv6uuIVdhrMzrA6h97i8SHcyp-IsE0jcO0/pub?output=csv';
+  window.LOADED_PRODUCTS = [];
+
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], next = text[i + 1];
+      if (inQuotes) {
+        if (c === '"' && next === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"') { inQuotes = true; }
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\r') { /* skip */ }
+        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else { field += c; }
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    if (!rows.length) return [];
+    const headers = rows[0].map(h => h.trim());
+    return rows.slice(1)
+      .filter(r => r.some(cell => cell.trim() !== ''))
+      .map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
+  }
+
+  function euro(n) {
+    const num = parseFloat(String(n).replace(',', '.'));
+    return isNaN(num) ? n : num.toString().replace('.', ',') + ' €';
+  }
+
+  function productCard(p, index) {
+    const hasIntro = p.einfuehrungspreis && p.einfuehrungspreis.trim() !== '';
+    const priceHtml = hasIntro
+      ? `<span class="now">${euro(p.einfuehrungspreis)}</span><span class="was">${euro(p.preis)}</span><small>Einführungspreis</small>`
+      : `<span class="now">${euro(p.preis)}</span><small>einmalig</small>`;
+
+    const imgHtml = p.bild_url
+      ? `<div class="price-visual"><img src="${p.bild_url}" alt="${p.name}" loading="lazy"></div>`
+      : `<div class="price-visual empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
+
+    return `
+      <div class="price-card">
+        ${imgHtml}
+        <div class="price-body">
+          <span class="price-badge">${p.art || 'Produkt'}</span>
+          <h3>${p.name}</h3>
+          <div class="price-line">${priceHtml}</div>
+          <p class="desc">${p.beschreibung || ''}</p>
+          <button class="btn-add" onclick="addToCart(${index})">In den Warenkorb</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadProducts() {
+    const grid = document.getElementById('productGrid');
+    try {
+      const res = await fetch(SHEET_CSV_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Tabelle nicht erreichbar (' + res.status + ')');
+      const text = await res.text();
+      const rows = parseCSV(text);
+      const active = rows.filter(r => {
+        const flag = (r.aktive || r.aktiv || '').trim().toLowerCase();
+        return flag === 'ja' || flag === 'yes' || flag === 'true' || flag === '1';
+      });
+
+      if (!active.length) {
+        grid.innerHTML = '<p class="state-msg">Aktuell sind keine Produkte gelistet.</p>';
+        return;
+      }
+      window.LOADED_PRODUCTS = active;
+      grid.innerHTML = active.map((p, idx) => productCard(p, idx)).join('');
+    } catch (err) {
+      grid.innerHTML = '<p class="state-msg">Produkte konnten gerade nicht geladen werden.</p>';
+      console.error(err);
+    }
+  }
+
+  loadProducts();
+</script>
+
+</body>
+</html>

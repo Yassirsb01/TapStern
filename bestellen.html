@@ -130,6 +130,14 @@
           <p class="opt" id="mengeHinweis" style="display:none; margin-top:-2px; font-size:0.8rem; color:var(--ink-soft);"></p>
         </div>
 
+        <!-- 🔗 NEU: LINK(S) FÜR DIE PROGRAMMIERUNG DER NFC-CHIPS -->
+        <label for="zielLinks">Link(s) für die NFC-Programmierung</label>
+        <p style="font-size:0.8rem; color:var(--ink-soft); margin:-2px 0 8px; line-height:1.4;">
+          Welcher Link soll sich öffnen, wenn man das Smartphone an die Karte hält? (z. B. Google-Bewertungslink, Instagram-Profil, Website oder PDF-Speisekarte).<br>
+          <em>Tipp: Falls du deinen Google-Link nicht zur Hand hast, schreibe einfach „Google-Link bitte heraussuchen“ — wir finden ihn für deinen Betrieb!</em>
+        </p>
+        <textarea name="NFC_Ziel_Links" id="zielLinks" required placeholder="z. B.&#10;Google-Link: https://g.page/r/...&#10;oder Instagram: https://instagram.com/mein_betrieb&#10;(oder bei mehreren Produkten kurz angeben, welcher Link zu welchem Produkt gehört)"></textarea>
+
         <label for="adresse">Lieferadresse <span class="opt">(oder Abholung/Regensburg angeben)</span></label>
         <textarea name="Lieferadresse" id="adresse" required placeholder="Straße, PLZ, Ort — oder 'Abholung in Regensburg'"></textarea>
 
@@ -224,7 +232,6 @@
   const singleProductSection = document.getElementById('singleProductSection');
 
   if (isCartOrder) {
-    // Warenkorb ist gefüllt: Einzelauswahl verstecken, Zusammenfassung anzeigen
     singleProductSection.style.display = 'none';
     paketSelect.removeAttribute('required');
     document.getElementById('menge').removeAttribute('required');
@@ -239,7 +246,6 @@
       </div>
     `).join('');
   } else {
-    // Einzelprodukt-Modus
     const packageMap = {
       'Aufkleber-Standard': 'Aufkleber – Standard (30€)',
       'Aufsteller-Standard': 'Aufsteller – Standard (30€)',
@@ -370,6 +376,7 @@
     btn.disabled = true;
 
     const zahlungsart = document.querySelector('input[name="Zahlungsart"]:checked')?.value || 'Rechnung';
+    const zielLinksVal = document.getElementById('zielLinks').value;
 
     // 1. ONLINE ZAHLUNG VIA STRIPE
     if (zahlungsart === 'Sofort online') {
@@ -378,7 +385,9 @@
         let items = [];
         let metadata = {
           Betrieb: document.getElementById('firma').value,
-          Ansprechpartner: document.getElementById('ansprechpartner').value
+          Ansprechpartner: document.getElementById('ansprechpartner').value,
+          // 🔗 Links direkt in den Stripe-Metadaten speichern:
+          Ziel_Links: strSlice(zielLinksVal, 480)
         };
 
         if (isCartOrder) {
@@ -454,6 +463,10 @@
       btn.textContent = 'Bestellung absenden';
     }
   });
+
+  function strSlice(v, max) {
+    return String(v || '').slice(0, max);
+  }
 
   // ─── Rückkehr von Stripe ───
   const zahlungStatus = urlParams.get('zahlung');

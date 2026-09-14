@@ -23,7 +23,7 @@
   h1{font-family:'Space Grotesk',sans-serif; font-size:1.6rem; font-weight:600; margin:0 0 6px;}
   p.sub{color:var(--ink-soft); font-size:0.92rem; margin:0 0 24px; line-height:1.5;}
 
-  /* 🏷️ Rabatt-Banner */
+  /* Rabatt-Banner */
   .deal-banner{
     background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(6,182,212,0.12));
     border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:12px 14px;
@@ -98,9 +98,9 @@
       <h1>Bestellung aufgeben</h1>
       <p class="sub">Fülle das Formular aus und wähle am Ende, ob du direkt online bezahlst oder eine Rechnung möchtest.</p>
 
-      <!-- 🎁 RABATT-BANNER -->
+      <!-- RABATT-BANNER -->
       <div class="deal-banner">
-        <span>🔥 <strong>Mengenrabatt-Aktion:</strong> Ab 5 Stück erhältst du automatisch <strong>50 % Rabatt</strong> auf den Karten-/Aufstellerpreis!</span>
+        <span>🔥 <strong>Mengenrabatt-Aktion:</strong> Ab 5 Stück Gesamtmenge erhältst du automatisch <strong>50 % Rabatt</strong> auf den Karten-/Aufstellerpreis!</span>
       </div>
 
       <!-- WARENKORB ÜBERSICHT FALLS VORHANDEN -->
@@ -202,7 +202,7 @@
           </div>
         </div>
 
-        <!-- GESAMTPREIS MIT RABATT-ANZEIGE -->
+        <!-- GESAMTPREIS MIT 50% ERSPARNIS -->
         <div class="total-row" id="totalRow">
           <div>
             <span>Gesamtpreis</span>
@@ -263,25 +263,6 @@
     singleProductSection.style.display = 'none';
     paketSelect.removeAttribute('required');
     document.getElementById('menge').removeAttribute('required');
-    
-    const summaryBox = document.getElementById('cartSummaryBox');
-    const summaryList = document.getElementById('cartSummaryList');
-    summaryBox.style.display = 'block';
-    summaryList.innerHTML = cart.map(i => {
-      const isDiscounted = i.qty >= 5;
-      const unitPrice = isDiscounted ? i.price * 0.5 : i.price;
-      const itemTotal = unitPrice * i.qty;
-      const originalTotal = i.price * i.qty;
-      return `
-        <div class="cart-summary-item">
-          <span>${i.qty}× ${i.name} ${isDiscounted ? '<strong style="color:#059669;">(-50%)</strong>' : ''}</span>
-          <div>
-            ${isDiscounted ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:0.8rem;margin-right:4px;">${originalTotal.toFixed(2).replace('.', ',')} €</span>` : ''}
-            <strong>${itemTotal.toFixed(2).replace('.', ',')} €</strong>
-          </div>
-        </div>
-      `;
-    }).join('');
   } else {
     const packageMap = {
       'Aufkleber-Standard': 'Aufkleber – Standard (30€)',
@@ -366,7 +347,7 @@
   toggleBrandingFields();
   toggleCardFields();
 
-  // ─── 50 % MENGENRABATT PREISBERECHNUNG ───
+  // ─── 50 % MENGENRABATT (Gerechnet auf die GESAMT-STÜCKZAHL) ───
   function getProductPriceEUR() {
     const label = getCurrentPaket();
     if (urlProdukt && urlPreis) return parseFloat(String(urlPreis).replace(',', '.')) || 0;
@@ -381,19 +362,19 @@
 
   function computePricing() {
     if (isCartOrder) {
+      const totalCartQty = cart.reduce((sum, item) => sum + item.qty, 0);
+      const hasDiscount = totalCartQty >= 5; // Greift ab 5 Stück GESAMT!
+
       let rawTotal = 0;
       let discountedTotal = 0;
-      let hasDiscount = false;
 
       cart.forEach(item => {
-        const isItemDiscounted = item.qty >= 5;
-        const itemUnitPrice = isItemDiscounted ? item.price * 0.5 : item.price;
-        if (isItemDiscounted) hasDiscount = true;
+        const itemUnitPrice = hasDiscount ? item.price * 0.5 : item.price;
         rawTotal += item.price * item.qty;
         discountedTotal += itemUnitPrice * item.qty;
       });
 
-      return { total: discountedTotal, rawTotal, hasDiscount };
+      return { total: discountedTotal, rawTotal, hasDiscount, totalCartQty };
     }
 
     const menge = parseInt(document.getElementById('menge').value, 10) || 1;
@@ -405,7 +386,7 @@
     const rawTotal = (basePrice * menge) + hosting;
     const total = (effectiveUnitPrice * menge) + hosting;
 
-    return { total, rawTotal, hasDiscount };
+    return { total, rawTotal, hasDiscount, totalCartQty: menge };
   }
 
   function updateTotal() {
@@ -422,6 +403,27 @@
     } else {
       oldValEl.style.display = 'none';
       tagEl.style.display = 'none';
+    }
+
+    // Aktualisiert die Liste oben im Kasten, falls Warenkorb
+    if (isCartOrder) {
+      const summaryBox = document.getElementById('cartSummaryBox');
+      const summaryList = document.getElementById('cartSummaryList');
+      summaryBox.style.display = 'block';
+      summaryList.innerHTML = cart.map(i => {
+        const unitPrice = p.hasDiscount ? i.price * 0.5 : i.price;
+        const itemTotal = unitPrice * i.qty;
+        const originalTotal = i.price * i.qty;
+        return `
+          <div class="cart-summary-item">
+            <span>${i.qty}× ${i.name} ${p.hasDiscount ? '<strong style="color:#059669;">(-50%)</strong>' : ''}</span>
+            <div>
+              ${p.hasDiscount ? `<span style="text-decoration:line-through;color:var(--ink-soft);font-size:0.8rem;margin-right:6px;">${originalTotal.toFixed(2).replace('.', ',')} €</span>` : ''}
+              <strong>${itemTotal.toFixed(2).replace('.', ',')} €</strong>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     const isOnline = document.querySelector('input[name="Zahlungsart"]:checked')?.value === 'Sofort online';
@@ -464,28 +466,27 @@
 
         if (isCartOrder) {
           items = cart.map(i => {
-            const hasItemDiscount = i.qty >= 5;
-            const finalUnit = hasItemDiscount ? i.price * 0.5 : i.price;
+            const finalUnit = pricing.hasDiscount ? i.price * 0.5 : i.price;
             return {
-              name: i.name + (hasItemDiscount ? ' (inkl. 50% Rabatt)' : ''),
+              name: i.name + (pricing.hasDiscount ? ' (50% Mengenrabatt)' : ''),
               unitAmount: Math.round(finalUnit * 100),
               quantity: i.qty
             };
           });
-          metadata['Bestelltyp'] = 'Warenkorb (' + cart.length + ' Artikel)';
+          metadata['Bestelltyp'] = 'Warenkorb (' + pricing.totalCartQty + ' Artikel gesamt)';
+          if (pricing.hasDiscount) metadata['Rabatt'] = '50% Mengenrabatt ab 5 Stück';
         } else {
           const menge = parseInt(document.getElementById('menge').value, 10) || 1;
-          const hasDiscount = menge >= 5;
           const finalPriceEUR = pricing.total;
 
           items = [{
-            name: getCurrentPaket() + ' × ' + menge + (hasDiscount ? ' (inkl. 50% Rabatt)' : ''),
+            name: getCurrentPaket() + ' × ' + menge + (pricing.hasDiscount ? ' (inkl. 50% Rabatt)' : ''),
             unitAmount: Math.round(finalPriceEUR * 100),
             quantity: 1
           }];
           metadata['Paket'] = getCurrentPaket();
           metadata['Menge'] = menge;
-          if (hasDiscount) metadata['Rabatt'] = '50% Mengenrabatt ab 5 Stk.';
+          if (pricing.hasDiscount) metadata['Rabatt'] = '50% Mengenrabatt ab 5 Stk.';
         }
 
         const res = await fetch('/api/create-checkout', {
@@ -514,10 +515,10 @@
       const formData = new FormData(form);
       formData.append('Gesamtpreis', pricing.total.toLocaleString('de-DE', { minimumFractionDigits: 2 }) + ' €');
       if (pricing.hasDiscount) {
-        formData.append('Rabatt_Angewendet', '50% Mengenrabatt ab 5 Stück');
+        formData.append('Rabatt_Angewendet', '50% Mengenrabatt ab 5 Stück Gesamtmenge');
       }
       if (isCartOrder) {
-        formData.append('Artikel_Warenkorb', cart.map(i => `${i.qty}x ${i.name} (je ${i.qty >= 5 ? i.price * 0.5 : i.price}€)`).join(', '));
+        formData.append('Artikel_Warenkorb', cart.map(i => `${i.qty}x ${i.name} (je ${pricing.hasDiscount ? i.price * 0.5 : i.price}€)`).join(', '));
       }
       const response = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',

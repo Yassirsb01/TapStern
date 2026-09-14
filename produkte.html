@@ -47,7 +47,7 @@
   a{color:inherit;}
   .wrap{max-width:var(--maxw); margin:0 auto; padding:0 28px;}
 
-  /* NAV (same as index.html) */
+  /* NAV */
   nav{
     position:sticky; top:0; z-index:50;
     background:rgba(245,246,251,0.85);
@@ -79,6 +79,20 @@
   .dropdown-item:hover, .dropdown-item.active{background:var(--bg-soft);}
   .dropdown-title{font-weight:600; font-size:0.88rem; color:var(--ink);}
   .dropdown-desc{font-size:0.76rem; color:var(--ink-soft); margin-top:2px;}
+  
+  /* WARENKORB BUTTON IN NAV */
+  .cart-nav-btn{
+    background:transparent; border:1px solid var(--line); color:var(--ink);
+    padding:8px 14px; border-radius:10px; font-size:0.9rem; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; gap:8px; margin-right:10px;
+    transition:border-color 0.15s ease;
+  }
+  .cart-nav-btn:hover{border-color:var(--primary-bright);}
+  .cart-badge{
+    background:var(--primary); color:#fff; font-size:0.72rem; font-weight:700;
+    padding:2px 7px; border-radius:100px; min-width:18px; text-align:center;
+  }
+
   .menu-toggle{
     display:none; width:38px; height:38px; margin-left:10px; border-radius:10px;
     border:1px solid var(--line); background:transparent; color:var(--ink);
@@ -89,7 +103,6 @@
     nav .wrap{padding:14px 16px;}
     .logo{font-size:1.12rem; gap:6px;}
     .logo img{height:24px !important;}
-    .theme-toggle{width:34px; height:34px; margin-right:6px;}
     .nav-cta{padding:8px 12px; font-size:0.82rem;}
     .menu-toggle{width:34px; height:34px; margin-left:6px;}
   }
@@ -139,12 +152,78 @@
   .price-line .was{font-size:1rem; color:var(--ink-soft); text-decoration:line-through; font-weight:500; font-family:'Inter',sans-serif;}
   .price-line small{font-size:0.85rem; color:var(--ink-soft); font-weight:400; font-family:'Inter',sans-serif;}
   .price-card p.desc{color:var(--ink-soft); font-size:0.92rem; margin:10px 0 22px; flex-grow:1;}
-  .btn-primary{
+  
+  .btn-add{
     background:var(--primary); color:#fff; font-weight:600; padding:12px 20px;
-    border-radius:12px; text-decoration:none; font-size:0.94rem; text-align:center; display:block;
+    border-radius:12px; border:none; font-size:0.94rem; text-align:center; display:block;
+    cursor:pointer; width:100%; font-family:inherit; transition:background 0.15s ease;
   }
-  .btn-primary:hover{background:var(--primary-bright);}
+  .btn-add:hover{background:var(--primary-bright);}
   .state-msg{color:var(--ink-soft); font-size:0.95rem; padding:20px 0;}
+
+  /* ═══ WARENKORB DRAWER (Slide-Over) ═══ */
+  .cart-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:200;
+    opacity:0; visibility:hidden; transition:opacity 0.25s ease, visibility 0.25s;
+    backdrop-filter:blur(3px);
+  }
+  .cart-overlay.open{opacity:1; visibility:visible;}
+  .cart-drawer{
+    position:fixed; top:0; right:0; bottom:0; width:100%; max-width:420px;
+    background:var(--card); z-index:201; box-shadow:-10px 0 40px rgba(0,0,0,0.25);
+    transform:translateX(100%); transition:transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display:flex; flex-direction:column;
+  }
+  .cart-drawer.open{transform:translateX(0);}
+  .cart-header{
+    padding:20px 24px; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .cart-header h3{font-size:1.2rem; margin:0;}
+  .cart-close{
+    background:transparent; border:none; font-size:1.4rem; color:var(--ink-soft);
+    cursor:pointer; padding:4px 8px; border-radius:6px;
+  }
+  .cart-close:hover{color:var(--ink);}
+  .cart-body{
+    padding:20px 24px; overflow-y:auto; flex-grow:1;
+    display:flex; flex-direction:column; gap:16px;
+  }
+  .cart-item{
+    display:flex; gap:14px; align-items:center; padding-bottom:16px;
+    border-bottom:1px solid var(--line);
+  }
+  .cart-item-img{width:56px; height:56px; border-radius:10px; object-fit:cover; background:var(--bg-soft);}
+  .cart-item-info{flex-grow:1; min-width:0;}
+  .cart-item-title{font-weight:600; font-size:0.92rem; color:var(--ink); margin-bottom:2px;}
+  .cart-item-price{font-size:0.85rem; color:var(--primary-bright); font-weight:600;}
+  .cart-item-stepper{display:flex; align-items:center; gap:8px; margin-top:6px;}
+  .cart-item-stepper button{
+    width:24px; height:24px; border-radius:6px; border:1px solid var(--line);
+    background:transparent; color:var(--ink); font-weight:700; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .cart-item-stepper span{font-size:0.88rem; font-weight:600; min-width:18px; text-align:center;}
+  .cart-item-del{
+    background:transparent; border:none; color:#ef4444; font-size:1.1rem;
+    cursor:pointer; padding:6px; opacity:0.7;
+  }
+  .cart-item-del:hover{opacity:1;}
+  .cart-empty{text-align:center; color:var(--ink-soft); padding:40px 0;}
+  .cart-footer{
+    padding:20px 24px; border-top:1px solid var(--line); background:var(--bg-soft);
+  }
+  .cart-subtotal{
+    display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;
+    font-size:1.02rem; font-weight:700;
+  }
+  .cart-subtotal strong{color:var(--primary-bright); font-size:1.35rem; font-family:'Space Grotesk',sans-serif;}
+  .btn-checkout{
+    width:100%; padding:14px; border-radius:12px; border:none;
+    background:var(--primary); color:#fff; font-weight:600; font-size:1rem;
+    cursor:pointer; text-align:center; text-decoration:none; display:block;
+  }
+  .btn-checkout:hover{background:var(--primary-bright);}
 
   footer{border-top:1px solid var(--line); padding:32px 0 48px; font-size:0.82rem; color:var(--ink-soft);}
   footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
@@ -164,6 +243,23 @@
     }catch(e){}
   })();
 </script>
+
+<!-- WARENKORB OVERLAY & DRAWER -->
+<div class="cart-overlay" id="cartOverlay" onclick="toggleCart(false)"></div>
+<div class="cart-drawer" id="cartDrawer">
+  <div class="cart-header">
+    <h3>Dein Warenkorb</h3>
+    <button class="cart-close" onclick="toggleCart(false)" aria-label="Schließen">✕</button>
+  </div>
+  <div class="cart-body" id="cartItems"></div>
+  <div class="cart-footer" id="cartFooter">
+    <div class="cart-subtotal">
+      <span>Zwischensumme:</span>
+      <strong id="cartSubtotal">0,00 €</strong>
+    </div>
+    <a href="bestellen.html" class="btn-checkout">Zur Kasse gehen →</a>
+  </div>
+</div>
 
 <nav>
   <div class="wrap">
@@ -186,8 +282,8 @@
             <span class="dropdown-desc">NFC-Karten für Personen &amp; Teams</span>
           </a>
           <a href="business-hub.html" class="dropdown-item">
-          <span class="dropdown-title">Business Hub</span>
-          <span class="dropdown-desc">Eine Landingpage, alle deine Links</span>
+            <span class="dropdown-title">Business Hub</span>
+            <span class="dropdown-desc">Eine Landingpage, alle deine Links</span>
           </a>
           <a href="produkte.html" class="dropdown-item active">
             <span class="dropdown-title">Alle Produkte</span>
@@ -199,6 +295,11 @@
       <a href="app.html" class="nav-link">Meine Karte</a>
     </div>
     <div style="display:flex; align-items:center;">
+      <!-- WARENKORB TRIGGER IN NAV -->
+      <button class="cart-nav-btn" onclick="toggleCart(true)" aria-label="Warenkorb öffnen">
+        🛒 <span class="cart-badge" id="cartCount">0</span>
+      </button>
+
       <a class="nav-cta" href="index.html#kontakt">Jetzt anfragen</a>
       <button type="button" class="menu-toggle" id="menuToggle" aria-label="Menü öffnen" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
@@ -219,7 +320,7 @@
   <div class="wrap">
     <span class="eyebrow">Produkte</span>
     <h1 class="display">Alle Tapstern-Produkte auf einen Blick</h1>
-    <p>Von der klassischen Bewertungskarte bis zur Multi-Link-Karte für Social Media — hier findest du alles, was du direkt bestellen kannst.</p>
+    <p>Von der klassischen Bewertungskarte bis zur Multi-Link-Karte für Social Media — wähle deine Produkte aus und lege sie einfach in den Warenkorb.</p>
   </div>
 </div>
 
@@ -262,13 +363,111 @@
 </script>
 
 <script>
-  // === Product loading from Google Sheet (published as CSV) ===
-  // To add, remove, or edit a product: just edit the Google Sheet.
-  // This page re-fetches it fresh on every page load — no code changes needed, ever.
-  const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSiDwRui-xoVv7-Me9mQWNezPeSPgQvUZd5RsX3oVqRBblv6uuIVdhrMzrA6h97i8SHcyp-IsE0jcO0/pub?output=csv';
+  // ═════════════════════════════════════════════════════════════════
+  // 🛒 WARENKORB LOGIK (localStorage)
+  // ═════════════════════════════════════════════════════════════════
+  let CART = [];
+  try {
+    CART = JSON.parse(localStorage.getItem('tapstern_cart')) || [];
+  } catch(e){ CART = []; }
 
-  // Small robust CSV parser: handles quoted fields containing commas (like your
-  // "beschreibung" column), so it works even as descriptions get longer.
+  function saveCart() {
+    localStorage.setItem('tapstern_cart', JSON.stringify(CART));
+    renderCart();
+  }
+
+  function toggleCart(open) {
+    document.getElementById('cartOverlay').classList.toggle('open', open);
+    document.getElementById('cartDrawer').classList.toggle('open', open);
+  }
+
+  function addToCart(index) {
+    const p = window.LOADED_PRODUCTS[index];
+    if(!p) return;
+    const priceNum = parseFloat(String(p.einfuehrungspreis || p.preis).replace(',', '.')) || 0;
+    
+    const existing = CART.find(item => item.name === p.name);
+    if(existing) {
+      existing.qty += 1;
+    } else {
+      CART.push({
+        name: p.name,
+        price: priceNum,
+        image: p.bild_url || '',
+        qty: 1
+      });
+    }
+    saveCart();
+    toggleCart(true);
+  }
+
+  function updateQty(index, delta) {
+    if(!CART[index]) return;
+    CART[index].qty += delta;
+    if(CART[index].qty <= 0) {
+      CART.splice(index, 1);
+    }
+    saveCart();
+  }
+
+  function removeFromCart(index) {
+    CART.splice(index, 1);
+    saveCart();
+  }
+
+  function renderCart() {
+    const countEl = document.getElementById('cartCount');
+    const itemsEl = document.getElementById('cartItems');
+    const subtotalEl = document.getElementById('cartSubtotal');
+    const footerEl = document.getElementById('cartFooter');
+
+    const totalCount = CART.reduce((sum, i) => sum + i.qty, 0);
+    countEl.textContent = totalCount;
+
+    if(CART.length === 0) {
+      itemsEl.innerHTML = '<div class="cart-empty"><p>Dein Warenkorb ist noch leer.</p></div>';
+      footerEl.style.display = 'none';
+      return;
+    }
+
+    footerEl.style.display = 'block';
+    let subtotal = 0;
+
+    itemsEl.innerHTML = CART.map((item, idx) => {
+      const itemTotal = item.price * item.qty;
+      subtotal += itemTotal;
+      const imgTag = item.image 
+        ? `<img src="${item.image}" class="cart-item-img" alt="">`
+        : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;">📦</div>`;
+
+      return `
+        <div class="cart-item">
+          ${imgTag}
+          <div class="cart-item-info">
+            <div class="cart-item-title">${item.name}</div>
+            <div class="cart-item-price">${item.price.toFixed(2).replace('.', ',')} €</div>
+            <div class="cart-item-stepper">
+              <button onclick="updateQty(${idx}, -1)">–</button>
+              <span>${item.qty}</span>
+              <button onclick="updateQty(${idx}, 1)">+</button>
+            </div>
+          </div>
+          <button class="cart-item-del" onclick="removeFromCart(${idx})" title="Löschen">✕</button>
+        </div>
+      `;
+    }).join('');
+
+    subtotalEl.textContent = subtotal.toFixed(2).replace('.', ',') + ' €';
+  }
+
+  renderCart();
+
+  // ═════════════════════════════════════════════════════════════════
+  // GOOGLE SHEET LADEN
+  // ═════════════════════════════════════════════════════════════════
+  const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSiDwRui-xoVv7-Me9mQWNezPeSPgQvUZd5RsX3oVqRBblv6uuIVdhrMzrA6h97i8SHcyp-IsE0jcO0/pub?output=csv';
+  window.LOADED_PRODUCTS = [];
+
   function parseCSV(text) {
     const rows = [];
     let row = [], field = '', inQuotes = false;
@@ -299,7 +498,7 @@
     return isNaN(num) ? n : num.toString().replace('.', ',') + ' €';
   }
 
-  function productCard(p) {
+  function productCard(p, index) {
     const hasIntro = p.einfuehrungspreis && p.einfuehrungspreis.trim() !== '';
     const priceHtml = hasIntro
       ? `<span class="now">${euro(p.einfuehrungspreis)}</span><span class="was">${euro(p.preis)}</span><small>Einführungspreis</small>`
@@ -309,9 +508,6 @@
       ? `<div class="price-visual"><img src="${p.bild_url}" alt="${p.name}" loading="lazy"></div>`
       : `<div class="price-visual empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
 
-    const orderPrice = hasIntro ? p.einfuehrungspreis : p.preis;
-    const orderUrl = `bestellen.html?produkt=${encodeURIComponent(p.name)}&preis=${encodeURIComponent(orderPrice)}&menge=1`;
-
     return `
       <div class="price-card">
         ${imgHtml}
@@ -320,7 +516,7 @@
           <h3>${p.name}</h3>
           <div class="price-line">${priceHtml}</div>
           <p class="desc">${p.beschreibung || ''}</p>
-          <a class="btn-primary" href="${orderUrl}">Jetzt bestellen</a>
+          <button class="btn-add" onclick="addToCart(${index})">In den Warenkorb</button>
         </div>
       </div>`;
   }
@@ -341,9 +537,10 @@
         grid.innerHTML = '<p class="state-msg">Aktuell sind keine Produkte gelistet.</p>';
         return;
       }
-      grid.innerHTML = active.map(productCard).join('');
+      window.LOADED_PRODUCTS = active;
+      grid.innerHTML = active.map((p, idx) => productCard(p, idx)).join('');
     } catch (err) {
-      grid.innerHTML = '<p class="state-msg">Produkte konnten gerade nicht geladen werden. Bitte lade die Seite neu oder schreib uns kurz an <a href="mailto:anfrage@tapstern.de" style="color:var(--primary-bright);">anfrage@tapstern.de</a>.</p>';
+      grid.innerHTML = '<p class="state-msg">Produkte konnten gerade nicht geladen werden.</p>';
       console.error(err);
     }
   }

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tapstempel — Das echte Stempelkarten-Gefühl. Nur digital.</title>
+<meta name="description" content="Tapstempel bringt das digitale Treueprogramm für lokale Betriebe — ohne App, ohne Registrierung, ohne Betrugsrisiko.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#121118; --surface:#1c1a24; --surface-2:#231f2e;
+  --accent:#d1512d; --accent-hover:#e8663d;
+  --text:#f3f0ea; --text-muted:#9e9a93;
+  --border:rgba(243,240,234,0.08); --border-accent:rgba(209,81,45,0.3);
+  --font-display:'Barlow Condensed', sans-serif; --font-body:'Inter', sans-serif;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{margin:0; background:var(--bg); color:var(--text); font-family:var(--font-body); -webkit-font-smoothing:antialiased; overflow-x:hidden;}
+::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:var(--bg);} ::-webkit-scrollbar-thumb{background:var(--surface-2); border-radius:2px;}
+a{color:inherit;}
+button{font-family:inherit;}
+
+@keyframes stamp-impact{
+  0%{transform:perspective(900px) rotateX(-55deg) scale(1.9) translateZ(240px); opacity:0; filter:blur(4px);}
+  55%{transform:perspective(900px) rotateX(10deg) scale(0.93) translateZ(-25px); opacity:1; filter:blur(0);}
+  72%{transform:perspective(900px) rotateX(-5deg) scale(1.04) translateZ(12px);}
+  86%{transform:perspective(900px) rotateX(2.5deg) scale(0.98) translateZ(-6px);}
+  100%{transform:perspective(900px) rotateX(0deg) scale(1) translateZ(0); opacity:1; filter:blur(0);}
+}
+@keyframes float-ring{ 0%,100%{transform:translateY(0) rotate(0deg);} 33%{transform:translateY(-10px) rotate(0.8deg);} 66%{transform:translateY(-5px) rotate(-0.5deg);} }
+@keyframes ink-spread{ 0%{transform:scale(0.4); opacity:0.5;} 60%{opacity:0.12;} 100%{transform:scale(2.4); opacity:0;} }
+@keyframes stamp-press{
+  0%{transform:perspective(600px) rotateX(-65deg) scale(1.6) translateZ(100px); opacity:0;}
+  52%{transform:perspective(600px) rotateX(14deg) scale(0.88) translateZ(-18px); opacity:1;}
+  70%{transform:perspective(600px) rotateX(-6deg) scale(1.06) translateZ(8px);}
+  85%{transform:perspective(600px) rotateX(3deg) scale(0.97) translateZ(-4px);}
+  100%{transform:perspective(600px) rotateX(0deg) scale(1) translateZ(0);}
+}
+@keyframes confetti-fall{ 0%{transform:translateY(0) rotate(0deg) scale(1); opacity:1;} 100%{transform:translateY(180px) rotate(540deg) scale(0.6); opacity:0;} }
+@keyframes fade-up{ from{opacity:0; transform:translateY(32px);} to{opacity:1; transform:translateY(0);} }
+@keyframes fade-in{ from{opacity:0;} to{opacity:1;} }
+@keyframes slide-in-left{ from{opacity:0; transform:translateX(-48px);} to{opacity:1; transform:translateX(0);} }
+@keyframes slide-in-right{ from{opacity:0; transform:translateX(48px);} to{opacity:1; transform:translateX(0);} }
+@keyframes scale-in{ from{opacity:0; transform:scale(0.88);} to{opacity:1; transform:scale(1);} }
+@keyframes pulse-ring{ 0%{box-shadow:0 0 0 0 rgba(209,81,45,0.4);} 70%{box-shadow:0 0 0 16px rgba(209,81,45,0);} 100%{box-shadow:0 0 0 0 rgba(209,81,45,0);} }
+@keyframes tap-gesture{ 0%,100%{transform:translateY(0) scale(1); opacity:0.6;} 40%,60%{transform:translateY(8px) scale(0.9); opacity:1;} }
+@keyframes reward-pop{ 0%{transform:scale(0.5); opacity:0;} 60%{transform:scale(1.08);} 80%{transform:scale(0.96);} 100%{transform:scale(1); opacity:1;} }
+@media (prefers-reduced-motion: reduce){ *,*::before,*::after{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; } }
+
+/* layout helpers */
+.reveal{opacity:0;}
+.reveal.in{opacity:1;}
+.hidden-mobile{display:flex;}
+@media (max-width:900px){
+  .hero-grid{grid-template-columns:1fr !important; text-align:center;}
+  .hero-grid > div:last-child{display:none;}
+  .problem-grid{grid-template-columns:1fr !important;}
+  .problem-grid > div:nth-child(2){display:none;}
+  .how-grid{grid-template-columns:1fr !important;}
+  .industry-grid{grid-template-columns:repeat(2,1fr) !important;}
+  .stats-grid{grid-template-columns:1fr !important; gap:2rem !important;}
+  .hidden-mobile{display:none;}
+}
+@media (max-width:540px){ .industry-grid{grid-template-columns:1fr !important;} }
+</style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav id="nav" style="position:fixed; top:0; left:0; right:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:1rem 2.5rem; transition:background 0.4s, backdrop-filter 0.4s, border-color 0.4s;">
+  <div style="display:flex; align-items:center; gap:0.6rem;">
+    <div style="width:34px; height:34px; border-radius:50%; border:2px solid var(--accent); display:flex; align-items:center; justify-content:center;">
+      <span style="font-family:var(--font-display); font-size:0.9rem; font-weight:900; color:var(--accent);">TS</span>
+    </div>
+    <span style="font-family:var(--font-display); font-size:1.35rem; font-weight:800; letter-spacing:0.05em;">TAPSTEMPEL</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:2.5rem;">
+    <div class="hidden-mobile" style="gap:2rem;">
+      <a href="#" class="navlink" style="font-size:0.9rem; color:rgba(243,240,234,0.65); text-decoration:none; font-weight:500; transition:color .2s;">Funktionen</a>
+      <a href="#branchen" class="navlink" style="font-size:0.9rem; color:rgba(243,240,234,0.65); text-decoration:none; font-weight:500; transition:color .2s;">Branchen</a>
+      <a href="#" class="navlink" style="font-size:0.9rem; color:rgba(243,240,234,0.65); text-decoration:none; font-weight:500; transition:color .2s;">Preise</a>
+    </div>
+    <a href="mailto:hello@tapstern.de?subject=Tapstempel%20Demo" class="btn-accent" style="background:var(--accent); color:var(--text); border:none; border-radius:8px; padding:0.6rem 1.4rem; font-size:0.9rem; font-weight:600; cursor:pointer; transition:background .2s, transform .15s; text-decoration:none; display:inline-block;">Demo anfragen</a>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section style="min-height:100vh; position:relative; display:flex; align-items:center; padding:7rem 2.5rem 5rem; overflow:hidden;">
+  <div id="bgTexture" style="position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 60% 50% at 65% 45%, rgba(209,81,45,0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 60% at 20% 70%, rgba(209,81,45,0.04) 0%, transparent 60%);"></div>
+  <div id="dotGrid" style="position:absolute; inset:0; pointer-events:none; background-image:radial-gradient(circle, rgba(243,240,234,0.06) 1px, transparent 1px); background-size:36px 36px;"></div>
+
+  <div class="hero-grid" style="max-width:1240px; margin:0 auto; width:100%; display:grid; grid-template-columns:1fr 1fr; gap:4rem; align-items:center; position:relative;">
+    <div>
+      <div class="hero-a" style="display:inline-flex; align-items:center; gap:0.5rem; background:rgba(209,81,45,0.1); border:1px solid rgba(209,81,45,0.25); border-radius:100px; padding:0.4rem 1rem; margin-bottom:1.75rem; opacity:0;">
+        <span style="width:7px; height:7px; border-radius:50%; background:var(--accent); display:inline-block; animation:pulse-ring 2s infinite;"></span>
+        <span style="font-size:0.8rem; color:var(--accent-hover); font-weight:600; letter-spacing:0.05em;">Kein App-Download nötig</span>
+      </div>
+
+      <h1 class="hero-b" style="font-family:var(--font-display); font-weight:900; line-height:0.95; font-size:clamp(3rem,6vw,5.5rem); letter-spacing:-0.01em; margin:0 0 1.5rem; opacity:0;">
+        <span style="display:block;">DAS ECHTE</span>
+        <span style="display:block; color:var(--accent);">STEMPELKARTEN-</span>
+        <span style="display:block;">GEFÜHL.</span>
+        <span style="display:block; font-size:0.45em; font-weight:700; color:var(--text-muted); letter-spacing:0.04em; margin-top:0.5rem;">NUR DIGITAL.</span>
+      </h1>
+
+      <p class="hero-c" style="font-size:1.1rem; line-height:1.7; color:var(--text-muted); max-width:460px; margin:0 0 2.5rem; opacity:0;">
+        Tapstempel bringt die Magie der Stempelkarte ins digitale Zeitalter — ohne App, ohne Registrierung, ohne Betrugsrisiko. Nur antippen und stempeln.
+      </p>
+
+      <div class="hero-d" style="display:flex; gap:1rem; flex-wrap:wrap; opacity:0;">
+        <a href="stempel.html" class="btn-accent-lg" style="background:var(--accent); color:var(--text); border:none; border-radius:10px; padding:0.9rem 2rem; font-size:1rem; font-weight:700; cursor:pointer; font-family:var(--font-display); letter-spacing:0.06em; transition:background .2s, transform .15s, box-shadow .2s; box-shadow:0 4px 24px rgba(209,81,45,0.3); text-decoration:none; display:inline-block;">JETZT STARTEN</a>
+        <a href="#howSec" class="btn-ghost" style="background:transparent; color:var(--text); border:1.5px solid rgba(243,240,234,0.2); border-radius:10px; padding:0.9rem 1.75rem; font-size:1rem; font-weight:600; cursor:pointer; transition:border-color .2s, transform .15s; text-decoration:none; display:inline-block;">Demo ansehen</a>
+      </div>
+    </div>
+
+    <div id="ringWrap" style="display:flex; justify-content:center;">
+      <div id="stampRing" style="position:relative; width:340px; height:340px; display:flex; align-items:center; justify-content:center;">
+        <div id="inkSpread" style="position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle, rgba(209,81,45,0.25) 0%, transparent 70%); opacity:0;"></div>
+        <div id="ringInner" style="position:relative; width:340px; height:340px; opacity:0;">
+          <svg width="340" height="340" viewBox="0 0 340 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="170" cy="170" r="162" stroke="#d1512d" stroke-width="2.5" stroke-dasharray="6 5" opacity="0.7"/>
+            <circle cx="170" cy="170" r="148" stroke="#d1512d" stroke-width="1.5" opacity="0.4"/>
+            <circle cx="170" cy="170" r="132" stroke="#d1512d" stroke-width="6" opacity="0.9"/>
+            <circle cx="170" cy="170" r="118" fill="#1c1a24"/>
+            <circle cx="170" cy="170" r="108" stroke="#d1512d" stroke-width="1.5" opacity="0.35"/>
+            <g id="starDots"></g>
+            <defs>
+              <path id="topArc" d="M 60,170 A 110,110 0 0,1 280,170"/>
+              <path id="botArc" d="M 60,170 A 110,110 0 0,0 280,170"/>
+            </defs>
+            <text font-size="13" font-family="Barlow Condensed, sans-serif" font-weight="700" fill="#d1512d" letter-spacing="5" opacity="0.8">
+              <textPath href="#topArc" startOffset="8%">TAPSTEMPEL · DIGITAL LOYALTY ·</textPath>
+            </text>
+            <text font-size="11" font-family="Barlow Condensed, sans-serif" font-weight="700" fill="#d1512d" letter-spacing="4" opacity="0.5">
+              <textPath href="#botArc" startOffset="12%">· SEIT 2026 · LOKAL · SICHER</textPath>
+            </text>
+            <text x="170" y="155" text-anchor="middle" font-size="62" font-family="Barlow Condensed, sans-serif" font-weight="900" fill="#d1512d" letter-spacing="-2">TS</text>
+            <text x="170" y="192" text-anchor="middle" font-size="13" font-family="Inter, sans-serif" font-weight="500" fill="#f3f0ea" opacity="0.5" letter-spacing="4">STEMPEL</text>
+            <g id="inkLines"></g>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-e" style="position:absolute; bottom:2.5rem; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:0.5rem; opacity:0;">
+    <span style="font-size:0.7rem; letter-spacing:0.15em; color:var(--text-muted); text-transform:uppercase;">Scrollen</span>
+    <div style="width:1px; height:40px; background:linear-gradient(to bottom, rgba(209,81,45,0.6), transparent); animation:float-ring 2s ease-in-out infinite;"></div>
+  </div>
+</section>
+
+<!-- ═══ PROBLEM → LÖSUNG ═══ -->
+<section style="padding:7rem 2.5rem; background:var(--surface);">
+  <div id="problemSec" style="max-width:1240px; margin:0 auto;">
+    <div style="text-align:center; margin-bottom:4rem;">
+      <h2 class="ps-head" style="font-family:var(--font-display); font-size:clamp(2.5rem,5vw,4.5rem); font-weight:900; line-height:1; letter-spacing:-0.01em; margin:0; opacity:0;">
+        WARUM NORMALE DIGITALE<br><span style="color:var(--accent);">STEMPELKARTEN SCHEITERN</span>
+      </h2>
+    </div>
+
+    <div class="problem-grid" style="display:grid; grid-template-columns:1fr auto 1fr; gap:2rem; align-items:start;">
+      <div class="ps-left" style="opacity:0;">
+        <div style="background:rgba(243,240,234,0.03); border:1px solid rgba(243,240,234,0.08); border-radius:16px; padding:2rem;">
+          <div style="font-size:0.75rem; letter-spacing:0.12em; text-transform:uppercase; color:#9e9a93; margin-bottom:1.5rem; font-weight:600;">Das Problem</div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0; border-bottom:1px solid rgba(243,240,234,0.06);">
+            <span style="font-size:1.4rem; flex-shrink:0;">📇</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">Papierkarten gehen verloren</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Zerknitterte, verlorene oder vergessene Stempelkarten — der Fortschritt ist einfach weg</div></div>
+          </div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0; border-bottom:1px solid rgba(243,240,234,0.06);">
+            <span style="font-size:1.4rem; flex-shrink:0;">🎭</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">Reload-Betrug</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Kunden fälschen Stempel oder nutzen Screenshots alter Karten</div></div>
+          </div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0; border-bottom:1px solid rgba(243,240,234,0.06);">
+            <span style="font-size:1.4rem; flex-shrink:0;">📱</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">App-Zwang</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Niemand lädt eine App für jeden einzelnen Laden herunter</div></div>
+          </div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0;">
+            <span style="font-size:1.4rem; flex-shrink:0;">🔐</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">Datenhürde</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Pflichtregistrierung schreckt Spontankäufer ab</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ps-arrow" style="display:flex; align-items:center; justify-content:center; padding-top:5rem; opacity:0;">
+        <div style="width:48px; height:48px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; box-shadow:0 0 32px rgba(209,81,45,0.4);">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M11 5l5 5-5 5" stroke="#f3f0ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <div class="ps-right" style="opacity:0;">
+        <div style="background:rgba(209,81,45,0.06); border:1px solid rgba(209,81,45,0.2); border-radius:16px; padding:2rem;">
+          <div style="font-size:0.75rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent); margin-bottom:1.5rem; font-weight:600;">Die Tapstempel-Lösung</div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0; border-bottom:1px solid rgba(243,240,234,0.06);">
+            <span style="font-size:1.4rem; flex-shrink:0;">🛡️</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">Personal-Karte, nicht Kunden-Karte</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Nur Ihr Personal kann stempeln — per NFC-Karte, die sicher bei Ihnen bleibt</div></div>
+          </div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0; border-bottom:1px solid rgba(243,240,234,0.06);">
+            <span style="font-size:1.4rem; flex-shrink:0;">⚡</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">Null Reibung für Kunden</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Antippen genügt. Kein Download, kein Login, keine Hürde</div></div>
+          </div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0; border-bottom:1px solid rgba(243,240,234,0.06);">
+            <span style="font-size:1.4rem; flex-shrink:0;">🔒</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">Keine Daten nötig</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Anonymes Stempeln möglich — DSGVO-konform ohne Kompromiss</div></div>
+          </div>
+          <div class="prob-item" style="display:flex; gap:1rem; padding:1rem 0;">
+            <span style="font-size:1.4rem; flex-shrink:0;">🚀</span>
+            <div><div style="font-weight:600; margin-bottom:0.25rem;">In 5 Minuten live</div><div style="font-size:0.875rem; color:#9e9a93; line-height:1.5;">Karte aktivieren, Belohnungen einstellen, loslegen</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SO FUNKTIONIERT'S ═══ -->
+<section style="padding:7rem 2.5rem;">
+  <div id="howSec" style="max-width:1240px; margin:0 auto;">
+    <div style="text-align:center; margin-bottom:5rem;">
+      <div style="font-size:0.75rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent); font-weight:600; margin-bottom:0.75rem;">Einfacher geht's nicht</div>
+      <h2 class="how-head" style="font-family:var(--font-display); font-size:clamp(2.5rem,5vw,4.5rem); font-weight:900; line-height:1; letter-spacing:-0.01em; margin:0; opacity:0;">
+        SO FUNKTIONIERT<br><span style="color:var(--accent);">TAPSTEMPEL</span>
+      </h2>
+    </div>
+
+    <div class="how-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:5rem; align-items:center;">
+      <div style="display:flex; flex-direction:column; gap:2rem;" id="stepsList"></div>
+      <div class="how-demo" style="display:flex; justify-content:center; opacity:0;">
+        <div id="stampDemo" style="background:#1c1a24; border:1px solid rgba(209,81,45,0.2); border-radius:20px; padding:2rem; position:relative; overflow:hidden; max-width:380px; width:100%;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.75rem;">
+            <div>
+              <div style="font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:#9e9a93; margin-bottom:0.25rem;">Café Sonnenblick</div>
+              <div style="font-family:var(--font-display); font-size:1.4rem; font-weight:800; letter-spacing:0.02em;">Stempelkarte</div>
+            </div>
+            <div id="demoCounter" style="background:rgba(209,81,45,0.12); border:1px solid rgba(209,81,45,0.3); border-radius:8px; padding:0.3rem 0.75rem; font-size:0.8rem; color:#e8663d; font-weight:600;">0/8</div>
+          </div>
+          <div id="demoGrid" style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.625rem; margin-bottom:1.75rem;"></div>
+          <div id="demoStatus" style="display:flex; align-items:center; gap:0.6rem; font-size:0.85rem; color:#9e9a93; transition:color .3s;">
+            <span id="demoStatusIcon" style="display:inline-block; font-size:1.2rem;">📲</span>
+            <span id="demoStatusText">Warten auf Kundenkarte…</span>
+          </div>
+          <div id="demoReward" style="position:absolute; inset:0; background:rgba(18,17,24,0.96); display:none; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem; backdrop-filter:blur(4px);">
+            <div style="font-size:3.5rem;">🎉</div>
+            <div style="font-family:var(--font-display); font-size:2rem; font-weight:900; color:var(--accent); letter-spacing:0.03em;">BELOHNUNG!</div>
+            <div style="font-size:1rem; color:#f3f0ea; opacity:0.75; font-weight:500;">1× Gratis-Kaffee verdient</div>
+          </div>
+          <div id="demoConfetti" style="position:absolute; inset:0; pointer-events:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ STATS ═══ -->
+<section style="padding:6rem 2.5rem; background:var(--surface); position:relative; overflow:hidden;">
+  <div style="position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 60% 80% at 50% 50%, rgba(209,81,45,0.05) 0%, transparent 70%);"></div>
+  <div id="statsSec" style="max-width:900px; margin:0 auto; position:relative;">
+    <div class="stats-head" style="text-align:center; margin-bottom:4rem; opacity:0;">
+      <h2 style="font-family:var(--font-display); font-size:clamp(2rem,4vw,3.5rem); font-weight:900; letter-spacing:-0.01em; margin:0;">UNSER START <span style="color:var(--accent);">MIT ECHTEN LÄDEN</span></h2>
+    </div>
+    <div class="stats-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:3rem; text-align:center;">
+      <div class="stat-card" style="opacity:0;"><div class="stat-num" data-value="4" data-suffix="" style="font-family:var(--font-display); font-size:clamp(3rem,6vw,5rem); font-weight:900; line-height:1; letter-spacing:-0.02em; color:var(--accent);">0</div><div style="font-size:1rem; color:#9e9a93; margin-top:0.5rem; font-weight:500;">Pilot-Betriebe im Test</div></div>
+      <div class="stat-card" style="opacity:0;"><div class="stat-num" data-value="0" data-suffix="€" style="font-family:var(--font-display); font-size:clamp(3rem,6vw,5rem); font-weight:900; line-height:1; letter-spacing:-0.02em; color:var(--accent);">0</div><div style="font-size:1rem; color:#9e9a93; margin-top:0.5rem; font-weight:500;">Einrichtung für Piloten</div></div>
+      <div class="stat-card" style="opacity:0;"><div class="stat-num" data-value="5" data-suffix=" Min." style="font-family:var(--font-display); font-size:clamp(3rem,6vw,5rem); font-weight:900; line-height:1; letter-spacing:-0.02em; color:var(--accent);">0</div><div style="font-size:1rem; color:#9e9a93; margin-top:0.5rem; font-weight:500;">Setup-Zeit pro Laden</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ BRANCHEN ═══ -->
+<section id="branchen" style="padding:7rem 2.5rem;">
+  <div id="industrySec" style="max-width:1240px; margin:0 auto;">
+    <div style="text-align:center; margin-bottom:4rem;">
+      <h2 class="ind-head" style="font-family:var(--font-display); font-size:clamp(2.5rem,5vw,4.5rem); font-weight:900; line-height:1; letter-spacing:-0.01em; margin:0; opacity:0;">FÜR JEDE <span style="color:var(--accent);">BRANCHE</span></h2>
+      <p class="ind-sub" style="margin-top:1rem; color:#9e9a93; font-size:1rem; opacity:0;">Tapstempel passt sich an Ihr Geschäftsmodell an — nicht andersherum.</p>
+    </div>
+    <div class="industry-grid" style="display:grid; grid-template-columns:repeat(4,1fr); gap:1.5rem;" id="industryGrid"></div>
+  </div>
+</section>
+
+<!-- ═══ FINAL CTA ═══ -->
+<section id="ctaSec" style="padding:8rem 2.5rem; background:var(--surface); position:relative; overflow:hidden; text-align:center;">
+  <div style="position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 50% 70% at 50% 50%, rgba(209,81,45,0.1) 0%, transparent 65%);"></div>
+  <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:600px; border-radius:50%; border:1px solid rgba(209,81,45,0.07); pointer-events:none;"></div>
+  <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:400px; height:400px; border-radius:50%; border:1px solid rgba(209,81,45,0.1); pointer-events:none;"></div>
+
+  <div style="position:relative; max-width:700px; margin:0 auto;">
+    <div class="cta-a" style="font-size:3rem; margin-bottom:1rem; opacity:0;">🏅</div>
+    <h2 class="cta-b" style="font-family:var(--font-display); font-size:clamp(2.5rem,6vw,5rem); font-weight:900; line-height:0.95; letter-spacing:-0.01em; margin:0 0 1.5rem; opacity:0;">BEREIT FÜR<br><span style="color:var(--accent);">TREUE KUNDEN?</span></h2>
+    <p class="cta-c" style="font-size:1.1rem; color:#9e9a93; line-height:1.7; margin:0 0 3rem; opacity:0;">Starten Sie kostenlos als Pilot-Betrieb — wir richten alles gemeinsam mit Ihnen ein.</p>
+    <div class="cta-d" style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; opacity:0;">
+      <a href="stempel.html" class="btn-accent-lg2" style="background:var(--accent); color:#f3f0ea; border:none; border-radius:10px; padding:1rem 2.5rem; font-family:var(--font-display); font-size:1.15rem; font-weight:900; letter-spacing:0.06em; cursor:pointer; transition:background .2s, transform .15s, box-shadow .2s; box-shadow:0 4px 32px rgba(209,81,45,0.4); text-decoration:none; display:inline-block;">KOSTENLOS STARTEN</a>
+      <a href="mailto:hello@tapstern.de?subject=Tapstempel%20Demo" class="btn-ghost2" style="background:transparent; color:#f3f0ea; border:1.5px solid rgba(243,240,234,0.2); border-radius:10px; padding:1rem 2rem; font-size:1rem; font-weight:600; cursor:pointer; transition:border-color .2s, transform .15s; text-decoration:none; display:inline-block;">Mit dem Team sprechen</a>
+    </div>
+    <div class="cta-e" style="display:flex; gap:2rem; justify-content:center; flex-wrap:wrap; margin-top:3rem; padding-top:2.5rem; border-top:1px solid rgba(243,240,234,0.07); opacity:0;">
+      <div style="font-size:0.85rem; color:#9e9a93; font-weight:500;">🔒 DSGVO-konform</div>
+      <div style="font-size:0.85rem; color:#9e9a93; font-weight:500;">⚡ 5 Min. Setup</div>
+      <div style="font-size:0.85rem; color:#9e9a93; font-weight:500;">🎯 Kein App-Zwang</div>
+      <div style="font-size:0.85rem; color:#9e9a93; font-weight:500;">🛡️ Betrugssicher</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer style="padding:3rem 2.5rem; border-top:1px solid rgba(243,240,234,0.06); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+  <div style="display:flex; align-items:center; gap:0.6rem;">
+    <div style="width:28px; height:28px; border-radius:50%; border:1.5px solid rgba(209,81,45,0.6); display:flex; align-items:center; justify-content:center;">
+      <span style="font-family:var(--font-display); font-size:0.7rem; font-weight:900; color:var(--accent);">TS</span>
+    </div>
+    <span style="font-family:var(--font-display); font-size:1rem; font-weight:800; letter-spacing:0.05em; color:rgba(243,240,234,0.6);">TAPSTEMPEL</span>
+  </div>
+  <div style="font-size:0.8rem; color:#9e9a93;">© 2026 Tapstempel. Teil von Tapstern.</div>
+  <div style="display:flex; gap:1.5rem;">
+    <a href="#" style="font-size:0.8rem; color:#9e9a93; text-decoration:none;">Datenschutz</a>
+    <a href="#" style="font-size:0.8rem; color:#9e9a93; text-decoration:none;">Impressum</a>
+    <a href="#" style="font-size:0.8rem; color:#9e9a93; text-decoration:none;">AGB</a>
+  </div>
+</footer>
+
+<script>
+/* ── Nav scroll background ── */
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  const on = window.scrollY > 40;
+  nav.style.background = on ? 'rgba(18,17,24,0.9)' : 'transparent';
+  nav.style.backdropFilter = on ? 'blur(12px)' : 'none';
+  nav.style.borderBottom = on ? '1px solid rgba(243,240,234,0.06)' : 'none';
+}, { passive: true });
+document.querySelectorAll('.navlink').forEach(a => {
+  a.addEventListener('mouseenter', () => a.style.color = '#f3f0ea');
+  a.addEventListener('mouseleave', () => a.style.color = 'rgba(243,240,234,0.65)');
+});
+[['.btn-accent', '#e8663d', '#d1512d'], ['.btn-accent-lg', '#e8663d', '#d1512d'], ['.btn-accent-lg2', '#e8663d', '#d1512d']].forEach(([sel, hov, base]) => {
+  document.querySelectorAll(sel).forEach(b => {
+    b.addEventListener('mouseenter', () => b.style.background = hov);
+    b.addEventListener('mouseleave', () => b.style.background = base);
+  });
+});
+document.querySelectorAll('.btn-ghost, .btn-ghost2').forEach(b => {
+  b.addEventListener('mouseenter', () => b.style.borderColor = 'rgba(243,240,234,0.5)');
+  b.addEventListener('mouseleave', () => b.style.borderColor = 'rgba(243,240,234,0.2)');
+});
+
+/* ── Parallax on hero ── */
+let raf = 0;
+window.addEventListener('scroll', () => {
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => {
+    const y = window.scrollY;
+    document.getElementById('bgTexture').style.transform = `translateY(${-y * 0.06}px)`;
+    document.getElementById('dotGrid').style.transform = `translateY(${-y * 0.084}px)`;
+    document.getElementById('ringWrap').style.transform = `translateY(${-y * 0.18}px)`;
+  });
+}, { passive: true });
+
+/* ── Star + ink-line decorations for the ring (built once) ── */
+const starDots = document.getElementById('starDots');
+[0,45,90,135,180,225,270,315].forEach(deg => {
+  const r = 140, rad = deg * Math.PI / 180;
+  const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  c.setAttribute('cx', 170 + r * Math.cos(rad));
+  c.setAttribute('cy', 170 + r * Math.sin(rad));
+  c.setAttribute('r', 3.5); c.setAttribute('fill', '#d1512d'); c.setAttribute('opacity', 0.8);
+  starDots.appendChild(c);
+});
+const inkLines = document.getElementById('inkLines');
+[0,60,120,180,240,300].forEach(deg => {
+  const r1 = 118, r2 = 132, rad = deg * Math.PI / 180;
+  const l = document.createElementNS('http://www.w3.org/2000/svg','line');
+  l.setAttribute('x1', 170 + r1 * Math.cos(rad)); l.setAttribute('y1', 170 + r1 * Math.sin(rad));
+  l.setAttribute('x2', 170 + r2 * Math.cos(rad)); l.setAttribute('y2', 170 + r2 * Math.sin(rad));
+  l.setAttribute('stroke', '#d1512d'); l.setAttribute('stroke-width', 3); l.setAttribute('opacity', 0.6);
+  inkLines.appendChild(l);
+});
+
+/* ── Hero entrance sequence ── */
+setTimeout(() => {
+  document.getElementById('inkSpread').style.animation = 'ink-spread 1.2s ease-out 0.4s both';
+  const ring = document.getElementById('ringInner');
+  ring.style.animation = 'stamp-impact 0.95s cubic-bezier(0.175,0.885,0.32,1.275) 0.1s both';
+  ring.style.opacity = '1';
+  setTimeout(() => { ring.style.animation += ', float-ring 5s ease-in-out 1.2s infinite'; }, 1300);
+}, 120);
+[['.hero-a',0.8],['.hero-b',1.0],['.hero-c',1.2],['.hero-d',1.35],['.hero-e',2.0]].forEach(([sel,delay]) => {
+  const el = document.querySelector(sel);
+  setTimeout(() => { el.style.animation = `fade-up 0.6s ease both`; el.style.opacity = ''; }, delay*1000);
+});
+document.querySelector('.hero-e').style.animation = '';
+setTimeout(() => { const e = document.querySelector('.hero-e'); e.style.animation = 'fade-in 0.6s ease both'; e.style.opacity=''; }, 2000);
+
+/* ── Generic scroll-reveal helper ── */
+function revealOnce(el, animName, delay, cb) {
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        el.style.animation = `${animName} 0.6s ease ${delay}s both`;
+        el.style.opacity = '';
+        if (cb) cb();
+        io.unobserve(el);
+      }
+    });
+  }, { threshold: 0.18 });
+  io.observe(el);
+}
+revealOnce(document.querySelector('.ps-head'), 'fade-up', 0);
+revealOnce(document.querySelector('.ps-left'), 'slide-in-left', 0.15);
+revealOnce(document.querySelector('.ps-arrow'), 'scale-in', 0.4);
+revealOnce(document.querySelector('.ps-right'), 'slide-in-right', 0.15);
+revealOnce(document.querySelector('.how-head'), 'fade-up', 0);
+revealOnce(document.querySelector('.how-demo'), 'slide-in-right', 0.2);
+revealOnce(document.querySelector('.stats-head'), 'fade-up', 0);
+revealOnce(document.querySelector('.ind-head'), 'fade-up', 0);
+revealOnce(document.querySelector('.ind-sub'), 'fade-up', 0.15);
+revealOnce(document.querySelector('.cta-a'), 'scale-in', 0);
+revealOnce(document.querySelector('.cta-b'), 'fade-up', 0.1);
+revealOnce(document.querySelector('.cta-c'), 'fade-up', 0.22);
+revealOnce(document.querySelector('.cta-d'), 'fade-up', 0.34);
+revealOnce(document.querySelector('.cta-e'), 'fade-in', 0.5);
+
+/* Steps list (staggered slide-in-left) */
+const steps = [
+  { num:'01', title:'Karte hinstellen', desc:'Ihre NFC-Stempelkarte liegt sicher bei der Kasse. Nur Ihr Personal hat Zugriff — kein Betrug möglich.', delay:0.1 },
+  { num:'02', title:'Kunde tippt an', desc:'Der Kunde hält sein Smartphone an die Tapstempel-Karte. Keine App, keine Registrierung — sofort.', delay:0.25 },
+  { num:'03', title:'Stempel einschlägt', desc:'Ein Stempel wird digital vergeben. Der Kunde sieht seinen Fortschritt sofort auf dem Bildschirm.', delay:0.4 },
+  { num:'04', title:'Belohnung freischalten', desc:"Bei der vereinbarten Anzahl gibt's die Prämie. Bestätigung per Display — fertig.", delay:0.55 },
+];
+const stepsList = document.getElementById('stepsList');
+steps.forEach(s => {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex; gap:1.5rem; opacity:0;';
+  row.innerHTML = `
+    <div style="flex-shrink:0; width:52px; height:52px; border-radius:50%; border:2px solid rgba(209,81,45,0.4); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:1rem; font-weight:900; color:var(--accent); background:rgba(209,81,45,0.06);">${s.num}</div>
+    <div style="padding-top:0.25rem;"><div style="font-weight:700; font-size:1.1rem; margin-bottom:0.4rem;">${s.title}</div><div style="font-size:0.9rem; color:#9e9a93; line-height:1.65;">${s.desc}</div></div>`;
+  stepsList.appendChild(row);
+  revealOnce(row, 'slide-in-left', s.delay);
+});
+
+/* Industry cards */
+const industries = [
+  { icon:'☕', name:'Café', tagline:'Kaffee-Karte neu gedacht', desc:'10 Kaffees → 1 gratis. Kunden kommen täglich wieder.', reward:'Gratis-Espresso', color:'#8B4513', delay:0 },
+  { icon:'🍽️', name:'Restaurant', tagline:'Stammgäste belohnen', desc:'Mittagsmenüs, Abendessen, Desserts — flexible Stempel-Regeln.', reward:'Gratis-Dessert', color:'#2d6a4f', delay:0.1 },
+  { icon:'💨', name:'Shishabar', tagline:'Stammgäste erkennen', desc:'Jede 8. Shisha gratis, VIP-Abende, Stammtisch-Bonus.', reward:'Gratis-Shisha', color:'#4a5a8a', delay:0.2 },
+  { icon:'✂️', name:'Friseursalon', tagline:'Termine sichern', desc:'Jeder 5. Haarschnitt gratis — Kundenbindung auf Knopfdruck.', reward:'Gratis-Haarschnitt', color:'#7b2d8b', delay:0.3 },
+];
+const grid = document.getElementById('industryGrid');
+industries.forEach(b => {
+  const card = document.createElement('div');
+  card.style.cssText = `background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:1.75rem; cursor:pointer; transition:border-color .25s, transform .2s, box-shadow .2s; opacity:0;`;
+  card.innerHTML = `
+    <div style="width:52px; height:52px; border-radius:14px; font-size:1.6rem; display:flex; align-items:center; justify-content:center; background:${b.color}18; margin-bottom:1.25rem; border:1px solid ${b.color}30;">${b.icon}</div>
+    <div style="font-family:var(--font-display); font-size:1.5rem; font-weight:800; margin-bottom:0.25rem; letter-spacing:0.02em;">${b.name}</div>
+    <div style="font-size:0.8rem; color:var(--accent); font-weight:600; margin-bottom:0.75rem; letter-spacing:0.04em;">${b.tagline}</div>
+    <p style="font-size:0.875rem; color:#9e9a93; line-height:1.6; margin-bottom:1.25rem;">${b.desc}</p>
+    <div style="display:inline-flex; align-items:center; gap:0.4rem; background:rgba(209,81,45,0.08); border:1px solid rgba(209,81,45,0.2); border-radius:6px; padding:0.3rem 0.7rem; font-size:0.75rem; color:#e8663d; font-weight:600;"><span>🎁</span> ${b.reward}</div>`;
+  card.addEventListener('mouseenter', () => { card.style.borderColor = 'rgba(209,81,45,0.35)'; card.style.transform = 'translateY(-4px)'; card.style.boxShadow = '0 12px 40px rgba(209,81,45,0.12)'; });
+  card.addEventListener('mouseleave', () => { card.style.borderColor = 'rgba(243,240,234,0.08)'; card.style.transform = 'translateY(0)'; card.style.boxShadow = 'none'; });
+  grid.appendChild(card);
+  revealOnce(card, 'scale-in', b.delay);
+});
+
+/* ── Stat count-up ── */
+function animateCount(el, target, suffix, duration=2200) {
+  const start = performance.now();
+  function tick(now) {
+    const p = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * eased).toLocaleString('de-DE') + suffix;
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+const statsObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      document.querySelectorAll('.stat-card').forEach((card, i) => {
+        setTimeout(() => {
+          card.style.animation = 'scale-in 0.6s cubic-bezier(0.175,0.885,0.32,1.275) both';
+          card.style.opacity = '';
+        }, i * 200);
+        const numEl = card.querySelector('.stat-num');
+        setTimeout(() => animateCount(numEl, parseFloat(numEl.dataset.value), numEl.dataset.suffix), i * 200);
+      });
+      statsObserver.disconnect();
+    }
+  });
+}, { threshold: 0.3 });
+statsObserver.observe(document.getElementById('statsSec'));
+
+/* ── Stamp demo: looping tap → stamp → reward cycle ── */
+(function () {
+  const maxStamps = 8;
+  const grid = document.getElementById('demoGrid');
+  const counter = document.getElementById('demoCounter');
+  const statusIcon = document.getElementById('demoStatusIcon');
+  const statusText = document.getElementById('demoStatusText');
+  const rewardOverlay = document.getElementById('demoReward');
+  const confettiWrap = document.getElementById('demoConfetti');
+  let cells = [];
+
+  function buildGrid() {
+    grid.innerHTML = '';
+    cells = [];
+    for (let i = 0; i < maxStamps; i++) {
+      const c = document.createElement('div');
+      c.style.cssText = 'aspect-ratio:1; border-radius:12px; border:1.5px dashed rgba(243,240,234,0.15); background:rgba(243,240,234,0.02); display:flex; align-items:center; justify-content:center; transition:background .3s, border-color .3s;';
+      c.innerHTML = '<div style="width:16px; height:16px; border-radius:50%; border:1.5px dashed rgba(243,240,234,0.15);"></div>';
+      grid.appendChild(c);
+      cells.push(c);
+    }
+  }
+  buildGrid();
+
+  function setCell(i, state) {
+    const c = cells[i];
+    if (state === 'filled') {
+      c.style.border = '1.5px solid #d1512d';
+      c.style.background = 'rgba(209,81,45,0.12)';
+      c.innerHTML = '<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="9" stroke="#d1512d" stroke-width="1.5"/><path d="M6.5 11l3 3 6-6" stroke="#d1512d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      c.style.animation = 'stamp-press 0.55s cubic-bezier(0.175,0.885,0.32,1.275) both';
+    } else if (state === 'pulsing') {
+      c.innerHTML = '<div style="width:20px; height:20px; border-radius:50%; border:2px solid rgba(209,81,45,0.6); animation:pulse-ring 1s ease-out infinite;"></div>';
+    }
+  }
+
+  function spawnConfetti() {
+    confettiWrap.innerHTML = '';
+    const colors = ['#d1512d', '#f3f0ea', '#e8663d', '#ffc94a', '#9b59b6'];
+    for (let i = 0; i < 28; i++) {
+      const p = document.createElement('div');
+      const size = 6 + Math.random() * 7;
+      const round = Math.random() > 0.45;
+      p.style.cssText = `position:absolute; left:${10 + Math.random()*80}%; top:${5 + Math.random()*40}%; width:${size}px; height:${size}px; background:${colors[i%5]}; border-radius:${round?'50%':'2px'}; animation:confetti-fall 1.4s ease-out ${Math.random()*0.6}s both; pointer-events:none;`;
+      confettiWrap.appendChild(p);
+    }
+  }
+
+  function runDemo(current) {
+    if (current >= maxStamps) {
+      setTimeout(() => {
+        statusIcon.textContent = '🎁'; statusText.textContent = 'Belohnung freigeschaltet!'; statusIcon.parentElement.style.color = '#9e9a93';
+        rewardOverlay.style.display = 'flex'; rewardOverlay.style.animation = 'fade-in 0.3s ease';
+        rewardOverlay.querySelector('div').style.animation = 'reward-pop 0.5s cubic-bezier(0.175,0.885,0.32,1.275)';
+        spawnConfetti();
+      }, 400);
+      setTimeout(() => {
+        rewardOverlay.style.display = 'none'; confettiWrap.innerHTML = '';
+        setTimeout(() => { buildGrid(); counter.textContent = '0/' + maxStamps; statusIcon.textContent='📲'; statusText.textContent='Warten auf Kundenkarte…'; runDemo(0); }, 800);
+      }, 3900);
+      return;
+    }
+    setTimeout(() => {
+      statusIcon.textContent = '📲'; statusText.textContent = 'Karte erkannt — Stempel wird vergeben…';
+      statusIcon.parentElement.style.color = '#e8663d';
+      statusIcon.style.animation = 'tap-gesture 0.7s ease-in-out';
+      setCell(current, 'pulsing');
+    }, 600);
+    setTimeout(() => {
+      statusIcon.textContent = '✅'; statusText.textContent = 'Stempel gesetzt!'; statusIcon.style.animation = 'none';
+      setCell(current, 'filled');
+      counter.textContent = (current + 1) + '/' + maxStamps;
+    }, 1300);
+    setTimeout(() => { runDemo(current + 1); }, 2100);
+  }
+  setTimeout(() => runDemo(0), 800);
+})();
+</script>
+</body>
+</html>

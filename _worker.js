@@ -35,6 +35,7 @@ export default {
 
       /* ── Stempel (Treueprogramm) ── */
       if (method === 'POST' && path === '/api/stempel/signup') return handleStempelSignup(request, env);
+      if (method === 'POST' && path === '/api/stempel/verify-email') return handleStempelVerifyEmail(request, env);
       if (method === 'POST' && path === '/api/stempel/login') return handleStempelLogin(request, env);
       if (method === 'GET'  && path === '/api/stempel/me') return handleStempelMe(request, env);
       if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env);
@@ -46,6 +47,9 @@ export default {
 
       const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
       if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
+      const stempelQrMatch = path.match(/^\/s\/([^/]+)\/qr$/);
+      if (method === 'GET' && stempelQrMatch) return handleStempelQrPage(request, env, stempelQrMatch[1]);
+      if (method === 'POST' && path === '/api/stempel/qr-redeem') return handleStempelQrRedeem(request, env);
 
       /* ── Business Hub ── */
       if (method === 'POST' && path === '/api/hub/submit') return handleHubSubmit(request, env);
@@ -910,13 +914,16 @@ async function freeSlug(env, base) {
 async function sendMail(env, to, subject, heading, body, ctaLabel, ctaUrl) {
   if (!env.BREVO_KEY) { console.log('BREVO_KEY fehlt — Mail an ' + to + ' nicht gesendet'); return; }
   const sender = parseSender(env.MAIL_FROM);
+  const ctaHtml = ctaUrl
+    ? `<tr><td><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:11px 22px;border:1px solid #9184d9;border-radius:8px;color:#b5abfc;text-decoration:none;font-size:15px">${escapeHtml(ctaLabel)}</a></td></tr>
+<tr><td style="font-size:12px;color:#7a7d8c;padding-top:24px;line-height:1.6">Funktioniert der Knopf nicht, kopiere diese Adresse in den Browser:<br><span style="color:#9d9fae;word-break:break-all">${escapeHtml(ctaUrl)}</span></td></tr>`
+    : '';
   const html = `<!DOCTYPE html><html lang="de"><body style="margin:0;padding:32px 16px;background:#161826;font-family:'Helvetica Neue',Arial,sans-serif;color:#e9e9ed">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#232532;border-radius:8px;padding:32px">
 <tr><td style="font-size:20px;font-weight:500;padding-bottom:12px">${escapeHtml(heading)}</td></tr>
 <tr><td style="font-size:15px;line-height:1.6;color:#c9c9d1;padding-bottom:24px">${escapeHtml(body)}</td></tr>
-<tr><td><a href="${escapeAttr(ctaUrl)}" style="display:inline-block;padding:11px 22px;border:1px solid #9184d9;border-radius:8px;color:#b5abfc;text-decoration:none;font-size:15px">${escapeHtml(ctaLabel)}</a></td></tr>
-<tr><td style="font-size:12px;color:#7a7d8c;padding-top:24px;line-height:1.6">Funktioniert der Knopf nicht, kopiere diese Adresse in den Browser:<br><span style="color:#9d9fae;word-break:break-all">${escapeHtml(ctaUrl)}</span></td></tr>
+${ctaHtml}
 </table>
 <div style="font-size:11px;color:#5c5f6d;padding-top:20px">TapStern · Diese Mail wurde automatisch versendet.</div>
 </td></tr></table></body></html>`;
@@ -1133,24 +1140,67 @@ async function handleStempelSignup(request, env) {
   const name = str(data.name);
   const password = str(data.password);
   const branche = str(data.branche);
+  const firstName = str(data.first_name);
+  const lastName = str(data.last_name);
+  const phone = str(data.phone);
+  const companySize = str(data.company_size);
 
   if (!email || !name || password.length < 8) {
     return json({ error: 'Bitte Name, gültige E-Mail und Passwort (min. 8 Zeichen) angeben' }, 400);
   }
-  const existing = await env.DB.prepare('SELECT id FROM stempel_shops WHERE email = ?').bind(email).first();
-  if (existing) return json({ error: 'Diese E-Mail ist schon registriert' }, 400);
+  if (!validEmail(email)) return json({ error: 'Bitte eine gültige E-Mail-Adresse angeben' }, 400);
+
+  const existing = await env.DB.prepare('SELECT id, verified FROM stempel_shops WHERE email = ?').bind(email).first();
+  if (existing && existing.verified) return json({ error: 'Diese E-Mail ist schon registriert' }, 400);
 
   const slug = name.toLowerCase()
     .replace(/[äöüß]/g, c => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[c]))
     .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Math.random().toString(36).slice(2, 6);
 
-  const id = crypto.randomUUID();
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const codeHash = await sha256(code);
   const passwordHash = await hashPassword(password);
-  await env.DB.prepare(
-    `INSERT INTO stempel_shops (id, slug, name, email, password_hash, branche) VALUES (?, ?, ?, ?, ?, ?)`
-  ).bind(id, slug, name, email, passwordHash, branche).run();
+
+  if (existing) {
+    // Unverifizierten Versuch mit neuen Daten überschreiben, statt einen zweiten Datensatz anzulegen
+    await env.DB.prepare(
+      `UPDATE stempel_shops SET name = ?, password_hash = ?, branche = ?, first_name = ?, last_name = ?, phone = ?, company_size = ?, verify_code_hash = ? WHERE id = ?`
+    ).bind(name, passwordHash, branche, firstName || null, lastName || null, phone || null, companySize || null, codeHash, existing.id).run();
+  } else {
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO stempel_shops (id, slug, name, email, password_hash, branche, first_name, last_name, phone, company_size, verify_code_hash, verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    ).bind(id, slug, name, email, passwordHash, branche, firstName || null, lastName || null, phone || null, companySize || null, codeHash).run();
+  }
+
+  await sendMail(env, email, 'Dein Bestätigungscode für Tapstempel',
+    'Fast geschafft',
+    `Dein Bestätigungscode lautet: ${code}. Gib ihn ein, um dein Tapstempel-Konto zu aktivieren.`
+  );
 
   return json({ success: true });
+}
+
+async function handleStempelVerifyEmail(request, env) {
+  const data = await request.json();
+  const email = str(data.email).toLowerCase();
+  const code = str(data.code);
+
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE email = ?').bind(email).first();
+  if (!shop) return json({ error: 'Kein Konto mit dieser E-Mail gefunden' }, 404);
+  if (shop.verified) return json({ error: 'Konto ist bereits bestätigt' }, 400);
+  if (!shop.verify_code_hash || (await sha256(code)) !== shop.verify_code_hash) {
+    return json({ error: 'Code ist falsch oder abgelaufen' }, 401);
+  }
+
+  const token = randomToken();
+  await env.DB.prepare('UPDATE stempel_shops SET verified = 1, verify_code_hash = NULL, session_token_hash = ? WHERE id = ?')
+    .bind(await sha256(token), shop.id).run();
+
+  const { password_hash, session_token_hash, verify_code_hash, ...safe } = shop;
+  safe.verified = 1;
+  return json({ success: true, shop: safe }, 200, stempelCookie(shop.id, token));
 }
 
 async function handleStempelLogin(request, env) {
@@ -1162,6 +1212,7 @@ async function handleStempelLogin(request, env) {
   if (!shop || !(await verifyPassword(password, shop.password_hash))) {
     return json({ error: 'E-Mail oder Passwort falsch' }, 401);
   }
+  if (!shop.verified) return json({ error: 'Bitte bestätige zuerst deine E-Mail-Adresse' }, 403);
 
   const token = randomToken();
   await env.DB.prepare('UPDATE stempel_shops SET session_token_hash = ? WHERE id = ?')
@@ -1183,8 +1234,11 @@ async function handleStempelSettings(request, env) {
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   const data = await request.json();
 
+  const pinRaw = str(data.staff_pin);
+  const staffPin = /^\d{4,6}$/.test(pinRaw) ? pinRaw : (shop.staff_pin || null);
+
   await env.DB.prepare(
-    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ? WHERE id = ?`
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, staff_pin = ? WHERE id = ?`
   ).bind(
     Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
     str(data.reward_text) || shop.reward_text,
@@ -1192,6 +1246,7 @@ async function handleStempelSettings(request, env) {
     str(data.extra_link_url) || null,
     str(data.extra_link_label) || null,
     Math.max(10, parseInt(data.min_stamp_interval_minutes) || shop.min_stamp_interval_minutes),
+    staffPin,
     shop.id
   ).run();
 
@@ -1240,10 +1295,7 @@ async function handleStempelCustomers(request, env) {
 }
 
 /* Der Kern: NFC-Tap an der Laden-Karte, GET /s/:slug */
-async function handleStempelTap(request, env, slug) {
-  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
-  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
-
+async function grantStamp(env, request, shop) {
   const cookieMatch = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_device=([^;]+)/);
   const deviceToken = cookieMatch ? cookieMatch[1] : null;
   let customer = deviceToken
@@ -1282,9 +1334,87 @@ async function handleStempelTap(request, env, slug) {
     }
   }
 
+  return { headers, customer, isNew, cooldownHit };
+}
+
+async function handleStempelTap(request, env, slug) {
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+
+  const { headers, customer, isNew, cooldownHit } = await grantStamp(env, request, shop);
+
   // TODO: sobald Apple/Google-Zertifikate als Secrets gesetzt sind, hier
   // echte Wallet-Karte erzeugen (isNew) bzw. per Push aktualisieren.
 
+  const rewardReached = customer.stamps >= shop.reward_threshold;
+  const html = renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached });
+  return new Response(html, { headers });
+}
+
+/* ── QR-Fallback: braucht einen Code vom Personal, bevor gestempelt wird ── */
+async function handleStempelQrPage(request, env, slug) {
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+  if (!shop.staff_pin) return new Response('QR-Stempeln ist für diesen Laden noch nicht eingerichtet.', { status: 400 });
+
+  const accent = shop.accent_color || '#6366f1';
+  return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(shop.name)} — Stempel per Code</title>
+<style>
+  body{margin:0; font-family:'Inter',system-ui,sans-serif; background:#14131a; color:#f3f0ea; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;}
+  .card{background:#211f29; border-radius:20px; padding:32px 28px; max-width:340px; width:100%; text-align:center;}
+  h1{font-size:1.15rem; margin:0 0 6px;}
+  p{color:#948d9c; font-size:0.88rem; margin:0 0 20px;}
+  input{width:100%; font-size:1.6rem; text-align:center; letter-spacing:0.3em; padding:14px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:#161421; color:#fff; margin-bottom:16px;}
+  button{width:100%; padding:13px; border-radius:10px; border:none; background:${accent}; color:#fff; font-weight:600; font-size:0.95rem; cursor:pointer;}
+  .err{color:#f2765a; font-size:0.85rem; margin-top:12px; display:none;}
+</style></head>
+<body>
+  <div class="card">
+    <h1>${escapeHtml(shop.name)}</h1>
+    <p>Frag das Personal nach dem Stempel-Code</p>
+    <input type="text" inputmode="numeric" maxlength="6" id="pin" placeholder="••••">
+    <button id="go">Stempel abholen</button>
+    <div class="err" id="err"></div>
+  </div>
+<script>
+  document.getElementById('go').onclick = async function(){
+    var pin = document.getElementById('pin').value.trim();
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/api/stempel/qr-redeem', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ slug: '${slug}', pin: pin })
+      });
+      if (!res.ok) {
+        var data = await res.json().catch(function(){ return {}; });
+        document.getElementById('err').textContent = data.error || 'Code falsch';
+        document.getElementById('err').style.display = 'block';
+        btn.disabled = false;
+        return;
+      }
+      document.open(); document.write(await res.text()); document.close();
+    } catch (e) {
+      document.getElementById('err').textContent = 'Verbindungsfehler';
+      document.getElementById('err').style.display = 'block';
+      btn.disabled = false;
+    }
+  };
+</script>
+</body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+async function handleStempelQrRedeem(request, env) {
+  const data = await readJson(request);
+  const slug = str(data?.slug);
+  const pin = str(data?.pin);
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
+  if (!shop.staff_pin || pin !== shop.staff_pin) return json({ error: 'Code falsch' }, 401);
+
+  const { headers, customer, isNew, cooldownHit } = await grantStamp(env, request, shop);
   const rewardReached = customer.stamps >= shop.reward_threshold;
   const html = renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached });
   return new Response(html, { headers });

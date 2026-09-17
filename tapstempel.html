@@ -352,6 +352,7 @@ footer a{color:inherit; text-decoration:none;}
         <label>Vorname<input type="text" id="f-first" placeholder="Mara"></label>
         <label>Nachname<input type="text" id="f-last" placeholder="Kraft"></label>
         <label class="full">Telefonnummer<input type="tel" id="f-phone" placeholder="+49 170 1234567"></label>
+        <label class="full">Passwort<input type="password" id="f-password" placeholder="mind. 8 Zeichen"></label>
         <p class="form-hint full">Wir verwenden Ihre Nummer ausschließlich für Kontosicherheit und wichtige Service-Hinweise.</p>
       </div>
 
@@ -359,7 +360,7 @@ footer a{color:inherit; text-decoration:none;}
         <div class="mail-mark">✉</div>
         <h3>E-Mail bestätigen</h3>
         <p>Wir haben einen Bestätigungscode an <strong id="verifyEmailTarget">Ihre E-Mail</strong> gesendet.</p>
-        <div class="code-inputs">
+        <div class="code-inputs" id="codeInputs">
           <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 1">
           <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 2">
           <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 3">
@@ -367,8 +368,9 @@ footer a{color:inherit; text-decoration:none;}
           <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 5">
           <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 6">
         </div>
-        <button class="verify-toggle" id="verifyToggle">Bestätigung simulieren</button>
       </div>
+
+      <p class="form-hint full" id="modalError" style="color:#c0392b; display:none; text-align:center; margin-top:14px;"></p>
 
       <div class="modal-actions">
         <button class="back-btn hide" id="backBtn">Zurück</button><span></span>
@@ -495,27 +497,42 @@ $('industryCards').innerHTML = industries2.map(([i, t, d]) => `
 /* ══════════ SIGNUP MODAL ══════════ */
 (function () {
   let step = 1;
-  let verified = false;
 
   function openModal() {
     $('modalBackdrop').classList.remove('hide');
-    step = 1; verified = false;
+    step = 1;
     showStep();
+    hideError();
     $('modalSteps').classList.remove('hide');
     $('successState').classList.add('hide');
   }
   function closeModal() { $('modalBackdrop').classList.add('hide'); }
+  function showError(msg) { $('modalError').textContent = msg; $('modalError').style.display = 'block'; }
+  function hideError() { $('modalError').style.display = 'none'; }
 
   ['openModalNav', 'openModalNavCta', 'openModalHero', 'openModalDash', 'openModalClosing'].forEach(id => {
     $(id).addEventListener('click', openModal);
   });
   $('closeModal').addEventListener('click', closeModal);
   $('modalBackdrop').addEventListener('click', e => { if (e.target === $('modalBackdrop')) closeModal(); });
-  $('toPlatformBtn').addEventListener('click', closeModal);
+  $('toPlatformBtn').addEventListener('click', () => { window.location.href = 'stempel.html'; });
 
   $('f-industry').addEventListener('change', () => {
     $('f-industry-other-wrap').classList.toggle('hide', $('f-industry').value !== 'Sonstiges');
   });
+
+  /* Code-Eingabe: automatisch zum nächsten Feld springen */
+  const codeBoxes = Array.from(document.querySelectorAll('#codeInputs input'));
+  codeBoxes.forEach((box, i) => {
+    box.addEventListener('input', () => {
+      box.value = box.value.replace(/\D/g, '').slice(0, 1);
+      if (box.value && codeBoxes[i + 1]) codeBoxes[i + 1].focus();
+    });
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !box.value && codeBoxes[i - 1]) codeBoxes[i - 1].focus();
+    });
+  });
+  function collectedCode() { return codeBoxes.map(b => b.value).join(''); }
 
   function showStep() {
     $('step1').classList.toggle('hide', step !== 1);
@@ -524,32 +541,74 @@ $('industryCards').innerHTML = industries2.map(([i, t, d]) => `
     $('stepLabel').textContent = `Schritt ${step} / 3`;
     document.querySelectorAll('#stepper i').forEach((el, i) => el.classList.toggle('active', i < step));
     $('backBtn').classList.toggle('hide', step === 1);
-    $('nextBtn').textContent = step === 3 ? 'Plattform aktivieren' : 'Weiter';
+    $('nextBtn').disabled = false;
+    hideError();
     if (step === 3) {
-      const email = $('f-email').value || 'Ihre E-Mail';
-      $('verifyEmailTarget').textContent = email;
+      $('verifyEmailTarget').textContent = $('f-email').value || 'Ihre E-Mail';
       $('nextBtn').innerHTML = 'Plattform aktivieren';
-      $('nextBtn').disabled = !verified;
+      setTimeout(() => codeBoxes[0].focus(), 50);
     } else {
       $('nextBtn').innerHTML = 'Weiter<span>→</span>';
-      $('nextBtn').disabled = false;
     }
   }
 
-  $('verifyToggle').addEventListener('click', () => {
-    verified = !verified;
-    $('verifyToggle').textContent = verified ? '✓ E-Mail erfolgreich bestätigt' : 'Bestätigung simulieren';
-    $('verifyToggle').classList.toggle('verified', verified);
-    $('nextBtn').disabled = !verified;
-  });
+  async function apiPost(url, body) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Etwas ist schiefgelaufen');
+    return data;
+  }
 
   $('backBtn').addEventListener('click', () => { if (step > 1) { step--; showStep(); } });
-  $('nextBtn').addEventListener('click', () => {
-    if (step < 3) { step++; showStep(); return; }
-    // finish
-    $('successEmailTarget').textContent = $('f-email').value || 'Ihre E-Mail';
-    $('modalSteps').classList.add('hide');
-    $('successState').classList.remove('hide');
+
+  $('nextBtn').addEventListener('click', async () => {
+    hideError();
+
+    if (step === 1) {
+      if (!$('f-name').value.trim()) { showError('Bitte einen Ladennamen angeben.'); return; }
+      step = 2; showStep(); return;
+    }
+
+    if (step === 2) {
+      const email = $('f-email').value.trim();
+      const password = $('f-password').value;
+      if (!email || !password) { showError('Bitte E-Mail und Passwort ausfüllen.'); return; }
+      if (password.length < 8) { showError('Passwort muss mindestens 8 Zeichen haben.'); return; }
+
+      const industry = $('f-industry').value === 'Sonstiges' ? $('f-industry-other').value.trim() : $('f-industry').value;
+      $('nextBtn').disabled = true; $('nextBtn').textContent = 'Wird gesendet …';
+      try {
+        await apiPost('/api/stempel/signup', {
+          name: $('f-name').value.trim(),
+          branche: industry,
+          company_size: $('f-size').value,
+          email, password,
+          first_name: $('f-first').value.trim(),
+          last_name: $('f-last').value.trim(),
+          phone: $('f-phone').value.trim()
+        });
+        step = 3; showStep();
+      } catch (e) {
+        showError(e.message);
+        $('nextBtn').disabled = false; $('nextBtn').innerHTML = 'Weiter<span>→</span>';
+      }
+      return;
+    }
+
+    if (step === 3) {
+      const code = collectedCode();
+      if (code.length !== 6) { showError('Bitte den vollständigen 6-stelligen Code eingeben.'); return; }
+      $('nextBtn').disabled = true; $('nextBtn').textContent = 'Wird geprüft …';
+      try {
+        await apiPost('/api/stempel/verify-email', { email: $('f-email').value.trim(), code });
+        $('successEmailTarget').textContent = $('f-email').value.trim();
+        $('modalSteps').classList.add('hide');
+        $('successState').classList.remove('hide');
+      } catch (e) {
+        showError(e.message);
+        $('nextBtn').disabled = false; $('nextBtn').innerHTML = 'Plattform aktivieren';
+      }
+    }
   });
 })();
 </script>

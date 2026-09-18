@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tapstempel — Partner Dashboard</title>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=space-grotesk:500,600,700|inter:400,500,600&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -53,12 +55,15 @@
   .btn-ghost:hover{background:#ede7dc;}
   .err{color:#c0392b; font-size:12px; margin-top:10px; display:none; text-align:center;}
 
-  /* DASHBOARD WRAPPER (Exakt wie im Screenshot) */
+  /* DASHBOARD WRAPPER */
   .dash-layout{max-width:1160px; margin:40px auto 80px; padding:0 24px;}
   .dash-panel{
     background:var(--paper); border:1px solid #d9d3cb; box-shadow:0 28px 60px rgba(118,108,96,0.18);
     min-height:720px; display:grid; grid-template-columns:220px 1fr; border-radius:18px; overflow:hidden;
+    position:relative;
   }
+  
+  /* SEITENLEISTE (Desktop) */
   .dash-panel aside{
     padding:28px 16px; border-right:1px solid var(--line); background:#f4efe6; display:flex; flex-direction:column;
   }
@@ -70,14 +75,28 @@
   .dash-panel aside a:hover{color:var(--ink); background:#eae4db;}
   .dash-panel aside a.active{background:#eae4db; color:var(--ink); font-weight:700;}
   .aside-footer{margin-top:auto; padding-top:20px; border-top:1px solid var(--line);}
-  
+  .aside-close-btn{display:none; background:transparent; border:none; font-size:22px; cursor:pointer; color:var(--ink);}
+
+  /* HAUPTINHALT */
   .dash-content{padding:36px 42px; overflow-y:auto;}
   .dash-title{display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;}
   .dash-title small{color:var(--muted); font:11px "DM Mono";}
   .dash-title h2{font-size:28px; margin:4px 0 0;}
   .dash-avatar{width:36px; height:36px; display:grid; place-items:center; background:#d7b08e; border-radius:50%; font-size:11px; font-weight:700;}
 
-  /* FILTER-SEGMENT IN DER ÜBERSICHT */
+  /* 📱 MOBILE HEADER MIT MENÜ-BUTTON */
+  .dash-mobile-bar{
+    display:none; justify-content:space-between; align-items:center;
+    padding:16px 20px; background:#f4efe6; border-bottom:1px solid var(--line);
+  }
+  .mobile-menu-btn{
+    background:#ffffff; border:1px solid var(--line); border-radius:8px;
+    padding:8px 12px; font-size:13px; font-weight:700; color:var(--ink);
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+  }
+  .dash-backdrop{display:none;}
+
+  /* FILTER-SEGMENT */
   .time-filter{display:flex; gap:4px; background:#e8e2d7; padding:3px; border-radius:8px; margin-bottom:24px; width:max-content;}
   .time-filter button{
     border:0; background:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; color:#78726b; cursor:pointer; transition:.15s;
@@ -127,11 +146,30 @@
   .plan-price{font:700 24px "Roboto Slab"; margin:12px 0 16px;}
   .plan-price small{font-size:12px; font-family:"DM Sans"; color:var(--muted); font-weight:400;}
 
+  /* 📱 MOBILE ANPASSUNGEN */
   @media (max-width:900px){
-    .dash-panel{grid-template-columns:1fr;}
-    .dash-panel aside{display:none;}
+    .dash-layout{padding:12px 14px; margin:16px auto 60px;}
+    .dash-panel{grid-template-columns:1fr; border-radius:14px;}
+    .dash-mobile-bar{display:flex;}
+    
+    /* Die Seitenleiste wird zum Slide-Out-Drawer */
+    .dash-panel aside{
+      position:fixed; top:0; left:0; bottom:0; width:280px; z-index:300;
+      box-shadow:12px 0 35px rgba(0,0,0,0.25);
+      transform:translateX(-100%); transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .dash-panel aside.mobile-open{transform:translateX(0);}
+    .aside-close-btn{display:block;}
+    
+    .dash-backdrop.mobile-open{
+      display:block; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:299;
+      backdrop-filter:blur(2px);
+    }
+
+    .dash-content{padding:22px 18px;}
     .metrics{grid-template-columns:1fr;}
     .plan-grid{grid-template-columns:1fr;}
+    .time-filter{width:100%; justify-content:space-between;}
   }
 </style>
 </head>
@@ -165,11 +203,26 @@
 
 <!-- ═══ PARTNER DASHBOARD ═══ -->
 <div class="dash-layout hide" id="s-app">
+  
+  <!-- BACKDROP FÜR MOBILEN DRAWER -->
+  <div class="dash-backdrop" id="dashBackdrop"></div>
+
   <div class="dash-panel">
     
-    <!-- SEITENLEISTE LINKS -->
-    <aside>
-      <a href="tapstempel.html" class="brand-logo" style="margin-bottom:12px;"><span class="brand-seal">TS</span><span>tapstempel</span></a>
+    <!-- 📱 MOBILER TOP-BAR MIT HAMBURGER-BUTTON -->
+    <div class="dash-mobile-bar">
+      <a href="tapstempel.html" class="brand-logo"><span class="brand-seal">TS</span><span>tapstempel</span></a>
+      <button class="mobile-menu-btn" id="mobileMenuBtn">
+        ☰ Menü
+      </button>
+    </div>
+
+    <!-- SEITENLEISTE LINKS (Auf Desktop fest, auf Mobile als Slide-Out-Drawer) -->
+    <aside id="dashAside">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <a href="tapstempel.html" class="brand-logo"><span class="brand-seal">TS</span><span>tapstempel</span></a>
+        <button class="aside-close-btn" id="asideCloseBtn" aria-label="Menü schließen">✕</button>
+      </div>
       <nav>
         <a class="active" data-go="home">◈ Übersicht</a>
         <a data-go="customers">◎ Kunden</a>
@@ -236,7 +289,7 @@
       <div id="p-customers" class="hide">
         <h3>Kundenkartei</h3>
         <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Alle Gäste, die deine digitale Stempelkarte besitzen.</p>
-        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; overflow:hidden;">
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; overflow-x:auto;">
           <table>
             <thead><tr><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
             <tbody id="customerRows"></tbody>
@@ -276,19 +329,16 @@
         </div>
       </div>
 
-      <!-- SEITE 5: ABO & KARTEN (VOLLSTÄNDIG) -->
+      <!-- SEITE 5: ABO & KARTEN -->
       <div id="p-billing" class="hide">
         <h3>Abonnement &amp; Karten</h3>
         <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Verwalte dein Paket, prüfe deinen Status oder bestelle NFC-Aufsteller nach.</p>
         
-        <!-- Status & Paketauswahl -->
         <div id="planPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; margin-bottom:20px;"></div>
-
-        <!-- NFC-Karten bestellen -->
         <div id="cardPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;"></div>
       </div>
 
-      <!-- SEITE 6: STEMPELKARTE GESTALTEN (ALLE EINSTELLUNGEN) -->
+      <!-- SEITE 6: STEMPELKARTE GESTALTEN -->
       <div id="p-settings" class="hide">
         <h3>Stempelkarte gestalten</h3>
         <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Personalisiere das Design und die Regeln deiner digitalen Treuekarte.</p>
@@ -373,6 +423,15 @@
     return data;
   }
 
+  /* 📱 MOBILE MENÜ-DRAWER LOGIK */
+  function toggleMobileAside(open) {
+    $('dashAside').classList.toggle('mobile-open', open);
+    $('dashBackdrop').classList.toggle('mobile-open', open);
+  }
+  $('mobileMenuBtn').onclick = () => toggleMobileAside(true);
+  $('asideCloseBtn').onclick = () => toggleMobileAside(false);
+  $('dashBackdrop').onclick = () => toggleMobileAside(false);
+
   /* LOGIN */
   $('do-login').onclick = async () => {
     $('auth-err').style.display = 'none';
@@ -396,6 +455,9 @@
       b.classList.add('active');
       const target = b.dataset.go;
       ['home', 'customers', 'card', 'employees', 'billing', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
+      
+      toggleMobileAside(false); // Auf Mobile nach Klick schließen!
+
       if (target === 'customers') loadCustomers();
       if (target === 'card') loadCard();
       if (target === 'employees') loadEmployees();
@@ -415,7 +477,6 @@
     $('dashGreeting').textContent = 'Guten Tag, ' + (shop.first_name || shop.name);
     $('dashAvatar').textContent = (shop.name || 'TS').slice(0, 2).toUpperCase();
 
-    // Kunden laden & Übersicht rendern
     try {
       const res = await api('/api/stempel/customers');
       allCustomers = res.customers || [];
@@ -423,7 +484,7 @@
     } catch(e){}
   }
 
-  /* ═══ ZEITRAUM-FILTER IN DER ÜBERSICHT ═══ */
+  /* ZEITRAUM-FILTER IN DER ÜBERSICHT */
   document.querySelectorAll('.tf-btn').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('on'));
@@ -439,7 +500,6 @@
     const redeemed = allCustomers.reduce((sum, c) => sum + (c.redeemed_count || 0), 0);
     $('m-redeemed').textContent = redeemed;
 
-    // Filter berechnen
     const now = Date.now();
     const msLimit = currentFilterDays * 86400000;
     const filtered = allCustomers.filter(c => c.last_stamp_at && (now - new Date(c.last_stamp_at + 'Z').getTime()) <= msLimit);
@@ -447,7 +507,6 @@
     $('m-period-stamps').innerHTML = filtered.length + ' <i>↗ aktiv</i>';
     $('m-stamp-label').textContent = currentFilterDays === 1 ? 'Stempel heute' : (currentFilterDays > 365 ? 'Stempel gesamt' : `Stempel letzte ${currentFilterDays} Tage`);
 
-    // Sparkline Balken
     const daysToShow = currentFilterDays === 1 ? 1 : Math.min(14, currentFilterDays);
     const dayCounts = Array.from({length: daysToShow}, (_, i) => {
       const d = new Date(); d.setDate(d.getDate() - (daysToShow - 1 - i));
@@ -457,7 +516,6 @@
     const maxVal = Math.max(1, ...dayCounts);
     $('sparkBars').innerHTML = dayCounts.map(cnt => `<span style="height:${Math.max(12, (cnt / maxVal) * 100)}%"></span>`).join('');
 
-    // Live-Aktivitäten
     if (allCustomers.length) {
       $('activityList').innerHTML = allCustomers.slice(0, 5).map(c => `
         <div class="activity-item">
@@ -526,7 +584,7 @@
     } catch(e){ $('empError').textContent = e.message; }
   };
 
-  /* ═══ ABO & KARTENVERWALTUNG ═══ */
+  /* ABO & KARTENVERWALTUNG */
   function loadBilling() {
     const active = shop.subscription_status === 'active';
     const planPanel = $('planPanel');
@@ -571,7 +629,6 @@
       `;
     }
 
-    // NFC KARTEN PANEL
     const cardPanel = $('cardPanel');
     if (!active) {
       cardPanel.innerHTML = `<h4 style="color:var(--muted);">NFC-Aufsteller bestellen</h4><p style="font-size:13px; color:var(--muted);">Die Kartenbestellung wird sofort nach Abschluss eines Abos freigeschaltet.</p>`;
@@ -616,7 +673,7 @@
     } catch(e){ alert(e.message); }
   };
 
-  /* ═══ EINSTELLUNGEN (VOLLSTÄNDIGE PERSONALISIERUNG) ═══ */
+  /* EINSTELLUNGEN */
   const COLOR_PALETTE = ['#e5543d', '#6366f1', '#0e7490', '#16a34a', '#9333ea', '#d97706'];
   function renderSwatches() {
     $('swatches').innerHTML = COLOR_PALETTE.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
@@ -705,7 +762,7 @@
     } catch(e){ $('saveMsg').textContent = e.message; }
   };
 
-  // AUTO-LOGIN CHECK BEIM LADEN
+  /* AUTO-LOGIN CHECK */
   (async () => {
     try {
       const r = await api('/api/stempel/me');

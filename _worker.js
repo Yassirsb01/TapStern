@@ -1240,31 +1240,42 @@ async function handleStempelMe(request, env) {
 async function handleStempelSettings(request, env) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
-  const data = await request.json();
+  const data = await request.json().catch(() => ({}));
 
   const validIcons = ['circle', 'star', 'heart', 'coffee', 'tea', 'food', 'scissors', 'flower', 'bag', 'leaf', 'paw', 'dumbbell', 'shisha', 'cocktail', 'bread'];
   const stampIcon = validIcons.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
   const validPatterns = ['branche', 'none', 'dots', 'stripes'];
   const bgPattern = validPatterns.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'none');
-  const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
+  const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : (shop.accent_color || '#e5543d');
   const cardBgColor = /^#[0-9a-fA-F]{6}$/.test(str(data.card_bg_color)) ? str(data.card_bg_color) : (shop.card_bg_color || '#14131a');
 
-  await env.DB.prepare(
-    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, card_bg_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
-  ).bind(
-    Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
-    str(data.reward_text) || shop.reward_text,
-    accentColor,
-    cardBgColor,
-    str(data.extra_link_url) || null,
-    str(data.extra_link_label) || null,
-    Math.max(10, parseInt(data.min_stamp_interval_minutes) || shop.min_stamp_interval_minutes),
-    stampIcon,
-    bgPattern,
-    shop.id
-  ).run();
+  const threshold = parseInt(data.reward_threshold, 10) || shop.reward_threshold || 8;
+  const rewardText = str(data.reward_text) || shop.reward_text || 'Belohnung';
+  const cooldown = parseInt(data.min_stamp_interval_minutes, 10) || shop.min_stamp_interval_minutes || 240;
+  const linkUrl = str(data.extra_link_url) || null;
+  const linkLabel = str(data.extra_link_label) || null;
 
-  return json({ success: true });
+  try {
+    await env.DB.prepare(
+      `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, card_bg_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
+    ).bind(
+      threshold,
+      rewardText,
+      accentColor,
+      cardBgColor,
+      linkUrl,
+      linkLabel,
+      cooldown,
+      stampIcon,
+      bgPattern,
+      shop.id
+    ).run();
+
+    return json({ success: true });
+  } catch (dbErr) {
+    // Gibt die EXAKTE Ursache an den Browser zurück
+    return json({ error: 'Datenbankfehler: ' + dbErr.message }, 500);
+  }
 }
 
 /* Logo/Banner-Uploads fürs Stempel-Profil — nutzt denselben PHOTOS-Bucket wie die Karten-App */

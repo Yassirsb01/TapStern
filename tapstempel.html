@@ -19,10 +19,10 @@ html{scroll-behavior:smooth;} body{margin:0; background:var(--ink);} button,a{fo
 .brand{text-decoration:none; color:inherit; display:flex; align-items:center; gap:10px; font-family:"Roboto Slab",serif; font-size:18px; font-weight:700; letter-spacing:-.06em;}
 .brand-seal{display:grid; place-items:center; width:31px; height:31px; border:2px solid var(--coral); border-radius:50%; color:var(--coral); font:700 9px "DM Mono"; letter-spacing:-1px; transform:rotate(-10deg);}
 .nav-links{display:flex; gap:31px; margin-left:80px;}
-.nav-links a,.text-button{color:#d1cdc6; background:none; border:0; font-size:14px; text-decoration:none; transition:.2s;}
+.nav-links a,.text-button{color:#d1cdc6; background:none; border:0; font-size:14px; text-decoration:none; transition:.2s; cursor:pointer;}
 .nav-links a:hover,.text-button:hover{color:var(--coral-light);}
 .nav-actions{display:flex; align-items:center; gap:23px;}
-.button{border:0; border-radius:100px; padding:12px 18px; font-size:14px; font-weight:600; display:inline-flex; align-items:center; gap:17px; transition:transform .2s, background .2s, box-shadow .2s; text-decoration:none;}
+.button{border:0; border-radius:100px; padding:12px 18px; font-size:14px; font-weight:600; display:inline-flex; align-items:center; gap:17px; transition:transform .2s, background .2s, box-shadow .2s; text-decoration:none; cursor:pointer;}
 .button:hover{transform:translateY(-2px);}
 .button--coral{color:#fff; background:var(--coral); box-shadow:0 9px 24px rgba(229,84,61,.18);}
 .button--coral:hover{background:var(--coral-light);}
@@ -107,48 +107,18 @@ html{scroll-behavior:smooth;} body{margin:0; background:var(--ink);} button,a{fo
 .reward-layer p{font-size:12px; color:#c4bdb4; margin:4px 0 0;}
 .confetti-layer{position:absolute; inset:0; pointer-events:none; z-index:2;}
 
-.dashboard-wrap{background:#f0ebe1; color:var(--ink);}
-.dashboard{padding-bottom:110px;}
-.dashboard-top{display:flex; justify-content:space-between; align-items:end; margin-bottom:42px; flex-wrap:wrap; gap:16px;}
-.dashboard h2{margin-top:13px; font-size:clamp(37px,4vw,59px);}
-.dash-panel{background:#f9f7f2; border:1px solid #d9d3cb; box-shadow:0 28px 60px #766c6033; min-height:430px; display:grid; grid-template-columns:190px 1fr; border-radius:14px; overflow:hidden;}
-.dash-panel aside{padding:22px 13px; border-right:1px solid #e4ded5;}
-.brand.small{font-size:13px; margin:0 6px 35px;}
-.brand.small .brand-seal{width:23px; height:23px; font-size:7px;}
-.dash-panel aside a{display:block; padding:10px; color:#827d75; font-size:11px; border-radius:6px; margin:3px 0; text-decoration:none;}
-.dash-panel aside .active{background:#eae4db; color:#171515; font-weight:600;}
-.dash-content{padding:30px;}
-.dash-title{display:flex; justify-content:space-between;}
-.dash-title small,.metrics small{color:#827d75; font:10px "DM Mono";}
-.dash-title h3{font:700 21px "Roboto Slab"; margin:5px 0;}
-.dash-avatar{width:32px; height:32px; display:grid; place-items:center; background:#d7b08e; border-radius:50%; font-size:10px;}
-.metrics{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:12px; margin:25px 0;}
-.metrics>div{border:1px solid #dfd9d0; padding:15px; border-radius:8px;}
-.metrics strong{display:block; font:700 25px "Roboto Slab"; letter-spacing:-.05em; margin-top:7px;}
-.metrics i{color:#299267; font:9px "DM Mono"; font-style:normal; letter-spacing:0;}
-.metrics p{color:#78726b; font-size:10px; margin:7px 0 0;}
-.spark{height:31px; margin-top:10px; display:flex; gap:3px; align-items:end;}
-.spark span{width:10%; background:var(--coral); border-radius:2px 2px 0 0; display:block;}
-.spark span:nth-child(1){height:30%} .spark span:nth-child(2){height:50%} .spark span:nth-child(3){height:44%} .spark span:nth-child(4){height:75%} .spark span:nth-child(5){height:58%} .spark span:nth-child(6){height:90%} .spark span:nth-child(7){height:100%}
-.activity{border:1px solid #dfd9d0; border-radius:8px; padding:14px 17px;}
-.activity>div{display:flex; justify-content:space-between;}
-.activity h4{margin:0 0 7px; font-size:12px;}
-.activity>div span{color:var(--coral); font-size:10px;}
-.activity p{display:flex; align-items:center; gap:8px; font-size:11px; margin:0; padding:9px 0; border-top:1px solid #e5dfd7;}
-.activity p small{margin-left:auto; color:#958e85; font-size:9px;}
-.activity-icon{width:20px; height:20px; display:grid; place-items:center; background:#fee4de; color:var(--coral); border-radius:50%; font-style:normal;}
-.activity-icon.a1{background:#f6eed1; color:#947a1f;}
-.activity-icon.a2{background:#e1f1e8; color:#29875e;}
+/* PREISE SECTION (NEU) */
+.pricing-section{background:var(--ink); color:var(--cream); border-top:1px solid var(--line);}
+.pricing-grid{display:grid; grid-template-columns:1fr 1fr; gap:32px; max-width:880px; margin:48px auto 0;}
+.price-card{background:#1a1a20; border:1px solid var(--line); border-radius:20px; padding:38px; display:flex; flex-direction:column;}
+.price-card.featured{border-color:var(--coral); box-shadow:0 0 40px -10px rgba(229,84,61,0.25);}
+.price-card .plan-name{font:700 22px "Roboto Slab"; margin-bottom:6px;}
+.price-card .plan-price{font:800 38px "Roboto Slab"; color:var(--cream); margin:18px 0 6px;}
+.price-card .plan-price small{font-size:14px; font-family:"DM Sans", sans-serif; font-weight:400; color:#888;}
+.price-card ul{list-style:none; padding:0; margin:24px 0 32px; display:grid; gap:12px; flex-grow:1;}
+.price-card li{display:flex; gap:10px; font-size:13px; color:#ccc;}
+.price-card li b{color:var(--coral);}
 
-.industries{display:grid; grid-template-columns:.8fr 1.2fr; gap:9vw;}
-.industries h2{margin-top:14px; font-size:clamp(38px,4vw,60px);}
-.industry-cards{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-.industry-card{text-align:left; border:1px solid var(--line); border-radius:12px; padding:21px; background:transparent; color:var(--cream); min-height:160px; position:relative; transition:.25s;}
-.industry-card:hover{border-color:var(--coral); transform:translateY(-4px); background:#1c1b1e;}
-.industry-card>span{color:var(--coral); font-size:23px; display:block;}
-.industry-card h3{font:700 15px "Roboto Slab"; margin:22px 0 5px;}
-.industry-card p{color:#9e9992; font-size:11px; margin:0;}
-.industry-card>b{position:absolute; right:18px; bottom:15px; color:var(--coral); font-weight:400;}
 .closing{text-align:center; padding:110px 25px; background:var(--coral); position:relative; overflow:hidden;}
 .closing:before,.closing:after{content:""; position:absolute; width:500px; height:500px; border:1px solid #ffffff44; border-radius:50%; left:50%; transform:translateX(-50%);}
 .closing:before{top:-280px;}
@@ -165,49 +135,35 @@ footer .brand-seal{width:24px; height:24px; font-size:7px;}
 footer div{display:flex; gap:16px;}
 footer a{color:inherit; text-decoration:none;}
 
-.modal-backdrop{position:fixed; z-index:50; inset:0; background:rgba(5,5,7,.7); backdrop-filter:blur(9px); display:grid; place-items:center; padding:22px;}
-.signup-modal{width:min(575px,100%); background:var(--paper); color:var(--ink); border-radius:17px; padding:38px; box-shadow:0 25px 90px #0009; position:relative; animation:modal-in .25s both;}
+/* MODAL MIT LOGIN & REGISTRIEREN */
+.modal-backdrop{position:fixed; z-index:50; inset:0; background:rgba(5,5,7,.75); backdrop-filter:blur(9px); display:grid; place-items:center; padding:22px;}
+.signup-modal{width:min(540px,100%); background:var(--paper); color:var(--ink); border-radius:18px; padding:38px; box-shadow:0 25px 90px #0009; position:relative;}
 .close{position:absolute; right:19px; top:16px; border:0; background:transparent; color:#777; font-size:27px;}
-.signup-top{display:flex; justify-content:space-between; padding-right:25px;}
-.signup-top .eyebrow{margin:0 0 11px;}
-.signup-top h2,.success-state h2{margin:0; font:700 28px "Roboto Slab"; letter-spacing:-.05em;}
-.signup-top>span{font:10px "DM Mono"; color:#777;}
-.stepper{display:flex; gap:6px; margin:28px 0;}
+
+.modal-tabs{display:flex; gap:6px; background:#e8e2d7; padding:4px; border-radius:10px; margin-bottom:24px;}
+.modal-tabs button{flex:1; padding:9px; border-radius:7px; font-size:13px; font-weight:600; color:#625d57; transition:.15s;}
+.modal-tabs button.on{background:#fffefa; color:var(--ink); box-shadow:0 2px 6px rgba(0,0,0,0.06);}
+
+.stepper{display:flex; gap:6px; margin:20px 0;}
 .stepper i{display:block; height:3px; flex:1; background:#e3dfd8;}
 .stepper i.active{background:var(--coral);}
-.form-grid{display:grid; grid-template-columns:1fr 1fr; gap:17px;}
-.form-grid label{display:grid; gap:7px; color:#625d57; font-size:11px; font-weight:600;}
+.form-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+.form-grid label{display:grid; gap:6px; color:#625d57; font-size:11px; font-weight:600;}
 .form-grid .full{grid-column:1/-1;}
-.form-grid input,.form-grid select,.code-inputs input{min-width:0; box-sizing:border-box; border:1px solid #d5d0c9; border-radius:7px; padding:12px; background:#fffefa; color:var(--ink); outline-color:var(--coral); font-size:13px;}
-.form-hint{color:#89837c; font-size:10px; margin:-4px 0 0;}
-.modal-actions{display:flex; justify-content:space-between; align-items:center; margin-top:31px;}
-.modal-actions .button:disabled{opacity:.35; cursor:not-allowed; transform:none;}
-.back-btn{border:0; background:none; color:#645e58; font-size:12px;}
-.privacy{color:#8b857e; font-size:9px; text-align:center; margin:20px 0 0;}
-.verify-box{text-align:center; padding:8px 0 0;}
-.mail-mark{color:var(--coral); width:52px; height:52px; border-radius:50%; display:grid; place-items:center; margin:auto; background:#fee5df; font-size:21px;}
-.verify-box h3{font:700 21px "Roboto Slab"; margin:15px 0 7px;}
-.verify-box p{color:#746e67; font-size:12px; margin:0 auto 20px; max-width:340px;}
-.code-inputs{display:flex; justify-content:center; gap:7px;}
-.code-inputs input{width:40px; text-align:center; font-weight:bold;}
-.verify-toggle{border:0; color:var(--coral); background:transparent; margin:17px; font-size:11px; text-decoration:underline;}
-.verify-toggle.verified{color:#24875b; text-decoration:none; font-weight:700;}
-.success-state{padding:28px 11px 12px; text-align:center;}
-.success-mark{display:grid; place-items:center; width:59px; height:59px; border-radius:50%; background:#dff3e7; color:#24875b; font-size:28px; margin:0 auto 23px;}
-.success-state .eyebrow{margin:0 0 10px;}
-.success-state>p:not(.eyebrow){color:#706961; font-size:13px; max-width:320px; line-height:1.6; margin:15px auto 23px;}
+.form-grid input,.form-grid select,.code-inputs input{min-width:0; border:1px solid #d5d0c9; border-radius:8px; padding:11px; background:#fffefa; color:var(--ink); outline-color:var(--coral); font-size:13px;}
+.modal-actions{display:flex; justify-content:space-between; align-items:center; margin-top:28px;}
+.modal-actions .button:disabled{opacity:.4; cursor:not-allowed;}
+.code-inputs{display:flex; justify-content:center; gap:7px; margin-top:14px;}
+.code-inputs input{width:42px; text-align:center; font-weight:bold; font-size:16px;}
 
 @keyframes float{50%{transform:translateY(-12px) rotate(1deg);}}
 @keyframes marquee{to{transform:translateX(-35%);}}
 @keyframes stamp{from{transform:scale(1.6) rotate(-15deg); opacity:0;} to{transform:scale(1); opacity:1;}}
 @keyframes fade{from{opacity:0; transform:scale(.94);}}
-@keyframes modal-in{from{opacity:0; transform:translateY(16px) scale(.98);}}
 @keyframes pulse-ring{0%{box-shadow:0 0 0 0 rgba(229,84,61,.4);} 70%{box-shadow:0 0 0 10px rgba(229,84,61,0);} 100%{box-shadow:0 0 0 0 rgba(229,84,61,0);}}
 @keyframes confetti-fall{0%{transform:translateY(0) rotate(0deg); opacity:1;} 100%{transform:translateY(160px) rotate(480deg); opacity:0;}}
 
-@media (max-width:900px){.nav-links{display:none} .hero,.benefits,.workflow,.industries{grid-template-columns:1fr} .hero{padding-top:130px} .hero-art{height:380px; max-width:530px; width:100%; margin:auto} .benefits,.industries{gap:45px} .dashboard-top{align-items:start; gap:20px} .dash-panel{grid-template-columns:1fr} .dash-panel aside{display:none}}
-@media (max-width:600px){.nav{padding-inline:18px} .nav-actions .text-button{display:none} .nav-actions .button{padding:10px 13px; font-size:12px} .hero{min-height:auto; padding-inline:24px} .hero h1{font-size:50px} .hero-art{height:320px} .stamp-orb{transform:scale(.78); transform-origin:left top; left:10%; top:20px} .floating-card{transform:scale(.85)} .card-a{right:-12px; top:20px} .trust-row{gap:10px; flex-wrap:wrap} .section{padding:80px 24px} .dashboard-top{display:block} .dashboard-top .button{margin-top:22px} .dash-content{padding:19px} .metrics{grid-template-columns:1fr} .industry-cards{grid-template-columns:1fr} .signup-modal{padding:29px 23px} .form-grid{grid-template-columns:1fr} .form-grid .full{grid-column:auto} .code-inputs{gap:4px} .code-inputs input{width:35px} .closing{padding-block:83px} footer{flex-wrap:wrap; gap:15px} footer p{order:3; width:100%; margin:0} .hero-ctas{align-items:flex-start; flex-direction:column}}
-@media (prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important;}}
+@media (max-width:900px){.nav-links{display:none} .hero,.benefits,.workflow,.pricing-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -215,10 +171,14 @@ footer a{color:inherit; text-decoration:none;}
 
 <nav class="nav" id="nav">
   <a class="brand" href="#top"><span class="brand-seal">TS</span><span>tapstempel</span></a>
-  <div class="nav-links"><a href="#vorteile">Vorteile</a><a href="#so-gehts">So funktioniert's</a><a href="#branchen">Branchen</a></div>
+  <div class="nav-links">
+    <a href="#vorteile">Vorteile</a>
+    <a href="#so-gehts">So funktioniert's</a>
+    <a href="#preise">Preise</a>
+  </div>
   <div class="nav-actions">
-    <button class="text-button" id="openModalNav">Anmelden</button>
-    <button class="button button--coral" id="openModalNavCta">Kostenlos starten <span>→</span></button>
+    <button class="text-button" id="openLoginBtn">Anmelden</button>
+    <button class="button button--coral" id="openSignupBtn">Kostenlos starten <span>→</span></button>
   </div>
 </nav>
 
@@ -229,7 +189,7 @@ footer a{color:inherit; text-decoration:none;}
     <h1>Jeder Besuch<br>bleibt <em>in Erinnerung.</em></h1>
     <p>Das Treueprogramm, das sich anfühlt wie Ihr Laden: persönlich, schnell und ganz ohne App-Download.</p>
     <div class="hero-ctas">
-      <button class="button button--coral button--large" id="openModalHero">Jetzt kostenlos starten <span>→</span></button>
+      <button class="button button--coral button--large" id="heroStartBtn">Jetzt kostenlos starten <span>→</span></button>
       <a href="#so-gehts" class="play-link"><b>▶</b> Demo erleben</a>
     </div>
     <div class="trust-row"><span>Keine Kreditkarte</span><span>In 5 Minuten live</span><span>DSGVO-konform</span></div>
@@ -276,117 +236,129 @@ footer a{color:inherit; text-decoration:none;}
   </div>
 </section>
 
-<section class="dashboard-wrap">
-  <div class="section dashboard">
-    <div class="dashboard-top">
-      <div><p class="eyebrow">Ihre Übersicht</p><h2>Weniger Bauchgefühl.<br>Mehr <em>Wiederkommen.</em></h2></div>
-      <button class="button button--outline" id="openModalDash">Dashboard ansehen <span>↗</span></button>
+<!-- ═══ PREISE SECTION ═══ -->
+<section class="section pricing-section" id="preise">
+  <div style="text-align:center; max-width:600px; margin:0 auto 30px;">
+    <p class="eyebrow">Faire Monats-Pakete</p>
+    <h2>Kein Risiko.<br><em>Sofort einsatzbereit.</em></h2>
+    <p style="color:#aaa; font-size:15px; margin-top:10px;">Wähle das Paket, das zu deinem Betrieb passt. Jederzeit monatlich kündbar.</p>
+  </div>
+
+  <div class="pricing-grid">
+    <div class="price-card">
+      <div class="plan-name">Basic</div>
+      <p style="color:#888; font-size:13px; margin:0;">Perfekt für kleine Cafés &amp; Studios</p>
+      <div class="plan-price">19,99 € <small>/ Monat</small></div>
+      <ul>
+        <li><b>✓</b> Digitale Stempelkarte ohne App</li>
+        <li><b>✓</b> Bis zu 5 Mitarbeiter-PINs</li>
+        <li><b>✓</b> Live-Kundenübersicht</li>
+        <li><b>✓</b> 10 Monate zahlen bei Jahresabo (2 Monate gratis)</li>
+      </ul>
+      <button class="button button--outline" onclick="openAuthModal('signup')">Jetzt starten →</button>
     </div>
-    <div class="dash-panel">
-      <aside>
-        <div class="brand small"><span class="brand-seal">TS</span><span>tapstempel</span></div>
-        <a class="active">◈ Übersicht</a><a>◎ Kunden</a><a>◇ Belohnungen</a><a>◌ Einstellungen</a>
-      </aside>
-      <div class="dash-content">
-        <div class="dash-title"><div><small>Montag, 16. September</small><h3>Guten Morgen, Mara.</h3></div><span class="dash-avatar">MK</span></div>
-        <div class="metrics">
-          <div><small>Stempel diese Woche</small><strong>184 <i>↗ 18%</i></strong><div class="spark"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
-          <div><small>Aktive Kunden</small><strong>1.248 <i>↗ 9%</i></strong><p>+ 42 diese Woche</p></div>
-          <div><small>Belohnungen eingelöst</small><strong>38 <i>↗ 12%</i></strong><p>Das sind 8 mehr als zuletzt</p></div>
-        </div>
-        <div class="activity">
-          <div><h4>Live-Aktivität</h4><span>Alle Aktivitäten →</span></div>
-          <p><b class="activity-icon a0">+</b>Sophie L. hat ihren 6. Stempel gesammelt<small>vor 2 Min.</small></p>
-          <p><b class="activity-icon a1">★</b>Jonas K. hat einen Cappuccino eingelöst<small>vor 5 Min.</small></p>
-          <p><b class="activity-icon a2">+</b>Neue Kundin: Elena M.<small>vor 8 Min.</small></p>
-        </div>
+
+    <div class="price-card featured">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="plan-name">Premium</div>
+        <span style="background:var(--coral); color:#fff; font-size:10px; font-weight:700; padding:3px 8px; border-radius:100px;">BELIEBT</span>
       </div>
+      <p style="color:#888; font-size:13px; margin:0;">Für wachsende Betriebe &amp; Teams</p>
+      <div class="plan-price">29,99 € <small>/ Monat</small></div>
+      <ul>
+        <li><b>✓</b> Alles aus Basic</li>
+        <li><b>✓</b> Unbegrenzte Mitarbeiter-PINs</li>
+        <li><b>✓</b> Eigenes Branding &amp; Farben</li>
+        <li><b>✓</b> Vorbeilauf-Mitteilung (Geofencing)</li>
+        <li><b>✓</b> Persönlicher Vor-Ort-Support</li>
+      </ul>
+      <button class="button button--coral" onclick="openAuthModal('signup')">Jetzt Premium starten →</button>
     </div>
   </div>
-</section>
-
-<section class="industries section" id="branchen">
-  <div><p class="eyebrow">Gemacht für Ihr Handwerk</p><h2>Ihr Laden.<br><em>Ihr Rhythmus.</em></h2></div>
-  <div class="industry-cards" id="industryCards"></div>
+  <p style="text-align:center; color:#888; font-size:12px; margin-top:30px;">Physische NFC-Karten für das Team: 20 € für die erste Karte, 5 € für jede weitere.</p>
 </section>
 
 <section class="closing">
   <div class="closing-seal">TS</div>
   <p class="eyebrow">Ihr nächster Stammkunde wartet</p>
   <h2>Machen Sie jeden<br>Besuch <em>zählbar.</em></h2>
-  <button class="button button--paper button--large" id="openModalClosing">Tapstempel kostenlos starten <span>→</span></button>
+  <button class="button button--paper button--large" onclick="openAuthModal('signup')">Tapstempel kostenlos starten <span>→</span></button>
   <p class="closing-note">Keine Kreditkarte · Persönliche Einrichtung inklusive</p>
 </section>
 
 <footer>
   <a class="brand"><span class="brand-seal">TS</span><span>tapstempel</span></a>
-  <p>© 2026 Tapstempel. Für Orte, zu denen man zurückkehrt.</p>
-  <div><a href="#">Datenschutz</a><a href="#">Impressum</a></div>
+  <p>© 2026 Tapstempel · Teil von Tapstern.</p>
+  <div><a href="impressum.html">Impressum</a><a href="datenschutz.html">Datenschutz</a></div>
 </footer>
 
-<!-- SIGNUP MODAL -->
+<!-- ═══ MODAL: LOGIN & REGISTRIERUNG ═══ -->
 <div class="modal-backdrop hide" id="modalBackdrop">
   <div class="signup-modal">
     <button class="close" id="closeModal" aria-label="Schließen">×</button>
 
-    <div id="modalSteps">
-      <div class="signup-top"><div><p class="eyebrow">Konto eröffnen</p><h2>In wenigen Minuten startklar.</h2></div><span id="stepLabel">Schritt 1 / 3</span></div>
+    <!-- TABS: ANMELDEN VS REGISTRIEREN -->
+    <div class="modal-tabs">
+      <button id="tabLoginBtn" class="on">Anmelden</button>
+      <button id="tabSignupBtn">Neu registrieren</button>
+    </div>
+
+    <!-- PANE 1: LOGIN (LEITET ZU STEMPEL.HTML WEITER) -->
+    <div id="paneLogin">
+      <h3 style="font-family:'Roboto Slab'; margin:0 0 8px;">Willkommen zurück</h3>
+      <p style="font-size:12px; color:#746e67; margin:0 0 20px;">Gib deine Daten ein, um zu deinem Dashboard zu gelangen.</p>
+      <div class="form-grid">
+        <label class="full">E-Mail<input type="email" id="log-email" placeholder="name@deinladen.de"></label>
+        <label class="full">Passwort<input type="password" id="log-password" placeholder="••••••••"></label>
+      </div>
+      <p id="logError" style="color:#c0392b; font-size:12px; display:none; margin:10px 0;"></p>
+      <div class="modal-actions" style="margin-top:20px;">
+        <button class="button button--dark" id="doLoginBtn" style="width:100%;">Zum Dashboard <span>→</span></button>
+      </div>
+    </div>
+
+    <!-- PANE 2: REGISTRIERUNG (SCHRITT 1-3) -->
+    <div id="paneSignup" class="hide">
       <div class="stepper" id="stepper"><i class="active"></i><i></i><i></i></div>
 
       <div id="step1" class="form-grid">
-        <label>Ladenname<input type="text" id="f-name" placeholder="z. B. Café Kraftwerk" autofocus></label>
-        <label>Branche
+        <label class="full">Ladenname<input type="text" id="f-name" placeholder="z. B. Café Sonnenblick"></label>
+        <label class="full">Branche
           <select id="f-industry">
             <option>Café &amp; Bäckerei</option><option>Gastronomie</option><option>Beauty &amp; Wellness</option>
             <option>Einzelhandel</option><option>Fitness &amp; Sport</option><option>Sonstiges</option>
           </select>
         </label>
-        <label class="full hide" id="f-industry-other-wrap">Ihre Branche<input type="text" id="f-industry-other" placeholder="Bitte beschreiben"></label>
-        <label class="full">Unternehmensgröße
-          <select id="f-size"><option>1–10 Mitarbeitende</option><option>11–50 Mitarbeitende</option><option>51+ Mitarbeitende</option></select>
-        </label>
       </div>
 
       <div id="step2" class="form-grid hide">
-        <label class="full">Geschäftliche E-Mail<input type="email" id="f-email" placeholder="hello@ihrladen.de"></label>
-        <label>Vorname<input type="text" id="f-first" placeholder="Mara"></label>
-        <label>Nachname<input type="text" id="f-last" placeholder="Kraft"></label>
-        <label class="full">Telefonnummer<input type="tel" id="f-phone" placeholder="+49 170 1234567"></label>
-        <label class="full">Empfehlungscode <span style="font-weight:400;">(optional)</span><input type="text" id="f-referral" placeholder="z. B. von Regensburg Guide"></label>
-        <label class="full">Passwort<input type="password" id="f-password" placeholder="mind. 8 Zeichen"></label>
-        <p class="form-hint full">Wir verwenden Ihre Nummer ausschließlich für Kontosicherheit und wichtige Service-Hinweise.</p>
+        <label class="full">Geschäftliche E-Mail<input type="email" id="f-email" placeholder="hello@deinladen.de"></label>
+        <label>Vorname<input type="text" id="f-first" placeholder="Max"></label>
+        <label>Nachname<input type="text" id="f-last" placeholder="Mustermann"></label>
+        <label class="full">Passwort (mind. 8 Zeichen)<input type="password" id="f-password"></label>
       </div>
 
-      <div id="step3" class="verify-box hide">
-        <div class="mail-mark">✉</div>
+      <div id="step3" class="hide" style="text-align:center;">
         <h3>E-Mail bestätigen</h3>
-        <p>Wir haben einen Bestätigungscode an <strong id="verifyEmailTarget">Ihre E-Mail</strong> gesendet.</p>
+        <p style="font-size:12px; color:#666;">Code an <strong id="targetEmail"></strong> gesendet:</p>
         <div class="code-inputs" id="codeInputs">
-          <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 1">
-          <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 2">
-          <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 3">
-          <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 4">
-          <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 5">
-          <input maxlength="1" inputmode="numeric" aria-label="Code Stelle 6">
+          <input maxlength="1" inputmode="numeric">
+          <input maxlength="1" inputmode="numeric">
+          <input maxlength="1" inputmode="numeric">
+          <input maxlength="1" inputmode="numeric">
+          <input maxlength="1" inputmode="numeric">
+          <input maxlength="1" inputmode="numeric">
         </div>
       </div>
 
-      <p class="form-hint full" id="modalError" style="color:#c0392b; display:none; text-align:center; margin-top:14px;"></p>
-
+      <p id="regError" style="color:#c0392b; font-size:12px; display:none; text-align:center; margin-top:10px;"></p>
+      
       <div class="modal-actions">
-        <button class="back-btn hide" id="backBtn">Zurück</button><span></span>
-        <button class="button button--dark" id="nextBtn">Weiter<span>→</span></button>
+        <button class="text-button hide" id="backBtn" style="color:#666;">Zurück</button>
+        <button class="button button--coral" id="nextBtn">Weiter <span>→</span></button>
       </div>
-      <p class="privacy">Mit der Registrierung akzeptieren Sie unsere Datenschutzbestimmungen.</p>
     </div>
 
-    <div id="successState" class="success-state hide">
-      <div class="success-mark">✓</div>
-      <p class="eyebrow">Alles bereit</p>
-      <h2>Willkommen bei Tapstempel.</h2>
-      <p>Ihr persönlicher Einrichtungslink wurde an <strong id="successEmailTarget">Ihre E-Mail</strong> gesendet.</p>
-      <button class="button button--dark" id="toPlatformBtn">Zur Plattform</button>
-    </div>
   </div>
 </div>
 
@@ -395,12 +367,7 @@ footer a{color:inherit; text-decoration:none;}
 <script>
 const $ = id => document.getElementById(id);
 
-/* nav scroll state */
-window.addEventListener('scroll', () => {
-  $('nav').classList.toggle('nav--scrolled', window.scrollY > 20);
-}, { passive: true });
-
-/* benefits */
+/* Benefits */
 const benefits = [
   ['01', 'Keine Hürde für Kunden', 'Ein Tap genügt. Kein Download, kein Passwort, keine verlorenen Karten.'],
   ['02', 'Sichtbar bessere Entscheidungen', 'Erkennen Sie, wann Ihre Stammkunden kommen und was sie zurückbringt.'],
@@ -410,18 +377,152 @@ $('benefitList').innerHTML = benefits.map(([n, t, d]) => `
   <article class="benefit"><span>${n}</span><div><h3>${t}</h3><p>${d}</p></div><b>↗</b></article>
 `).join('');
 
-/* industries */
-const industries2 = [
-  ['☕', 'Cafés & Bäckereien', 'Der tägliche Lieblingskaffee.'],
-  ['✂', 'Beauty & Wellness', 'Rituale, die bleiben.'],
-  ['✦', 'Retail & Concept Stores', 'Aus Laufkundschaft wird Nähe.'],
-  ['⌁', 'Fitness & Bewegung', 'Fortschritt, der motiviert.'],
-];
-$('industryCards').innerHTML = industries2.map(([i, t, d]) => `
-  <button class="industry-card"><span>${i}</span><h3>${t}</h3><p>${d}</p><b>→</b></button>
-`).join('');
+/* Modal Tabs & Handling */
+function openAuthModal(mode) {
+  $('modalBackdrop').classList.remove('hide');
+  switchTab(mode);
+}
+function switchTab(mode) {
+  const isLogin = mode === 'login';
+  $('tabLoginBtn').classList.toggle('on', isLogin);
+  $('tabSignupBtn').classList.toggle('on', !isLogin);
+  $('paneLogin').classList.toggle('hide', !isLogin);
+  $('paneSignup').classList.toggle('hide', isLogin);
+}
 
-/* ══════════ LIVE DEMO: auto-looping tap → stamp → reward → confetti ══════════ */
+$('openLoginBtn').onclick = () => openAuthModal('login');
+$('openSignupBtn').onclick = () => openAuthModal('signup');
+$('heroStartBtn').onclick = () => openAuthModal('signup');
+$('tabLoginBtn').onclick = () => switchTab('login');
+$('tabSignupBtn').onclick = () => switchTab('signup');
+$('closeModal').onclick = () => $('modalBackdrop').classList.add('hide');
+
+/* LOGIN FLOW -> Leitet direkt zu stempel.html weiter! */
+$('doLoginBtn').onclick = async () => {
+  $('logError').style.display = 'none';
+  const email = $('log-email').value.trim();
+  const password = $('log-password').value;
+  if (!email || !password) {
+    $('logError').textContent = 'Bitte E-Mail und Passwort eingeben.';
+    $('logError').style.display = 'block';
+    return;
+  }
+  $('doLoginBtn').disabled = true;
+  $('doLoginBtn').textContent = 'Prüfe …';
+  try {
+    const res = await fetch('/api/stempel/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login fehlgeschlagen');
+    // Erfolgreich -> Weiterleitung zur Plattform!
+    window.location.href = 'stempel.html';
+  } catch(e) {
+    $('logError').textContent = e.message;
+    $('logError').style.display = 'block';
+    $('doLoginBtn').disabled = false;
+    $('doLoginBtn').innerHTML = 'Zum Dashboard <span>→</span>';
+  }
+};
+
+/* SIGNUP FLOW (Schritt 1-3) */
+let step = 1;
+const codeBoxes = Array.from(document.querySelectorAll('#codeInputs input'));
+codeBoxes.forEach((box, i) => {
+  box.addEventListener('input', () => {
+    box.value = box.value.replace(/\D/g, '').slice(0, 1);
+    if (box.value && codeBoxes[i + 1]) codeBoxes[i + 1].focus();
+  });
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && !box.value && codeBoxes[i - 1]) codeBoxes[i - 1].focus();
+  });
+});
+
+$('nextBtn').onclick = async () => {
+  $('regError').style.display = 'none';
+
+  if (step === 1) {
+    if (!$('f-name').value.trim()) {
+      $('regError').textContent = 'Bitte gib deinen Ladennamen an.';
+      $('regError').style.display = 'block';
+      return;
+    }
+    step = 2; updateStepUI(); return;
+  }
+
+  if (step === 2) {
+    const email = $('f-email').value.trim();
+    const password = $('f-password').value;
+    if (!email || password.length < 8) {
+      $('regError').textContent = 'Bitte gültige E-Mail und Passwort (mind. 8 Zeichen) angeben.';
+      $('regError').style.display = 'block';
+      return;
+    }
+    $('nextBtn').disabled = true;
+    try {
+      const res = await fetch('/api/stempel/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: $('f-name').value.trim(),
+          branche: $('f-industry').value,
+          email, password,
+          first_name: $('f-first').value.trim(),
+          last_name: $('f-last').value.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Fehler');
+      $('targetEmail').textContent = email;
+      step = 3; updateStepUI();
+    } catch(e) {
+      $('regError').textContent = e.message;
+      $('regError').style.display = 'block';
+      $('nextBtn').disabled = false;
+    }
+    return;
+  }
+
+  if (step === 3) {
+    const code = codeBoxes.map(b => b.value).join('');
+    if (code.length !== 6) {
+      $('regError').textContent = 'Bitte den vollständigen 6-stelligen Code eingeben.';
+      $('regError').style.display = 'block';
+      return;
+    }
+    $('nextBtn').disabled = true;
+    try {
+      const res = await fetch('/api/stempel/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: $('f-email').value.trim(), code })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Code falsch');
+      // Direkt zur Plattform!
+      window.location.href = 'stempel.html';
+    } catch(e) {
+      $('regError').textContent = e.message;
+      $('regError').style.display = 'block';
+      $('nextBtn').disabled = false;
+    }
+  }
+};
+
+function updateStepUI() {
+  $('step1').classList.toggle('hide', step !== 1);
+  $('step2').classList.toggle('hide', step !== 2);
+  $('step3').classList.toggle('hide', step !== 3);
+  $('backBtn').classList.toggle('hide', step === 1);
+  document.querySelectorAll('#stepper i').forEach((el, i) => el.classList.toggle('active', i < step));
+  $('nextBtn').disabled = false;
+  $('nextBtn').innerHTML = step === 3 ? 'Konto aktivieren <span>→</span>' : 'Weiter <span>→</span>';
+}
+$('backBtn').onclick = () => { if (step > 1) { step--; updateStepUI(); } };
+
+/* Auto-Looping Live Demo */
 (function () {
   const maxStamps = 8;
   const grid = $('stampsGrid');
@@ -430,188 +531,37 @@ $('industryCards').innerHTML = industries2.map(([i, t, d]) => `
   const statusText = $('statusText');
   const customerSub = $('customerSub');
   const rewardLayer = $('rewardLayer');
-  const confettiLayer = $('confettiLayer');
-  let cells = [];
+  let stamps = 5;
 
   function buildGrid(filled) {
     grid.innerHTML = '';
-    cells = [];
     for (let i = 0; i < maxStamps; i++) {
       const c = document.createElement('div');
       c.className = 'stamp' + (i < filled ? ' stamp--active' : '');
       c.textContent = i < filled ? '✓' : 'TS';
       grid.appendChild(c);
-      cells.push(c);
     }
   }
   buildGrid(5);
-  let stamps = 5;
-  progressCount.textContent = stamps + '/' + maxStamps;
-
-  function spawnConfetti() {
-    confettiLayer.innerHTML = '';
-    const colors = ['#e5543d', '#ff735b', '#f5f1e8', '#ffb199'];
-    for (let i = 0; i < 24; i++) {
-      const p = document.createElement('div');
-      const size = 5 + Math.random() * 6;
-      p.style.cssText = `position:absolute; left:${8 + Math.random() * 84}%; top:${4 + Math.random() * 35}%; width:${size}px; height:${size}px; background:${colors[i % colors.length]}; border-radius:${Math.random() > 0.5 ? '50%' : '2px'}; animation:confetti-fall 1.3s ease-out ${Math.random() * 0.5}s both;`;
-      confettiLayer.appendChild(p);
-    }
-  }
+  progressCount.textContent = '5/8';
 
   function runCycle() {
-    // idle pause
-    statusIcon.textContent = '📲'; statusText.textContent = 'Wartet auf Kundenkarte …'; customerSub.textContent = 'Mit Kundenkarte verbunden';
+    statusIcon.textContent = '📲'; statusText.textContent = 'Wartet auf Kundenkarte …';
     setTimeout(() => {
-      // tapping
-      statusIcon.textContent = '📶'; statusText.textContent = 'Karte erkannt — Stempel wird vergeben …'; customerSub.textContent = 'Karte wird gelesen …';
-      if (stamps < maxStamps) cells[stamps].classList.add('stamp--pulsing');
-      setTimeout(() => {
-        if (stamps < maxStamps) cells[stamps].classList.remove('stamp--pulsing');
-        stamps++;
-        buildGrid(stamps);
-        progressCount.textContent = stamps + '/' + maxStamps;
-        statusIcon.textContent = '✅'; statusText.textContent = 'Stempel gesetzt!'; customerSub.textContent = 'Stempel erfolgreich vergeben';
-
-        if (stamps >= maxStamps) {
-          setTimeout(() => {
-            rewardLayer.classList.add('show');
-            spawnConfetti();
-          }, 500);
-          setTimeout(() => {
-            rewardLayer.classList.remove('show');
-            confettiLayer.innerHTML = '';
-            stamps = 0;
-            buildGrid(0);
-            progressCount.textContent = '0/' + maxStamps;
-            setTimeout(runCycle, 500);
-          }, 3800);
-        } else {
-          setTimeout(runCycle, 1600);
-        }
-      }, 750);
-    }, 1300);
+      stamps++;
+      if (stamps > maxStamps) stamps = 1;
+      buildGrid(stamps);
+      progressCount.textContent = stamps + '/' + maxStamps;
+      statusIcon.textContent = '✅'; statusText.textContent = 'Stempel gesetzt!';
+      if (stamps === maxStamps) {
+        rewardLayer.classList.add('show');
+        setTimeout(() => { rewardLayer.classList.remove('show'); setTimeout(runCycle, 1500); }, 3000);
+      } else {
+        setTimeout(runCycle, 2000);
+      }
+    }, 1500);
   }
   setTimeout(runCycle, 1000);
-})();
-
-/* ══════════ SIGNUP MODAL ══════════ */
-(function () {
-  let step = 1;
-
-  function openModal() {
-    $('modalBackdrop').classList.remove('hide');
-    step = 1;
-    showStep();
-    hideError();
-    $('modalSteps').classList.remove('hide');
-    $('successState').classList.add('hide');
-  }
-  function closeModal() { $('modalBackdrop').classList.add('hide'); }
-  function showError(msg) { $('modalError').textContent = msg; $('modalError').style.display = 'block'; }
-  function hideError() { $('modalError').style.display = 'none'; }
-
-  ['openModalNav', 'openModalNavCta', 'openModalHero', 'openModalDash', 'openModalClosing'].forEach(id => {
-    $(id).addEventListener('click', openModal);
-  });
-  $('closeModal').addEventListener('click', closeModal);
-  $('modalBackdrop').addEventListener('click', e => { if (e.target === $('modalBackdrop')) closeModal(); });
-  $('toPlatformBtn').addEventListener('click', () => { window.location.href = 'stempel.html'; });
-
-  $('f-industry').addEventListener('change', () => {
-    $('f-industry-other-wrap').classList.toggle('hide', $('f-industry').value !== 'Sonstiges');
-  });
-
-  /* Code-Eingabe: automatisch zum nächsten Feld springen */
-  const codeBoxes = Array.from(document.querySelectorAll('#codeInputs input'));
-  codeBoxes.forEach((box, i) => {
-    box.addEventListener('input', () => {
-      box.value = box.value.replace(/\D/g, '').slice(0, 1);
-      if (box.value && codeBoxes[i + 1]) codeBoxes[i + 1].focus();
-    });
-    box.addEventListener('keydown', e => {
-      if (e.key === 'Backspace' && !box.value && codeBoxes[i - 1]) codeBoxes[i - 1].focus();
-    });
-  });
-  function collectedCode() { return codeBoxes.map(b => b.value).join(''); }
-
-  function showStep() {
-    $('step1').classList.toggle('hide', step !== 1);
-    $('step2').classList.toggle('hide', step !== 2);
-    $('step3').classList.toggle('hide', step !== 3);
-    $('stepLabel').textContent = `Schritt ${step} / 3`;
-    document.querySelectorAll('#stepper i').forEach((el, i) => el.classList.toggle('active', i < step));
-    $('backBtn').classList.toggle('hide', step === 1);
-    $('nextBtn').disabled = false;
-    hideError();
-    if (step === 3) {
-      $('verifyEmailTarget').textContent = $('f-email').value || 'Ihre E-Mail';
-      $('nextBtn').innerHTML = 'Plattform aktivieren';
-      setTimeout(() => codeBoxes[0].focus(), 50);
-    } else {
-      $('nextBtn').innerHTML = 'Weiter<span>→</span>';
-    }
-  }
-
-  async function apiPost(url, body) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Etwas ist schiefgelaufen');
-    return data;
-  }
-
-  $('backBtn').addEventListener('click', () => { if (step > 1) { step--; showStep(); } });
-
-  $('nextBtn').addEventListener('click', async () => {
-    hideError();
-
-    if (step === 1) {
-      if (!$('f-name').value.trim()) { showError('Bitte einen Ladennamen angeben.'); return; }
-      step = 2; showStep(); return;
-    }
-
-    if (step === 2) {
-      const email = $('f-email').value.trim();
-      const password = $('f-password').value;
-      if (!email || !password) { showError('Bitte E-Mail und Passwort ausfüllen.'); return; }
-      if (password.length < 8) { showError('Passwort muss mindestens 8 Zeichen haben.'); return; }
-
-      const industry = $('f-industry').value === 'Sonstiges' ? $('f-industry-other').value.trim() : $('f-industry').value;
-      $('nextBtn').disabled = true; $('nextBtn').textContent = 'Wird gesendet …';
-      try {
-        await apiPost('/api/stempel/signup', {
-          name: $('f-name').value.trim(),
-          branche: industry,
-          company_size: $('f-size').value,
-          email, password,
-          first_name: $('f-first').value.trim(),
-          last_name: $('f-last').value.trim(),
-          phone: $('f-phone').value.trim(),
-          referral_code: $('f-referral').value.trim()
-        });
-        step = 3; showStep();
-      } catch (e) {
-        showError(e.message);
-        $('nextBtn').disabled = false; $('nextBtn').innerHTML = 'Weiter<span>→</span>';
-      }
-      return;
-    }
-
-    if (step === 3) {
-      const code = collectedCode();
-      if (code.length !== 6) { showError('Bitte den vollständigen 6-stelligen Code eingeben.'); return; }
-      $('nextBtn').disabled = true; $('nextBtn').textContent = 'Wird geprüft …';
-      try {
-        await apiPost('/api/stempel/verify-email', { email: $('f-email').value.trim(), code });
-        $('successEmailTarget').textContent = $('f-email').value.trim();
-        $('modalSteps').classList.add('hide');
-        $('successState').classList.remove('hide');
-      } catch (e) {
-        showError(e.message);
-        $('nextBtn').disabled = false; $('nextBtn').innerHTML = 'Plattform aktivieren';
-      }
-    }
-  });
 })();
 </script>
 </body>

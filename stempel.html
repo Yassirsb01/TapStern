@@ -135,6 +135,26 @@
 
   /* SWATCHES & COLOR PICKER */
   .swatches{display:flex; gap:10px; align-items:center;}
+  .icon-picker, .pattern-picker{display:flex; gap:10px; flex-wrap:wrap;}
+  .icon-opt{width:42px; height:42px; border-radius:10px; border:2px solid #e4ded5; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px;}
+  .icon-opt.on{border-color:var(--coral); background:#fdece8;}
+  .icon-opt svg{width:20px; height:20px; fill:none; stroke:var(--ink); stroke-width:1.6;}
+  .pattern-opt{padding:8px 14px; border-radius:8px; border:2px solid #e4ded5; background:#fff; cursor:pointer; font-size:13px;}
+  .pattern-opt.on{border-color:var(--coral); background:#fdece8; font-weight:600;}
+
+  .card-preview{background:#14131a; border-radius:18px; overflow:hidden; color:#f3f0ea; font-family:'Inter',system-ui,sans-serif; box-shadow:0 12px 30px rgba(0,0,0,0.12);}
+  .cp-banner{height:70px; background-size:cover; background-position:center;}
+  .cp-body{padding:26px 22px; text-align:center;}
+  .cp-logo{width:44px; height:44px; border-radius:10px; overflow:hidden; margin:0 auto 12px; background:#2a2733;}
+  .cp-logo img{width:100%; height:100%; object-fit:cover;}
+  .cp-logo:empty{display:none;}
+  .cp-name{font-weight:700; font-size:1.1rem;}
+  .cp-msg{font-size:0.8rem; margin:4px 0 18px;}
+  .cp-dots{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px;}
+  .cp-dot{aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center;}
+  .cp-dot svg{width:60%; height:60%;}
+  .cp-count{font-size:0.75rem; color:#948d9c; margin-bottom:14px;}
+  .cp-note{background:rgba(255,255,255,0.06); border-radius:10px; padding:12px; font-size:0.78rem;}
   .swatch{width:30px; height:30px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
   .swatch.on{border-color:var(--ink); transform:scale(1.1);}
 
@@ -341,66 +361,100 @@
       <!-- SEITE 6: STEMPELKARTE GESTALTEN -->
       <div id="p-settings" class="hide">
         <h3>Stempelkarte gestalten</h3>
-        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Personalisiere das Design und die Regeln deiner digitalen Treuekarte.</p>
-        
-        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:560px; display:grid; gap:18px;">
-          
-          <div class="field">
-            <label>Stempel bis zur Belohnung</label>
-            <input type="number" id="set-threshold" min="1" max="30">
-          </div>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Personalisiere das Design und die Regeln deiner digitalen Treuekarte — die Vorschau rechts zeigt sofort, wie's beim Kunden aussieht.</p>
 
-          <div class="field">
-            <label>Belohnungstext</label>
-            <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Cappuccino deiner Wahl">
-          </div>
+        <div style="display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start;">
+          <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; display:grid; gap:18px;">
 
-          <div class="field">
-            <label>Mindestabstand zwischen zwei Stempeln (Cooldown)</label>
-            <select id="set-cooldown">
-              <option value="10">10 Minuten</option>
-              <option value="30">30 Minuten</option>
-              <option value="240">4 Stunden (empfohlen)</option>
-              <option value="480">8 Stunden</option>
-              <option value="1440">1 Tag</option>
-              <option value="10080">1 Woche</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Akzentfarbe der Stempelkarte</label>
-            <div class="swatches" id="swatches"></div>
-          </div>
-
-          <div class="field">
-            <label>Logo deines Ladens</label>
-            <div style="display:flex; align-items:center; gap:12px;">
-              <label class="btn btn-ghost" style="padding:8px 16px; cursor:pointer; font-size:13px;">
-                Datei wählen<input type="file" id="f-logo" accept="image/*" hidden>
-              </label>
-              <span id="logo-status" style="font-size:12px; color:var(--muted);">kein Logo</span>
+            <div class="field">
+              <label>Stempel bis zur Belohnung</label>
+              <input type="number" id="set-threshold" min="1" max="30">
             </div>
-          </div>
 
-          <div class="field">
-            <label>Bannerbild der Stempelkarte (optional)</label>
-            <div style="display:flex; align-items:center; gap:12px;">
-              <label class="btn btn-ghost" style="padding:8px 16px; cursor:pointer; font-size:13px;">
-                Datei wählen<input type="file" id="f-banner" accept="image/*" hidden>
-              </label>
-              <span id="banner-status" style="font-size:12px; color:var(--muted);">kein Banner</span>
+            <div class="field">
+              <label>Belohnungstext</label>
+              <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Cappuccino deiner Wahl">
             </div>
-          </div>
 
-          <div class="field">
+            <div class="field">
+              <label>Mindestabstand zwischen zwei Stempeln (Cooldown)</label>
+              <select id="set-cooldown">
+                <option value="10">10 Minuten</option>
+                <option value="30">30 Minuten</option>
+                <option value="240">4 Stunden (empfohlen)</option>
+                <option value="480">8 Stunden</option>
+                <option value="1440">1 Tag</option>
+                <option value="10080">1 Woche</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Akzentfarbe der Stempelkarte</label>
+              <div class="swatches" id="swatches"></div>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                <input type="color" id="set-custom-color" style="width:40px; height:34px; padding:2px; border:1px solid #d9d3cb; border-radius:8px; cursor:pointer;">
+                <span style="font-size:12px; color:var(--muted);">oder eigene Farbe wählen</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Stempel-Symbol</label>
+              <div class="icon-picker" id="iconPicker"></div>
+            </div>
+
+            <div class="field">
+              <label>Hintergrundmuster</label>
+              <div class="pattern-picker" id="patternPicker"></div>
+            </div>
+
+            <div class="field">
+              <label>Logo deines Ladens</label>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <label class="btn btn-ghost" style="padding:8px 16px; cursor:pointer; font-size:13px;">
+                  Datei wählen<input type="file" id="f-logo" accept="image/*" hidden>
+                </label>
+                <span id="logo-status" style="font-size:12px; color:var(--muted);">kein Logo</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Bannerbild der Stempelkarte (optional)</label>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <label class="btn btn-ghost" style="padding:8px 16px; cursor:pointer; font-size:13px;">
+                  Datei wählen<input type="file" id="f-banner" accept="image/*" hidden>
+                </label>
+                <span id="banner-status" style="font-size:12px; color:var(--muted);">kein Banner</span>
+              </div>
+            </div>
+
+            <div class="field">
             <label>Zusätzlicher Link-Button (optional, z. B. Speisekarte oder Instagram)</label>
             <input type="text" id="set-link-label" placeholder="Button-Text (z. B. Speisekarte ansehen)" style="margin-bottom:8px;">
             <input type="text" id="set-link-url" placeholder="Ziel-URL (z. B. https://instagram.com/mein_laden)">
           </div>
 
-          <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
-            <button class="btn btn-coral" id="saveSettings">Einstellungen speichern</button>
-            <span id="saveMsg" style="font-size:13px; color:var(--coral); font-weight:600;"></span>
+            <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
+              <button class="btn btn-coral" id="saveSettings">Einstellungen speichern</button>
+              <span id="saveMsg" style="font-size:13px; color:var(--coral); font-weight:600;"></span>
+            </div>
+          </div>
+
+          <div style="position:sticky; top:24px;">
+            <p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:0 0 10px;">Live-Vorschau</p>
+            <div id="cardPreview" class="card-preview">
+              <div class="cp-banner" id="cpBanner"></div>
+              <div class="cp-body">
+                <div class="cp-logo" id="cpLogo"></div>
+                <div class="cp-name" id="cpName">Dein Laden</div>
+                <div class="cp-msg" id="cpMsg">Stempel gesammelt!</div>
+                <div class="cp-dots" id="cpDots"></div>
+                <div class="cp-count" id="cpCount">7 / 10 Stempel</div>
+                <div class="cp-note">
+                  <div id="cpNoteL1">Noch 3 Stempel bis zur</div>
+                  <div id="cpNoteL2" style="font-weight:700;">Belohnung</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -675,6 +729,30 @@
 
   /* EINSTELLUNGEN */
   const COLOR_PALETTE = ['#e5543d', '#6366f1', '#0e7490', '#16a34a', '#9333ea', '#d97706'];
+  const ICON_OPTIONS = [
+    { id: 'circle', label: '●' },
+    { id: 'star', svg: '<path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/>' },
+    { id: 'heart', svg: '<path d="M12 21s-7.5-4.6-10-9.3C.4 8.2 2.3 5 5.7 5c1.9 0 3.5 1 4.3 2.5C10.8 6 12.4 5 14.3 5c3.4 0 5.3 3.2 3.7 6.7C19.5 16.4 12 21 12 21z"/>' },
+    { id: 'coffee', svg: '<path d="M4 8h13l-1 9a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M17 9h2a3 3 0 010 6h-1" fill="none"/>' },
+    { id: 'tea', svg: '<path d="M6 9h11l-1 7a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M17 10h1.5a2 2 0 010 4H17" fill="none"/><ellipse cx="11.5" cy="20" rx="6.5" ry="1.2" fill="none"/>' },
+    { id: 'food', svg: '<path d="M7 2v8a1.5 1.5 0 003 0V2M7 2v4M9 2v4M8.5 10v11" fill="none" stroke-linecap="round"/><path d="M16 2c-2 0-3 2-3 5s1 4 2 4v10" fill="none" stroke-linecap="round"/>' },
+    { id: 'scissors', svg: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8l12 10M8 16L20 6" fill="none" stroke-linecap="round"/>' },
+    { id: 'flower', svg: '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.6"/><circle cx="18" cy="12" r="2.6"/><circle cx="12" cy="18" r="2.6"/><circle cx="6" cy="12" r="2.6"/>' },
+    { id: 'bag', svg: '<path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M9 8V6a3 3 0 016 0v2" fill="none"/>' },
+    { id: 'leaf', svg: '<path d="M20 4C10 4 4 10 4 18c8 0 14-6 14-14z"/>' },
+    { id: 'paw', svg: '<circle cx="7" cy="8" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="17" cy="8" r="2.1"/><path d="M12 12c-3.5 0-6 2.2-6 4.8 0 1.8 1.5 3.2 3.4 3.2.9 0 1.6-.4 2.6-.4s1.7.4 2.6.4c1.9 0 3.4-1.4 3.4-3.2 0-2.6-2.5-4.8-6-4.8z"/>' },
+    { id: 'dumbbell', svg: '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><rect x="6" y="8" width="2.5" height="8" rx="1"/><rect x="15.5" y="8" width="2.5" height="8" rx="1"/><rect x="8.5" y="11" width="7" height="2"/>' },
+    { id: 'shisha', svg: '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>' },
+    { id: 'cocktail', svg: '<path d="M5 4h14l-6 8v7h3v2H8v-2h3v-7z"/>' },
+    { id: 'bread', svg: '<path d="M4 14c0-5 3.5-9 8-9s8 4 8 9c0 3-3.5 5-8 5s-8-2-8-5z"/><path d="M8 10v6M12 9v7M16 10v6" fill="none" stroke-linecap="round"/>' },
+  ];
+  const PATTERN_OPTIONS = [
+    { id: 'branche', label: 'Passend zur Branche' },
+    { id: 'dots', label: 'Punkte' },
+    { id: 'stripes', label: 'Streifen' },
+    { id: 'none', label: 'Kein Muster' },
+  ];
+
   function renderSwatches() {
     $('swatches').innerHTML = COLOR_PALETTE.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
     document.querySelectorAll('.swatch').forEach(s => {
@@ -682,10 +760,86 @@
         document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
         s.classList.add('on');
         shop.accent_color = s.dataset.c;
+        $('set-custom-color').value = s.dataset.c;
+        renderPreview();
       };
     });
   }
   renderSwatches();
+
+  function renderIconPicker() {
+    $('iconPicker').innerHTML = ICON_OPTIONS.map(i => `
+      <div class="icon-opt" data-icon="${i.id}">${i.svg ? `<svg viewBox="0 0 24 24">${i.svg}</svg>` : i.label}</div>
+    `).join('');
+    document.querySelectorAll('.icon-opt').forEach(el => el.onclick = () => {
+      document.querySelectorAll('.icon-opt').forEach(x => x.classList.remove('on'));
+      el.classList.add('on');
+      shop.stamp_icon = el.dataset.icon;
+      renderPreview();
+    });
+  }
+  renderIconPicker();
+
+  function renderPatternPicker() {
+    $('patternPicker').innerHTML = PATTERN_OPTIONS.map(p => `<div class="pattern-opt" data-pattern="${p.id}">${p.label}</div>`).join('');
+    document.querySelectorAll('.pattern-opt').forEach(el => el.onclick = () => {
+      document.querySelectorAll('.pattern-opt').forEach(x => x.classList.remove('on'));
+      el.classList.add('on');
+      shop.bg_pattern = el.dataset.pattern;
+      renderPreview();
+    });
+  }
+  renderPatternPicker();
+
+  $('set-custom-color').oninput = () => {
+    document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+    shop.accent_color = $('set-custom-color').value;
+    renderPreview();
+  };
+
+  function iconSvgFor(iconId) {
+    const opt = ICON_OPTIONS.find(i => i.id === iconId) || ICON_OPTIONS[0];
+    return opt.svg ? `<svg viewBox="0 0 24 24">${opt.svg}</svg>` : '';
+  }
+
+  function renderPreview() {
+    const accent = shop.accent_color || COLOR_PALETTE[0];
+    const threshold = Math.max(1, parseInt($('set-threshold').value) || 8);
+    const filled = Math.min(threshold, Math.ceil(threshold * 0.7));
+    document.documentElement.style.setProperty('--preview-accent', accent);
+
+    $('cpName').textContent = shop.name || 'Dein Laden';
+    $('cpMsg').textContent = 'Stempel gesammelt!';
+    $('cpMsg').style.color = accent;
+    $('cpCount').textContent = `${filled} / ${threshold} Stempel`;
+    $('cpNoteL2').textContent = ($('set-reward').value || 'Belohnung').trim();
+    $('cpNoteL2').style.color = accent;
+    $('cpNoteL1').textContent = `Noch ${threshold - filled} Stempel bis zur`;
+
+    $('cpLogo').innerHTML = shop.logoUrl ? `<img src="${shop.logoUrl}">` : (shop.logo_key ? `<img src="/photo/${shop.logo_key}">` : '');
+    const bannerSrc = shop.bannerUrl || (shop.banner_key ? `/photo/${shop.banner_key}` : null);
+    $('cpBanner').style.backgroundImage = bannerSrc ? `url('${bannerSrc}')` : 'none';
+    $('cpBanner').style.display = bannerSrc ? 'block' : 'none';
+
+    const icon = shop.stamp_icon || 'circle';
+    $('cpDots').innerHTML = Array.from({ length: Math.min(threshold, 10) }, (_, i) => {
+      const isFilled = i < filled;
+      if (icon === 'circle') {
+        return `<div class="cp-dot" style="border:2px solid ${accent}; background:${isFilled ? accent : 'transparent'};"></div>`;
+      }
+      return `<div class="cp-dot" style="${isFilled ? `fill:${accent};stroke:${accent}` : `fill:none;stroke:${accent}`}">${iconSvgFor(icon).replace('<svg', `<svg style="fill:${isFilled ? accent : 'none'};stroke:${accent};stroke-width:1.6"`)}</div>`;
+    }).join('');
+
+    const patternMap = {
+      none: 'none',
+      dots: `radial-gradient(${accent}33 1.2px, transparent 1.2px)`,
+      stripes: `repeating-linear-gradient(45deg, ${accent}26 0 2px, transparent 2px 14px)`,
+      branche: `radial-gradient(${accent}22 1.6px, transparent 1.6px)`,
+    };
+    $('cardPreview').style.backgroundColor = '#14131a';
+    $('cardPreview').style.backgroundImage = patternMap[shop.bg_pattern || 'branche'];
+    $('cardPreview').style.backgroundSize = (shop.bg_pattern === 'stripes') ? 'auto' : '16px 16px';
+  }
 
   function loadSettingsForm() {
     $('set-threshold').value = shop.reward_threshold || 8;
@@ -698,6 +852,15 @@
 
     const curColor = shop.accent_color || COLOR_PALETTE[0];
     document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.c === curColor));
+    $('set-custom-color').value = curColor;
+
+    const curIcon = shop.stamp_icon || 'circle';
+    document.querySelectorAll('.icon-opt').forEach(el => el.classList.toggle('on', el.dataset.icon === curIcon));
+    const curPattern = shop.bg_pattern || 'branche';
+    document.querySelectorAll('.pattern-opt').forEach(el => el.classList.toggle('on', el.dataset.pattern === curPattern));
+
+    ['set-threshold', 'set-reward'].forEach(id => $(id).oninput = renderPreview);
+    renderPreview();
   }
 
   function resizeImage(file, maxDim, quality) {
@@ -733,6 +896,7 @@
         if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
         shop[stateKey] = data[stateKey];
         $(statusId).textContent = successLabel;
+        renderPreview();
       } catch(err){ $(statusId).textContent = err.message; }
     };
   }
@@ -749,6 +913,8 @@
           reward_threshold: $('set-threshold').value,
           reward_text: $('set-reward').value,
           accent_color: activeColor,
+          stamp_icon: shop.stamp_icon || 'circle',
+          bg_pattern: shop.bg_pattern || 'branche',
           min_stamp_interval_minutes: $('set-cooldown').value,
           extra_link_label: $('set-link-label').value,
           extra_link_url: $('set-link-url').value

@@ -1240,42 +1240,31 @@ async function handleStempelMe(request, env) {
 async function handleStempelSettings(request, env) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
-  const data = await request.json().catch(() => ({}));
+  const data = await request.json();
 
-  const validIcons = ['circle', 'star', 'heart', 'coffee', 'tea', 'food', 'scissors', 'flower', 'bag', 'leaf', 'paw', 'dumbbell', 'shisha', 'cocktail', 'bread'];
+  const validIcons = ['circle', 'star', 'heart', 'coffee', 'tea', 'food', 'pizza', 'cocktail', 'beer', 'bread', 'cupcake', 'icecream', 'scissors', 'nails', 'flower', 'spa', 'bag', 'paw', 'dumbbell', 'ball', 'book', 'car', 'leaf', 'shisha'];
   const stampIcon = validIcons.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
   const validPatterns = ['branche', 'none', 'dots', 'stripes'];
   const bgPattern = validPatterns.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'none');
-  const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : (shop.accent_color || '#e5543d');
+  const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
   const cardBgColor = /^#[0-9a-fA-F]{6}$/.test(str(data.card_bg_color)) ? str(data.card_bg_color) : (shop.card_bg_color || '#14131a');
 
-  const threshold = parseInt(data.reward_threshold, 10) || shop.reward_threshold || 8;
-  const rewardText = str(data.reward_text) || shop.reward_text || 'Belohnung';
-  const cooldown = parseInt(data.min_stamp_interval_minutes, 10) || shop.min_stamp_interval_minutes || 240;
-  const linkUrl = str(data.extra_link_url) || null;
-  const linkLabel = str(data.extra_link_label) || null;
+  await env.DB.prepare(
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, card_bg_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
+  ).bind(
+    Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
+    str(data.reward_text) || shop.reward_text,
+    accentColor,
+    cardBgColor,
+    str(data.extra_link_url) || null,
+    str(data.extra_link_label) || null,
+    Math.max(10, parseInt(data.min_stamp_interval_minutes) || shop.min_stamp_interval_minutes),
+    stampIcon,
+    bgPattern,
+    shop.id
+  ).run();
 
-  try {
-    await env.DB.prepare(
-      `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, card_bg_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
-    ).bind(
-      threshold,
-      rewardText,
-      accentColor,
-      cardBgColor,
-      linkUrl,
-      linkLabel,
-      cooldown,
-      stampIcon,
-      bgPattern,
-      shop.id
-    ).run();
-
-    return json({ success: true });
-  } catch (dbErr) {
-    // Gibt die EXAKTE Ursache an den Browser zurück
-    return json({ error: 'Datenbankfehler: ' + dbErr.message }, 500);
-  }
+  return json({ success: true });
 }
 
 /* Logo/Banner-Uploads fürs Stempel-Profil — nutzt denselben PHOTOS-Bucket wie die Karten-App */
@@ -1695,26 +1684,23 @@ function patternBackgroundCss(branche, colorHex, bgPattern) {
 }
 
 /* Stempel-Symbol statt festem Kreis — der Laden wählt in den Einstellungen */
+const EMOJI_ICONS = {
+  star: '⭐', heart: '❤️', coffee: '☕', tea: '🍵', food: '🍽️', pizza: '🍕',
+  cocktail: '🍸', beer: '🍺', bread: '🥐', cupcake: '🧁', icecream: '🍦',
+  scissors: '✂️', nails: '💅', flower: '🌸', spa: '🧘', bag: '🛍️',
+  paw: '🐾', dumbbell: '🏋️', ball: '⚽', book: '📚', car: '🚗', leaf: '🍃',
+};
+
 function stampIconShape(icon, accent, extraClass) {
   const cls = `dot ${extraClass}`;
-  const shapes = {
-    star: '<path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/>',
-    heart: '<path d="M12,21.35l-1.45-1.32C5.4,15.36,2,12.28,2,8.5 2,5.42,4.42,3,7.5,3c1.74,0,3.41,0.81,4.5,2.09C13.09,3.81,14.76,3,16.5,3 19.58,3,22,5.42,22,8.5c0,3.78-3.4,6.86-8.55,11.54L12,21.35z"/>',
-    coffee: '<path d="M4 8h13l-1 9a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M17 9h2a3 3 0 010 6h-1" fill="none" stroke-width="1.6"/>',
-    tea: '<path d="M6 9h11l-1 7a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M17 10h1.5a2 2 0 010 4H17" fill="none"/><ellipse cx="11.5" cy="20" rx="6.5" ry="1.2" fill="none" stroke-width="1.4"/>',
-    food: '<rect x="6" y="2" width="1.6" height="8" rx="0.8"/><rect x="9" y="2" width="1.6" height="8" rx="0.8"/><rect x="12" y="2" width="1.6" height="8" rx="0.8"/><path d="M6 10c0 2 2.5 3 3.8 3s3.8-1 3.8-3" fill="none" stroke-width="1.6"/><rect x="8.9" y="13" width="1.8" height="9" rx="0.9"/><path d="M18 2c-2 0-3.5 2-3.5 5s1.2 4.5 2.6 4.9V22" fill="none" stroke-width="1.8" stroke-linecap="round"/>',
-    scissors: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8l12 10M8 16L20 6" fill="none" stroke-width="1.6" stroke-linecap="round"/>',
-    flower: '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.6"/><circle cx="18" cy="12" r="2.6"/><circle cx="12" cy="18" r="2.6"/><circle cx="6" cy="12" r="2.6"/>',
-    bag: '<path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M9 8V6a3 3 0 016 0v2" fill="none" stroke-width="1.6"/>',
-    leaf: '<path d="M20 4C10 4 4 10 4 18c8 0 14-6 14-14z"/>',
-    paw: '<circle cx="7" cy="8" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="17" cy="8" r="2.1"/><path d="M12 12c-3.5 0-6 2.2-6 4.8 0 1.8 1.5 3.2 3.4 3.2.9 0 1.6-.4 2.6-.4s1.7.4 2.6.4c1.9 0 3.4-1.4 3.4-3.2 0-2.6-2.5-4.8-6-4.8z"/>',
-    dumbbell: '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><rect x="6" y="8" width="2.5" height="8" rx="1"/><rect x="15.5" y="8" width="2.5" height="8" rx="1"/><rect x="8.5" y="11" width="7" height="2"/>',
-    shisha: '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>',
-    cocktail: '<path d="M5 4h14l-6 8v7h3v2H8v-2h3v-7z"/>',
-    bread: '<path d="M4 15c0-4 2-7 4-8 1-2 3-3 4-3s3 1 4 3c2 1 4 4 4 8 0 3-3 5-8 5s-8-2-8-5z"/><ellipse cx="8" cy="7" rx="2.2" ry="2"/><ellipse cx="12" cy="5.5" rx="2.4" ry="2.2"/><ellipse cx="16" cy="7" rx="2.2" ry="2"/>',
-  };
-  const inner = shapes[icon] ? `<svg viewBox="0 0 24 24">${shapes[icon]}</svg>` : '';
-  return `<div class="${cls} dot-icon">${inner}</div>`;
+  if (icon === 'shisha') {
+    const svg = '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>';
+    return `<div class="${cls} dot-icon"><svg viewBox="0 0 24 24">${svg}</svg></div>`;
+  }
+  if (EMOJI_ICONS[icon]) {
+    return `<div class="${cls} dot-emoji"><span>${EMOJI_ICONS[icon]}</span></div>`;
+  }
+  return `<div class="${cls}"></div>`;
 }
 
 function lightenHex(hex, amt) {
@@ -1774,7 +1760,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .dot.filled{background:${accent};}
   .dot-icon svg{width:56%; height:56%; fill:${accent}; stroke:${accent}; opacity:0.55;}
   .dot-icon.filled svg{fill:#fff; stroke:#fff; opacity:1;}
+  .dot-emoji span{font-size:1.15rem; line-height:1; opacity:0.4; filter:saturate(0.5);}
+  .dot-emoji.filled span{opacity:1; filter:none;}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
+  .stamps-panel{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:16px 14px 12px;}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
   .count{font-size:0.85rem; color:#948d9c; margin-top:14px;}
   .extra-link{
@@ -1793,12 +1782,14 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
       ${logoHtml}
       <h1>${escapeHtml(shop.name)}</h1>
       <div class="msg">${message}</div>
-      <div class="stamps">
-        ${Array.from({ length: shop.reward_threshold }, (_, i) =>
-          stampIconShape(shop.stamp_icon, accent, `${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}`)
-        ).join('')}
+      <div class="stamps-panel">
+        <div class="stamps">
+          ${Array.from({ length: shop.reward_threshold }, (_, i) =>
+            stampIconShape(shop.stamp_icon, accent, `${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}`)
+          ).join('')}
+        </div>
+        <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
       </div>
-      <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
       <details class="qr-fallback">
         <summary>Kein NFC? Zeig das dem Personal</summary>
         <div id="myQr" style="margin:14px auto 0; width:150px;"></div>

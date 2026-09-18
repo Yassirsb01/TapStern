@@ -1850,14 +1850,17 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
 </script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
-  document.querySelector('.qr-fallback').addEventListener('toggle', function(e){
-    if (!e.target.open || e.target.dataset.rendered) return;
-    e.target.dataset.rendered = '1';
+  (function(){
     var url = location.origin + '/staff-redeem/${escapeAttr(customer.redeem_token || '')}';
-    QRCode.toCanvas(url, { width: 150, margin: 1 }, function(err, canvas){
-      if (!err) document.getElementById('myQr').appendChild(canvas);
-    });
-  });
+    function draw(){
+      if (typeof QRCode === 'undefined') { document.getElementById('myQr').textContent = url; return; }
+      QRCode.toCanvas(url, { width: 150, margin: 1 }, function(err, canvas){
+        if (err) { document.getElementById('myQr').textContent = url; return; }
+        document.getElementById('myQr').appendChild(canvas);
+      });
+    }
+    draw();
+  })();
 </script>
 </body></html>`;
 }

@@ -398,6 +398,15 @@
             </div>
 
             <div class="field">
+              <label>Hintergrundfarbe der Stempelkarte</label>
+              <div class="swatches" id="bgSwatches"></div>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                <input type="color" id="set-bg-color" style="width:40px; height:34px; padding:2px; border:1px solid #d9d3cb; border-radius:8px; cursor:pointer;">
+                <span style="font-size:12px; color:var(--muted);">oder eigene Farbe wählen</span>
+              </div>
+            </div>
+
+            <div class="field">
               <label>Stempel-Symbol</label>
               <div class="icon-picker" id="iconPicker"></div>
             </div>
@@ -732,10 +741,10 @@
   const ICON_OPTIONS = [
     { id: 'circle', label: '●' },
     { id: 'star', svg: '<path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/>' },
-    { id: 'heart', svg: '<path d="M12 21s-7.5-4.6-10-9.3C.4 8.2 2.3 5 5.7 5c1.9 0 3.5 1 4.3 2.5C10.8 6 12.4 5 14.3 5c3.4 0 5.3 3.2 3.7 6.7C19.5 16.4 12 21 12 21z"/>' },
+    { id: 'heart', svg: '<path d="M12,21.35l-1.45-1.32C5.4,15.36,2,12.28,2,8.5 2,5.42,4.42,3,7.5,3c1.74,0,3.41,0.81,4.5,2.09C13.09,3.81,14.76,3,16.5,3 19.58,3,22,5.42,22,8.5c0,3.78-3.4,6.86-8.55,11.54L12,21.35z"/>' },
     { id: 'coffee', svg: '<path d="M4 8h13l-1 9a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M17 9h2a3 3 0 010 6h-1" fill="none"/>' },
     { id: 'tea', svg: '<path d="M6 9h11l-1 7a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M17 10h1.5a2 2 0 010 4H17" fill="none"/><ellipse cx="11.5" cy="20" rx="6.5" ry="1.2" fill="none"/>' },
-    { id: 'food', svg: '<path d="M7 2v8a1.5 1.5 0 003 0V2M7 2v4M9 2v4M8.5 10v11" fill="none" stroke-linecap="round"/><path d="M16 2c-2 0-3 2-3 5s1 4 2 4v10" fill="none" stroke-linecap="round"/>' },
+    { id: 'food', svg: '<rect x="6" y="2" width="1.6" height="8" rx="0.8"/><rect x="9" y="2" width="1.6" height="8" rx="0.8"/><rect x="12" y="2" width="1.6" height="8" rx="0.8"/><path d="M6 10c0 2 2.5 3 3.8 3s3.8-1 3.8-3" fill="none" stroke-linecap="round"/><rect x="8.9" y="13" width="1.8" height="9" rx="0.9"/><path d="M18 2c-2 0-3.5 2-3.5 5s1.2 4.5 2.6 4.9V22" fill="none" stroke-linecap="round"/>' },
     { id: 'scissors', svg: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8l12 10M8 16L20 6" fill="none" stroke-linecap="round"/>' },
     { id: 'flower', svg: '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.6"/><circle cx="18" cy="12" r="2.6"/><circle cx="12" cy="18" r="2.6"/><circle cx="6" cy="12" r="2.6"/>' },
     { id: 'bag', svg: '<path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M9 8V6a3 3 0 016 0v2" fill="none"/>' },
@@ -744,7 +753,7 @@
     { id: 'dumbbell', svg: '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><rect x="6" y="8" width="2.5" height="8" rx="1"/><rect x="15.5" y="8" width="2.5" height="8" rx="1"/><rect x="8.5" y="11" width="7" height="2"/>' },
     { id: 'shisha', svg: '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>' },
     { id: 'cocktail', svg: '<path d="M5 4h14l-6 8v7h3v2H8v-2h3v-7z"/>' },
-    { id: 'bread', svg: '<path d="M4 14c0-5 3.5-9 8-9s8 4 8 9c0 3-3.5 5-8 5s-8-2-8-5z"/><path d="M8 10v6M12 9v7M16 10v6" fill="none" stroke-linecap="round"/>' },
+    { id: 'bread', svg: '<path d="M4 15c0-4 2-7 4-8 1-2 3-3 4-3s3 1 4 3c2 1 4 4 4 8 0 3-3 5-8 5s-8-2-8-5z"/><ellipse cx="8" cy="7" rx="2.2" ry="2"/><ellipse cx="12" cy="5.5" rx="2.4" ry="2.2"/><ellipse cx="16" cy="7" rx="2.2" ry="2"/>' },
   ];
   const PATTERN_OPTIONS = [
     { id: 'branche', label: 'Passend zur Branche' },
@@ -755,9 +764,9 @@
 
   function renderSwatches() {
     $('swatches').innerHTML = COLOR_PALETTE.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
-    document.querySelectorAll('.swatch').forEach(s => {
+    document.querySelectorAll('[data-c]').forEach(s => {
       s.onclick = () => {
-        document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+        document.querySelectorAll('[data-c]').forEach(x => x.classList.remove('on'));
         s.classList.add('on');
         shop.accent_color = s.dataset.c;
         $('set-custom-color').value = s.dataset.c;
@@ -792,8 +801,28 @@
   renderPatternPicker();
 
   $('set-custom-color').oninput = () => {
-    document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+    document.querySelectorAll('[data-c]').forEach(x => x.classList.remove('on'));
     shop.accent_color = $('set-custom-color').value;
+    renderPreview();
+  };
+
+  const BG_PALETTE = ['#14131a', '#1a1f2e', '#1c2418', '#241419', '#0f1c1c', '#f5f1e8'];
+  function renderBgSwatches() {
+    $('bgSwatches').innerHTML = BG_PALETTE.map(c => `<div class="swatch" data-bg="${c}" style="background:${c}; border:1px solid #ddd;"></div>`).join('');
+    document.querySelectorAll('[data-bg]').forEach(s => {
+      s.onclick = () => {
+        document.querySelectorAll('[data-bg]').forEach(x => x.classList.remove('on'));
+        s.classList.add('on');
+        shop.card_bg_color = s.dataset.bg;
+        $('set-bg-color').value = s.dataset.bg;
+        renderPreview();
+      };
+    });
+  }
+  renderBgSwatches();
+  $('set-bg-color').oninput = () => {
+    document.querySelectorAll('[data-bg]').forEach(x => x.classList.remove('on'));
+    shop.card_bg_color = $('set-bg-color').value;
     renderPreview();
   };
 
@@ -824,10 +853,13 @@
     const icon = shop.stamp_icon || 'circle';
     $('cpDots').innerHTML = Array.from({ length: Math.min(threshold, 10) }, (_, i) => {
       const isFilled = i < filled;
+      const bgCol = isFilled ? accent : 'transparent';
       if (icon === 'circle') {
-        return `<div class="cp-dot" style="border:2px solid ${accent}; background:${isFilled ? accent : 'transparent'};"></div>`;
+        return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol};"></div>`;
       }
-      return `<div class="cp-dot" style="${isFilled ? `fill:${accent};stroke:${accent}` : `fill:none;stroke:${accent}`}">${iconSvgFor(icon).replace('<svg', `<svg style="fill:${isFilled ? accent : 'none'};stroke:${accent};stroke-width:1.6"`)}</div>`;
+      const iconCol = isFilled ? '#fff' : accent;
+      const svg = iconSvgFor(icon).replace('<svg', `<svg style="width:56%;height:56%;fill:${iconCol};stroke:${iconCol};opacity:${isFilled ? 1 : 0.55}"`);
+      return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol}; display:flex; align-items:center; justify-content:center;">${svg}</div>`;
     }).join('');
 
     const patternMap = {
@@ -836,7 +868,7 @@
       stripes: `repeating-linear-gradient(45deg, ${accent}26 0 2px, transparent 2px 14px)`,
       branche: `radial-gradient(${accent}22 1.6px, transparent 1.6px)`,
     };
-    $('cardPreview').style.backgroundColor = '#14131a';
+    $('cardPreview').style.backgroundColor = shop.card_bg_color || '#14131a';
     $('cardPreview').style.backgroundImage = patternMap[shop.bg_pattern || 'branche'];
     $('cardPreview').style.backgroundSize = (shop.bg_pattern === 'stripes') ? 'auto' : '16px 16px';
   }
@@ -851,8 +883,12 @@
     $('banner-status').textContent = shop.banner_key ? '✓ Banner hochgeladen' : 'kein Banner';
 
     const curColor = shop.accent_color || COLOR_PALETTE[0];
-    document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.c === curColor));
+    document.querySelectorAll('.swatch[data-c]').forEach(s => s.classList.toggle('on', s.dataset.c === curColor));
     $('set-custom-color').value = curColor;
+
+    const curBg = shop.card_bg_color || '#14131a';
+    document.querySelectorAll('[data-bg]').forEach(s => s.classList.toggle('on', s.dataset.bg === curBg));
+    $('set-bg-color').value = curBg;
 
     const curIcon = shop.stamp_icon || 'circle';
     document.querySelectorAll('.icon-opt').forEach(el => el.classList.toggle('on', el.dataset.icon === curIcon));
@@ -905,7 +941,8 @@
 
   $('saveSettings').onclick = async () => {
     $('saveMsg').textContent = 'Speichert …';
-    const activeColor = document.querySelector('.swatch.on')?.dataset.c || shop.accent_color || COLOR_PALETTE[0];
+    const activeColor = document.querySelector('[data-c].on')?.dataset.c || shop.accent_color || COLOR_PALETTE[0];
+    const activeBg = document.querySelector('[data-bg].on')?.dataset.bg || shop.card_bg_color || '#14131a';
     try {
       await api('/api/stempel/settings', {
         method: 'PUT',
@@ -913,6 +950,7 @@
           reward_threshold: $('set-threshold').value,
           reward_text: $('set-reward').value,
           accent_color: activeColor,
+          card_bg_color: activeBg,
           stamp_icon: shop.stamp_icon || 'circle',
           bg_pattern: shop.bg_pattern || 'branche',
           min_stamp_interval_minutes: $('set-cooldown').value,
@@ -923,6 +961,7 @@
       shop.reward_threshold = parseInt($('set-threshold').value);
       shop.reward_text = $('set-reward').value;
       shop.accent_color = activeColor;
+      shop.card_bg_color = activeBg;
       $('saveMsg').textContent = '✓ Erfolgreich gespeichert!';
       setTimeout(() => $('saveMsg').textContent = '', 2500);
     } catch(e){ $('saveMsg').textContent = e.message; }

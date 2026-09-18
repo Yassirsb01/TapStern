@@ -18,7 +18,6 @@
     --coral-light:#ff735b;
     --muted:#827d75;
     --line:#e4ded5;
-    --line-dark:rgba(245,241,232,.14);
     --radius:14px;
     font-family:"DM Sans", sans-serif;
     color:var(--ink);
@@ -40,11 +39,11 @@
   .field label{font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;}
   .field input, .field select{
     border:1px solid #d5d0c9; border-radius:8px; padding:12px; background:#fffefa; font-size:14px; color:var(--ink);
-    outline-color:var(--coral); font-family:inherit;
+    outline-color:var(--coral); font-family:inherit; width:100%;
   }
   .btn{
     border:0; border-radius:100px; padding:12px 20px; font-size:14px; font-weight:600; cursor:pointer;
-    display:inline-flex; align-items:center; justify-content:center; gap:8px; transition:.2s;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px; transition:.2s; text-decoration:none;
   }
   .btn-coral{background:var(--coral); color:#fff;}
   .btn-coral:hover{background:var(--coral-light); transform:translateY(-1px);}
@@ -54,13 +53,11 @@
   .btn-ghost:hover{background:#ede7dc;}
   .err{color:#c0392b; font-size:12px; margin-top:10px; display:none; text-align:center;}
 
-  /* DASHBOARD WRAPPER (Wie im Screenshot!) */
-  .dash-layout{
-    max-width:1160px; margin:40px auto 80px; padding:0 24px;
-  }
+  /* DASHBOARD WRAPPER (Exakt wie im Screenshot) */
+  .dash-layout{max-width:1160px; margin:40px auto 80px; padding:0 24px;}
   .dash-panel{
     background:var(--paper); border:1px solid #d9d3cb; box-shadow:0 28px 60px rgba(118,108,96,0.18);
-    min-height:680px; display:grid; grid-template-columns:220px 1fr; border-radius:18px; overflow:hidden;
+    min-height:720px; display:grid; grid-template-columns:220px 1fr; border-radius:18px; overflow:hidden;
   }
   .dash-panel aside{
     padding:28px 16px; border-right:1px solid var(--line); background:#f4efe6; display:flex; flex-direction:column;
@@ -75,10 +72,17 @@
   .aside-footer{margin-top:auto; padding-top:20px; border-top:1px solid var(--line);}
   
   .dash-content{padding:36px 42px; overflow-y:auto;}
-  .dash-title{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;}
+  .dash-title{display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;}
   .dash-title small{color:var(--muted); font:11px "DM Mono";}
   .dash-title h2{font-size:28px; margin:4px 0 0;}
   .dash-avatar{width:36px; height:36px; display:grid; place-items:center; background:#d7b08e; border-radius:50%; font-size:11px; font-weight:700;}
+
+  /* FILTER-SEGMENT IN DER ÜBERSICHT */
+  .time-filter{display:flex; gap:4px; background:#e8e2d7; padding:3px; border-radius:8px; margin-bottom:24px; width:max-content;}
+  .time-filter button{
+    border:0; background:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; color:#78726b; cursor:pointer; transition:.15s;
+  }
+  .time-filter button.on{background:#fffefa; color:var(--ink); box-shadow:0 1px 4px rgba(0,0,0,0.06);}
 
   /* METRIKEN KACHELN */
   .metrics{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:14px; margin-bottom:28px;}
@@ -88,7 +92,7 @@
   .metric-card i{color:#299267; font:11px "DM Mono"; font-style:normal;}
   .metric-card p{color:#78726b; font-size:12px; margin:8px 0 0;}
   .spark{height:34px; margin-top:14px; display:flex; gap:4px; align-items:end;}
-  .spark span{flex:1; background:var(--coral); border-radius:3px 3px 0 0; display:block;}
+  .spark span{flex:1; background:var(--coral); border-radius:3px 3px 0 0; display:block; min-height:4px;}
 
   /* LIVE-AKTIVITÄT */
   .activity{background:#ffffff; border:1px solid #dfd9d0; border-radius:12px; padding:20px 24px; margin-bottom:28px;}
@@ -101,7 +105,6 @@
   .act-icon{width:24px; height:24px; display:grid; place-items:center; border-radius:50%; font-size:11px; font-weight:700;}
   .act-icon.stamp{background:#fee4de; color:var(--coral);}
   .act-icon.reward{background:#f6eed1; color:#947a1f;}
-  .act-icon.new{background:#e1f1e8; color:#29875e;}
 
   /* TABELLEN */
   table{width:100%; border-collapse:collapse; font-size:13px;}
@@ -111,10 +114,24 @@
   .dot-stamp{width:9px; height:9px; border-radius:50%; background:#dfd9d0; display:inline-block;}
   .dot-stamp.on{background:var(--coral);}
 
+  /* SWATCHES & COLOR PICKER */
+  .swatches{display:flex; gap:10px; align-items:center;}
+  .swatch{width:30px; height:30px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
+  .swatch.on{border-color:var(--ink); transform:scale(1.1);}
+
+  /* PLAN & BILLING KARTEN */
+  .plan-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:20px 0;}
+  .plan-box{border:1px solid #dfd9d0; border-radius:12px; padding:20px; background:#fff;}
+  .plan-box.featured{border-color:var(--coral); background:#fffaf9;}
+  .plan-box h4{font-size:18px; margin-bottom:4px;}
+  .plan-price{font:700 24px "Roboto Slab"; margin:12px 0 16px;}
+  .plan-price small{font-size:12px; font-family:"DM Sans"; color:var(--muted); font-weight:400;}
+
   @media (max-width:900px){
     .dash-panel{grid-template-columns:1fr;}
     .dash-panel aside{display:none;}
     .metrics{grid-template-columns:1fr;}
+    .plan-grid{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -127,7 +144,7 @@
       <a href="tapstempel.html" class="brand-logo"><span class="brand-seal">TS</span><span>tapstempel</span></a>
     </div>
     <h2>Partner Login</h2>
-    <p style="color:var(--muted); font-size:13px; margin:6px 0 24px;">Melde dich mit deinen Zugangsdaten an, um dein Dashboard zu öffnen.</p>
+    <p style="color:var(--muted); font-size:13px; margin:6px 0 24px;">Melde dich an, um dein Laden-Dashboard zu öffnen.</p>
 
     <div class="field">
       <label>E-Mail</label>
@@ -141,12 +158,12 @@
     <div class="err" id="auth-err"></div>
 
     <p style="text-align:center; margin-top:22px; font-size:12px; color:var(--muted);">
-      Noch kein Konto? <a href="tapstempel.html#top" style="color:var(--coral); font-weight:600;">Jetzt kostenlos registrieren</a>
+      Noch kein Konto? <a href="tapstempel.html" style="color:var(--coral); font-weight:600;">Jetzt kostenlos registrieren</a>
     </p>
   </div>
 </div>
 
-<!-- ═══ ECHTES PARTNER DASHBOARD (Im exakten Look deines Screenshots!) ═══ -->
+<!-- ═══ PARTNER DASHBOARD ═══ -->
 <div class="dash-layout hide" id="s-app">
   <div class="dash-panel">
     
@@ -159,14 +176,14 @@
         <a data-go="card">◇ NFC &amp; QR-Code</a>
         <a data-go="employees">👥 Mitarbeiter</a>
         <a data-go="billing">💳 Abo &amp; Karten</a>
-        <a data-go="settings">◌ Einstellungen</a>
+        <a data-go="settings">◌ Stempelkarte gestalten</a>
       </nav>
       <div class="aside-footer">
         <button class="btn btn-ghost" id="logout" style="width:100%; font-size:12px; padding:8px;">Abmelden</button>
       </div>
     </aside>
 
-    <!-- HAUPTINHALT RECHTS -->
+    <!-- HAUPTBEREICH RECHTS -->
     <main class="dash-content">
       <div class="dash-title">
         <div>
@@ -176,21 +193,26 @@
         <div class="dash-avatar" id="dashAvatar">TS</div>
       </div>
 
-      <!-- SEITE 1: ÜBERSICHT (HOME) -->
+      <!-- SEITE 1: ÜBERSICHT (HOME) MIT ZEITRAUM-FILTER -->
       <div id="p-home">
+        <!-- ZEITRAUM FILTER -->
+        <div class="time-filter">
+          <button data-days="1" class="tf-btn">Heute</button>
+          <button data-days="7" class="tf-btn on">7 Tage</button>
+          <button data-days="30" class="tf-btn">30 Tage</button>
+          <button data-days="all" class="tf-btn">Gesamt</button>
+        </div>
+
         <div class="metrics">
           <div class="metric-card">
-            <small>Stempel diese Woche</small>
-            <strong id="m-week-stamps">0 <i>↗ live</i></strong>
-            <div class="spark">
-              <span style="height:35%"></span><span style="height:55%"></span><span style="height:45%"></span>
-              <span style="height:80%"></span><span style="height:60%"></span><span style="height:90%"></span><span style="height:100%"></span>
-            </div>
+            <small id="m-stamp-label">Stempel im Zeitraum</small>
+            <strong id="m-period-stamps">0 <i>↗ aktiv</i></strong>
+            <div class="spark" id="sparkBars"></div>
           </div>
           <div class="metric-card">
             <small>Aktive Kunden</small>
             <strong id="m-customers">0</strong>
-            <p>Registrierte Treuekarten</p>
+            <p>Gespeicherte Kundenkarten</p>
           </div>
           <div class="metric-card">
             <small>Belohnungen eingelöst</small>
@@ -202,7 +224,7 @@
         <div class="activity">
           <div class="activity-head">
             <h4>Live-Aktivität</h4>
-            <span>Neueste Ereignisse</span>
+            <span id="actCount">Zuletzt</span>
           </div>
           <div id="activityList">
             <p style="color:var(--muted); font-size:12px; margin:10px 0;">Noch keine Aktivitäten vorhanden.</p>
@@ -224,10 +246,11 @@
 
       <!-- SEITE 3: NFC & QR-CODE -->
       <div id="p-card" class="hide">
-        <h3>Deine Kundenkarte</h3>
+        <h3>Deine Kundenkarte &amp; Aufsteller</h3>
         <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Diesen Link scannen oder tippen deine Kunden an der Kasse an.</p>
-        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:480px;">
-          <div style="font-family:'DM Mono', monospace; font-size:13px; color:var(--coral); background:#f4efe6; padding:12px; border-radius:8px; word-break:break-all;" id="tapLink"></div>
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:520px;">
+          <label style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">NFC-Ziellink</label>
+          <div style="font-family:'DM Mono', monospace; font-size:13px; color:var(--coral); background:#f4efe6; padding:12px; border-radius:8px; word-break:break-all; margin:8px 0 16px;" id="tapLink"></div>
           <div style="margin:20px 0;" id="qr"></div>
           <button class="btn btn-dark" id="copyLink">Link kopieren</button>
         </div>
@@ -237,44 +260,98 @@
       <div id="p-employees" class="hide">
         <h3>Mitarbeiter &amp; PINs</h3>
         <p style="color:var(--muted); font-size:13px; margin:4px 0 16px;">
-          Lege hier deine Mitarbeiter an. Jeder Mitarbeiter bekommt einen 4-stelligen PIN, um Stempel beim Scannen freizugeben.
+          Vergib jedem Mitarbeiter einen eigenen PIN (4–6 Ziffern). So wird im System erfasst, wer wann gestempelt hat.
         </p>
+        <p id="empLimitNote" style="font-size:12px; color:var(--muted); margin-bottom:12px;"></p>
         <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:20px; max-width:520px; margin-bottom:20px;" id="employeeList"></div>
 
         <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:20px; max-width:520px;">
           <h4 style="margin-bottom:12px;">Mitarbeiter hinzufügen</h4>
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <input type="text" id="emp-name" placeholder="Name (z.B. Jonas)" style="flex:1; padding:10px; border-radius:8px; border:1px solid var(--line);">
-            <input type="text" id="emp-pin" maxlength="6" placeholder="PIN (z.B. 1234)" style="width:140px; padding:10px; border-radius:8px; border:1px solid var(--line);">
+            <input type="text" id="emp-name" placeholder="Name (z. B. Jonas)" style="flex:1; padding:10px; border-radius:8px; border:1px solid var(--line);">
+            <input type="text" id="emp-pin" maxlength="6" placeholder="PIN (z. B. 1234)" style="width:140px; padding:10px; border-radius:8px; border:1px solid var(--line);">
             <button class="btn btn-coral" id="addEmployeeBtn">Speichern</button>
           </div>
           <div id="empError" style="color:#c0392b; font-size:12px; margin-top:8px;"></div>
         </div>
       </div>
 
-      <!-- SEITE 5: ABO & KARTEN -->
+      <!-- SEITE 5: ABO & KARTEN (VOLLSTÄNDIG) -->
       <div id="p-billing" class="hide">
-        <h3>Dein Abonnement &amp; Karten</h3>
-        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Verwalte dein Tapstempel-Paket und bestelle physische NFC-Aufsteller nach.</p>
+        <h3>Abonnement &amp; Karten</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Verwalte dein Paket, prüfe deinen Status oder bestelle NFC-Aufsteller nach.</p>
+        
+        <!-- Status & Paketauswahl -->
         <div id="planPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; margin-bottom:20px;"></div>
+
+        <!-- NFC-Karten bestellen -->
         <div id="cardPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;"></div>
       </div>
 
-      <!-- SEITE 6: EINSTELLUNGEN -->
+      <!-- SEITE 6: STEMPELKARTE GESTALTEN (ALLE EINSTELLUNGEN) -->
       <div id="p-settings" class="hide">
-        <h3>Laden-Einstellungen</h3>
-        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Passe das Aussehen deiner digitalen Kundenkarte an.</p>
-        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:520px; display:grid; gap:16px;">
+        <h3>Stempelkarte gestalten</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Personalisiere das Design und die Regeln deiner digitalen Treuekarte.</p>
+        
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:560px; display:grid; gap:18px;">
+          
           <div class="field">
             <label>Stempel bis zur Belohnung</label>
             <input type="number" id="set-threshold" min="1" max="30">
           </div>
+
           <div class="field">
             <label>Belohnungstext</label>
             <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Cappuccino deiner Wahl">
           </div>
-          <button class="btn btn-coral" id="saveSettings" style="width:max-content;">Einstellungen speichern</button>
-          <span id="saveMsg" style="font-size:12px; color:var(--muted);"></span>
+
+          <div class="field">
+            <label>Mindestabstand zwischen zwei Stempeln (Cooldown)</label>
+            <select id="set-cooldown">
+              <option value="10">10 Minuten</option>
+              <option value="30">30 Minuten</option>
+              <option value="240">4 Stunden (empfohlen)</option>
+              <option value="480">8 Stunden</option>
+              <option value="1440">1 Tag</option>
+              <option value="10080">1 Woche</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Akzentfarbe der Stempelkarte</label>
+            <div class="swatches" id="swatches"></div>
+          </div>
+
+          <div class="field">
+            <label>Logo deines Ladens</label>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <label class="btn btn-ghost" style="padding:8px 16px; cursor:pointer; font-size:13px;">
+                Datei wählen<input type="file" id="f-logo" accept="image/*" hidden>
+              </label>
+              <span id="logo-status" style="font-size:12px; color:var(--muted);">kein Logo</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Bannerbild der Stempelkarte (optional)</label>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <label class="btn btn-ghost" style="padding:8px 16px; cursor:pointer; font-size:13px;">
+                Datei wählen<input type="file" id="f-banner" accept="image/*" hidden>
+              </label>
+              <span id="banner-status" style="font-size:12px; color:var(--muted);">kein Banner</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Zusätzlicher Link-Button (optional, z. B. Speisekarte oder Instagram)</label>
+            <input type="text" id="set-link-label" placeholder="Button-Text (z. B. Speisekarte ansehen)" style="margin-bottom:8px;">
+            <input type="text" id="set-link-url" placeholder="Ziel-URL (z. B. https://instagram.com/mein_laden)">
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
+            <button class="btn btn-coral" id="saveSettings">Einstellungen speichern</button>
+            <span id="saveMsg" style="font-size:13px; color:var(--coral); font-weight:600;"></span>
+          </div>
         </div>
       </div>
 
@@ -286,6 +363,8 @@
 <script>
   const $ = id => document.getElementById(id);
   let shop = null;
+  let allCustomers = [];
+  let currentFilterDays = 7;
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -325,47 +404,75 @@
     };
   });
 
-  /* INITIALISIERUNG */
+  /* BOOT */
   async function boot(shopData) {
     shop = shopData;
     $('s-auth').classList.add('hide');
     $('s-app').classList.remove('hide');
     
-    // Begrüßung wie im Screenshot
     const today = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
     $('dashDate').textContent = today;
     $('dashGreeting').textContent = 'Guten Tag, ' + (shop.first_name || shop.name);
     $('dashAvatar').textContent = (shop.name || 'TS').slice(0, 2).toUpperCase();
 
-    await loadHome();
-  }
-
-  async function loadHome() {
+    // Kunden laden & Übersicht rendern
     try {
-      const { customers } = await api('/api/stempel/customers');
-      $('m-customers').textContent = customers.length;
-      const redeemed = customers.reduce((sum, c) => sum + (c.redeemed_count || 0), 0);
-      $('m-redeemed').textContent = redeemed;
-      const weekStamps = customers.filter(c => c.last_stamp_at && (Date.now() - new Date(c.last_stamp_at + 'Z')) < 7 * 86400000).length;
-      $('m-week-stamps').innerHTML = weekStamps + ' <i>↗ aktiv</i>';
-
-      // Live Aktivitäten rendern
-      if (customers.length) {
-        $('activityList').innerHTML = customers.slice(0, 5).map(c => `
-          <div class="activity-item">
-            <span class="act-icon stamp">+</span>
-            <span>Kunde hat ${c.stamps}. Stempel gesammelt</span>
-            <small>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) : 'vor kurzem'}</small>
-          </div>
-        `).join('');
-      }
+      const res = await api('/api/stempel/customers');
+      allCustomers = res.customers || [];
+      renderHomeMetrics();
     } catch(e){}
   }
 
+  /* ═══ ZEITRAUM-FILTER IN DER ÜBERSICHT ═══ */
+  document.querySelectorAll('.tf-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      const val = btn.dataset.days;
+      currentFilterDays = val === 'all' ? 9999 : parseInt(val);
+      renderHomeMetrics();
+    };
+  });
+
+  function renderHomeMetrics() {
+    $('m-customers').textContent = allCustomers.length;
+    const redeemed = allCustomers.reduce((sum, c) => sum + (c.redeemed_count || 0), 0);
+    $('m-redeemed').textContent = redeemed;
+
+    // Filter berechnen
+    const now = Date.now();
+    const msLimit = currentFilterDays * 86400000;
+    const filtered = allCustomers.filter(c => c.last_stamp_at && (now - new Date(c.last_stamp_at + 'Z').getTime()) <= msLimit);
+    
+    $('m-period-stamps').innerHTML = filtered.length + ' <i>↗ aktiv</i>';
+    $('m-stamp-label').textContent = currentFilterDays === 1 ? 'Stempel heute' : (currentFilterDays > 365 ? 'Stempel gesamt' : `Stempel letzte ${currentFilterDays} Tage`);
+
+    // Sparkline Balken
+    const daysToShow = currentFilterDays === 1 ? 1 : Math.min(14, currentFilterDays);
+    const dayCounts = Array.from({length: daysToShow}, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (daysToShow - 1 - i));
+      const ds = d.toISOString().slice(0, 10);
+      return allCustomers.filter(c => c.last_stamp_at && c.last_stamp_at.startsWith(ds)).length;
+    });
+    const maxVal = Math.max(1, ...dayCounts);
+    $('sparkBars').innerHTML = dayCounts.map(cnt => `<span style="height:${Math.max(12, (cnt / maxVal) * 100)}%"></span>`).join('');
+
+    // Live-Aktivitäten
+    if (allCustomers.length) {
+      $('activityList').innerHTML = allCustomers.slice(0, 5).map(c => `
+        <div class="activity-item">
+          <span class="act-icon stamp">+</span>
+          <span>Kunde hat ${c.stamps}. Stempel gesammelt</span>
+          <small>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) : 'vor kurzem'}</small>
+        </div>
+      `).join('');
+    }
+  }
+
+  /* KUNDEN */
   async function loadCustomers() {
-    const { customers } = await api('/api/stempel/customers');
     const th = shop.reward_threshold || 8;
-    $('customerRows').innerHTML = customers.map(c => {
+    $('customerRows').innerHTML = allCustomers.map(c => {
       const dots = Array.from({length: th}, (_, i) => `<span class="dot-stamp ${i < c.stamps ? 'on' : ''}"></span>`).join('');
       const status = c.stamps >= th ? '<strong style="color:var(--coral);">Belohnung bereit</strong>' : `${c.stamps}/${th}`;
       return `<tr>
@@ -377,6 +484,7 @@
     }).join('') || '<tr><td colspan="4" style="color:var(--muted); padding:20px;">Noch keine Kunden verzeichnet.</td></tr>';
   }
 
+  /* CARD & QR */
   function loadCard() {
     const url = location.origin + '/s/' + shop.slug;
     $('tapLink').textContent = url;
@@ -390,8 +498,11 @@
     setTimeout(() => $('copyLink').textContent = 'Link kopieren', 1500);
   };
 
+  /* MITARBEITER */
   async function loadEmployees() {
-    const { employees } = await api('/api/stempel/employees');
+    const { employees, plan } = await api('/api/stempel/employees');
+    const limit = plan === 'premium' ? 'unbegrenzt' : '5';
+    $('empLimitNote').textContent = `Paket: ${plan === 'premium' ? 'Premium' : 'Basic'} — bis zu ${limit} Mitarbeiter erlaubt.`;
     $('employeeList').innerHTML = employees.map(e => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
         <div><strong>${e.name}</strong></div>
@@ -415,35 +526,186 @@
     } catch(e){ $('empError').textContent = e.message; }
   };
 
+  /* ═══ ABO & KARTENVERWALTUNG ═══ */
   function loadBilling() {
     const active = shop.subscription_status === 'active';
-    $('planPanel').innerHTML = active
-      ? `<h4>Dein Abo: ${shop.plan === 'premium' ? 'Premium' : 'Basic'} (Aktiv)</h4><p style="font-size:13px; color:var(--muted);">Alle Funktionen für deinen Laden sind freigeschaltet.</p>`
-      : `<h4>Paket aktivieren</h4><p style="font-size:13px; color:var(--muted);">Wähle ein Paket, um Karten zu bestellen und das Treueprogramm dauerhaft zu nutzen.</p>
-         <button class="btn btn-coral" onclick="sub('basic')">Basic aktivieren (19,99€ / Monat)</button>`;
-    $('cardPanel').innerHTML = active
-      ? `<h4>NFC-Aufsteller für die Kasse bestellen</h4><p style="font-size:13px; color:var(--muted);">20 € für den ersten Aufsteller, 5 € für jeden weiteren.</p>`
-      : `<p style="font-size:13px; color:var(--muted);">Kartenbestellung nach Abo-Aktivierung verfügbar.</p>`;
+    const planPanel = $('planPanel');
+
+    if (active) {
+      planPanel.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:16px;">
+          <div>
+            <h4 style="color:#299267;">✓ Dein Abonnement ist aktiv</h4>
+            <p style="font-size:16px; font-weight:700; margin:6px 0;">Paket: ${shop.plan === 'premium' ? 'Premium' : 'Basic'} (${shop.billing_interval === 'yearly' ? 'Jährlich' : 'Monatlich'})</p>
+            <p style="color:var(--muted); font-size:13px; margin:0;">Alle Stempel- und Kundenfunktionen sind unbegrenzt freigeschaltet.</p>
+          </div>
+          <a class="btn btn-ghost" href="mailto:anfrage@tapstern.de?subject=Kündigung%20Tapstempel%20${encodeURIComponent(shop.name)}" style="font-size:12px; color:#c0392b; border-color:#f1a89c;">Abo kündigen / Support</a>
+        </div>
+      `;
+    } else {
+      planPanel.innerHTML = `
+        <h4 style="margin-bottom:6px;">Paket wählen &amp; freischalten</h4>
+        <p style="color:var(--muted); font-size:13px; margin:0 0 16px;">Wähle dein Paket, um Karten zu bestellen und das Treueprogramm dauerhaft zu nutzen.</p>
+        
+        <div class="plan-grid">
+          <div class="plan-box">
+            <h4>Basic</h4>
+            <p style="font-size:12px; color:var(--muted);">Bis zu 5 Mitarbeiter-PINs</p>
+            <div class="plan-price">19,99 € <small>/ Monat</small></div>
+            <div style="display:flex; gap:8px; flex-direction:column;">
+              <button class="btn btn-coral" onclick="sub('basic', 'monthly')">Monatlich buchen</button>
+              <button class="btn btn-ghost" onclick="sub('basic', 'yearly')">Jährlich (199,90 € — 2 Mon. gratis)</button>
+            </div>
+          </div>
+          
+          <div class="plan-box featured">
+            <h4>Premium</h4>
+            <p style="font-size:12px; color:var(--muted);">Unbegrenzte Mitarbeiter &amp; Geofencing</p>
+            <div class="plan-price">29,99 € <small>/ Monat</small></div>
+            <div style="display:flex; gap:8px; flex-direction:column;">
+              <button class="btn btn-coral" onclick="sub('premium', 'monthly')">Monatlich buchen</button>
+              <button class="btn btn-ghost" onclick="sub('premium', 'yearly')">Jährlich (299,90 € — 2 Mon. gratis)</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // NFC KARTEN PANEL
+    const cardPanel = $('cardPanel');
+    if (!active) {
+      cardPanel.innerHTML = `<h4 style="color:var(--muted);">NFC-Aufsteller bestellen</h4><p style="font-size:13px; color:var(--muted);">Die Kartenbestellung wird sofort nach Abschluss eines Abos freigeschaltet.</p>`;
+    } else {
+      cardPanel.innerHTML = `
+        <h4>NFC-Aufsteller für die Theke bestellen</h4>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 16px;">
+          Hochwertige, fertig bedruckte Acryl-Aufsteller (NTAG 424 DNA mit Betrugsschutz) mit deinem Logo: <strong>20 € für den 1. Aufsteller, 5 € für jeden weiteren</strong>.
+        </p>
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <input type="number" id="cardQty" value="1" min="1" max="200" style="width:90px; padding:10px; border-radius:8px; border:1px solid var(--line);">
+          <span id="cardTotal" style="font-size:18px; font-weight:700; font-family:'Roboto Slab';">20,00 €</span>
+          <button class="btn btn-dark" id="orderCardsBtn">Jetzt bestellen <span>→</span></button>
+        </div>
+      `;
+      const updateCardTotal = () => {
+        const q = Math.max(1, parseInt($('cardQty').value) || 1);
+        const total = (2000 + (q - 1) * 500) / 100;
+        $('cardTotal').textContent = total.toFixed(2).replace('.', ',') + ' €';
+      };
+      $('cardQty').oninput = updateCardTotal;
+      $('orderCardsBtn').onclick = async () => {
+        $('orderCardsBtn').disabled = true;
+        try {
+          const r = await api('/api/stempel/checkout-card', {
+            method: 'POST',
+            body: JSON.stringify({ quantity: parseInt($('cardQty').value) || 1 })
+          });
+          window.location.href = r.url;
+        } catch(e){ alert(e.message); $('orderCardsBtn').disabled = false; }
+      };
+    }
   }
+
+  window.sub = async (plan, interval) => {
+    try {
+      const r = await api('/api/stempel/checkout-subscription', {
+        method: 'POST',
+        body: JSON.stringify({ plan, interval })
+      });
+      window.location.href = r.url;
+    } catch(e){ alert(e.message); }
+  };
+
+  /* ═══ EINSTELLUNGEN (VOLLSTÄNDIGE PERSONALISIERUNG) ═══ */
+  const COLOR_PALETTE = ['#e5543d', '#6366f1', '#0e7490', '#16a34a', '#9333ea', '#d97706'];
+  function renderSwatches() {
+    $('swatches').innerHTML = COLOR_PALETTE.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
+    document.querySelectorAll('.swatch').forEach(s => {
+      s.onclick = () => {
+        document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+        s.classList.add('on');
+        shop.accent_color = s.dataset.c;
+      };
+    });
+  }
+  renderSwatches();
 
   function loadSettingsForm() {
     $('set-threshold').value = shop.reward_threshold || 8;
     $('set-reward').value = shop.reward_text || '';
+    $('set-cooldown').value = shop.min_stamp_interval_minutes || 240;
+    $('set-link-label').value = shop.extra_link_label || '';
+    $('set-link-url').value = shop.extra_link_url || '';
+    $('logo-status').textContent = shop.logo_key ? '✓ Logo hochgeladen' : 'kein Logo';
+    $('banner-status').textContent = shop.banner_key ? '✓ Banner hochgeladen' : 'kein Banner';
+
+    const curColor = shop.accent_color || COLOR_PALETTE[0];
+    document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.c === curColor));
   }
+
+  function resizeImage(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+        else if (h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => blob ? resolve(new File([blob], 'img.jpg', { type: 'image/jpeg' })) : reject(new Error('Bildfehler')), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Lesefehler')); };
+      img.src = url;
+    });
+  }
+
+  function wireUpload(inputId, statusId, maxDim, endpoint, formField, stateKey, successLabel) {
+    $(inputId).onchange = async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      $(statusId).textContent = 'Lädt hoch …';
+      try {
+        const optimized = await resizeImage(f, maxDim, 0.85);
+        const fd = new FormData();
+        fd.append(formField, optimized);
+        const res = await fetch(endpoint, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+        shop[stateKey] = data[stateKey];
+        $(statusId).textContent = successLabel;
+      } catch(err){ $(statusId).textContent = err.message; }
+    };
+  }
+  wireUpload('f-logo', 'logo-status', 300, '/api/stempel/upload-logo', 'logo', 'logoUrl', '✓ Logo hochgeladen');
+  wireUpload('f-banner', 'banner-status', 1000, '/api/stempel/upload-banner', 'banner', 'bannerUrl', '✓ Banner hochgeladen');
+
   $('saveSettings').onclick = async () => {
+    $('saveMsg').textContent = 'Speichert …';
+    const activeColor = document.querySelector('.swatch.on')?.dataset.c || shop.accent_color || COLOR_PALETTE[0];
     try {
       await api('/api/stempel/settings', {
         method: 'PUT',
-        body: JSON.stringify({ reward_threshold: $('set-threshold').value, reward_text: $('set-reward').value })
+        body: JSON.stringify({
+          reward_threshold: $('set-threshold').value,
+          reward_text: $('set-reward').value,
+          accent_color: activeColor,
+          min_stamp_interval_minutes: $('set-cooldown').value,
+          extra_link_label: $('set-link-label').value,
+          extra_link_url: $('set-link-url').value
+        })
       });
       shop.reward_threshold = parseInt($('set-threshold').value);
       shop.reward_text = $('set-reward').value;
-      $('saveMsg').textContent = 'Gespeichert!';
-      setTimeout(() => $('saveMsg').textContent = '', 2000);
+      shop.accent_color = activeColor;
+      $('saveMsg').textContent = '✓ Erfolgreich gespeichert!';
+      setTimeout(() => $('saveMsg').textContent = '', 2500);
     } catch(e){ $('saveMsg').textContent = e.message; }
   };
 
-  // AUTO-LOGIN CHECK
+  // AUTO-LOGIN CHECK BEIM LADEN
   (async () => {
     try {
       const r = await api('/api/stempel/me');

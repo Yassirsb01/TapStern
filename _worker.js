@@ -1247,13 +1247,15 @@ async function handleStempelSettings(request, env) {
   const validPatterns = ['branche', 'none', 'dots', 'stripes'];
   const bgPattern = validPatterns.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'none');
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
+  const cardBgColor = /^#[0-9a-fA-F]{6}$/.test(str(data.card_bg_color)) ? str(data.card_bg_color) : (shop.card_bg_color || '#14131a');
 
   await env.DB.prepare(
-    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, card_bg_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
   ).bind(
     Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
     str(data.reward_text) || shop.reward_text,
     accentColor,
+    cardBgColor,
     str(data.extra_link_url) || null,
     str(data.extra_link_label) || null,
     Math.max(10, parseInt(data.min_stamp_interval_minutes) || shop.min_stamp_interval_minutes),
@@ -1686,10 +1688,10 @@ function stampIconShape(icon, accent, extraClass) {
   const cls = `dot ${extraClass}`;
   const shapes = {
     star: '<path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/>',
-    heart: '<path d="M12 21s-7.5-4.6-10-9.3C.4 8.2 2.3 5 5.7 5c1.9 0 3.5 1 4.3 2.5C10.8 6 12.4 5 14.3 5c3.4 0 5.3 3.2 3.7 6.7C19.5 16.4 12 21 12 21z"/>',
+    heart: '<path d="M12,21.35l-1.45-1.32C5.4,15.36,2,12.28,2,8.5 2,5.42,4.42,3,7.5,3c1.74,0,3.41,0.81,4.5,2.09C13.09,3.81,14.76,3,16.5,3 19.58,3,22,5.42,22,8.5c0,3.78-3.4,6.86-8.55,11.54L12,21.35z"/>',
     coffee: '<path d="M4 8h13l-1 9a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M17 9h2a3 3 0 010 6h-1" fill="none" stroke-width="1.6"/>',
     tea: '<path d="M6 9h11l-1 7a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M17 10h1.5a2 2 0 010 4H17" fill="none"/><ellipse cx="11.5" cy="20" rx="6.5" ry="1.2" fill="none" stroke-width="1.4"/>',
-    food: '<path d="M7 2v8a1.5 1.5 0 003 0V2M7 2v4M9 2v4M8.5 10v11" fill="none" stroke-width="1.6" stroke-linecap="round"/><path d="M16 2c-2 0-3 2-3 5s1 4 2 4v10" fill="none" stroke-width="1.6" stroke-linecap="round"/>',
+    food: '<rect x="6" y="2" width="1.6" height="8" rx="0.8"/><rect x="9" y="2" width="1.6" height="8" rx="0.8"/><rect x="12" y="2" width="1.6" height="8" rx="0.8"/><path d="M6 10c0 2 2.5 3 3.8 3s3.8-1 3.8-3" fill="none" stroke-width="1.6"/><rect x="8.9" y="13" width="1.8" height="9" rx="0.9"/><path d="M18 2c-2 0-3.5 2-3.5 5s1.2 4.5 2.6 4.9V22" fill="none" stroke-width="1.8" stroke-linecap="round"/>',
     scissors: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8l12 10M8 16L20 6" fill="none" stroke-width="1.6" stroke-linecap="round"/>',
     flower: '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.6"/><circle cx="18" cy="12" r="2.6"/><circle cx="12" cy="18" r="2.6"/><circle cx="6" cy="12" r="2.6"/>',
     bag: '<path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M9 8V6a3 3 0 016 0v2" fill="none" stroke-width="1.6"/>',
@@ -1698,14 +1700,25 @@ function stampIconShape(icon, accent, extraClass) {
     dumbbell: '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><rect x="6" y="8" width="2.5" height="8" rx="1"/><rect x="15.5" y="8" width="2.5" height="8" rx="1"/><rect x="8.5" y="11" width="7" height="2"/>',
     shisha: '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>',
     cocktail: '<path d="M5 4h14l-6 8v7h3v2H8v-2h3v-7z"/>',
-    bread: '<path d="M4 14c0-5 3.5-9 8-9s8 4 8 9c0 3-3.5 5-8 5s-8-2-8-5z"/><path d="M8 10v6M12 9v7M16 10v6" fill="none" stroke-width="1.4" stroke-linecap="round"/>',
+    bread: '<path d="M4 15c0-4 2-7 4-8 1-2 3-3 4-3s3 1 4 3c2 1 4 4 4 8 0 3-3 5-8 5s-8-2-8-5z"/><ellipse cx="8" cy="7" rx="2.2" ry="2"/><ellipse cx="12" cy="5.5" rx="2.4" ry="2.2"/><ellipse cx="16" cy="7" rx="2.2" ry="2"/>',
   };
-  if (!shapes[icon]) return `<div class="${cls}"></div>`;
-  return `<div class="${cls} dot-shape"><svg viewBox="0 0 24 24">${shapes[icon]}</svg></div>`;
+  const inner = shapes[icon] ? `<svg viewBox="0 0 24 24">${shapes[icon]}</svg>` : '';
+  return `<div class="${cls} dot-icon">${inner}</div>`;
+}
+
+function lightenHex(hex, amt) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, Math.max(0, (n >> 16) + amt));
+  const g = Math.min(255, Math.max(0, ((n >> 8) & 0xff) + amt));
+  const b = Math.min(255, Math.max(0, (n & 0xff) + amt));
+  return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
 }
 
 function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }) {
   const accent = shop.accent_color || '#6366f1';
+  const bg = shop.card_bg_color || '#14131a';
+  const bgSurface = lightenHex(bg, 14);
+  const bgSurface2 = lightenHex(bg, 22);
   const message = cooldownHit
     ? 'Dieser Stempel wurde gerade schon erfasst — versuch es beim nächsten Besuch nochmal.'
     : rewardReached
@@ -1726,12 +1739,12 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
 <style>
   @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important;} }
   body{
-    margin:0; font-family:'Inter',system-ui,sans-serif; background-color:#14131a; color:#f3f0ea;
+    margin:0; font-family:'Inter',system-ui,sans-serif; background-color:${bg}; color:#f3f0ea;
     background-image:${patternCss}; background-repeat:repeat;
     min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden;
   }
   .card{
-    background:#211f29; border:1px solid rgba(255,255,255,0.08); border-radius:20px; overflow:hidden;
+    background:${bgSurface}; border:1px solid rgba(255,255,255,0.08); border-radius:20px; overflow:hidden;
     max-width:360px; width:100%; text-align:center; position:relative; z-index:1;
     animation:cardIn 0.5s cubic-bezier(.16,1,.3,1);
   }
@@ -1739,18 +1752,17 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .banner{height:96px; background-size:cover; background-position:center;}
   .logo-badge{
     width:52px; height:52px; border-radius:12px; overflow:hidden; margin:${shop.banner_key ? '-30px auto 6px' : '24px auto 6px'};
-    background:#2a2733; box-shadow:0 0 0 3px #211f29; position:relative; z-index:2;
+    background:${bgSurface2}; box-shadow:0 0 0 3px ${bgSurface}; position:relative; z-index:2;
   }
   .logo-badge img{width:100%; height:100%; object-fit:cover;}
   .body-pad{padding:${shop.banner_key || shop.logo_key ? '0 28px 32px' : '32px 28px'};}
   h1{font-size:1.25rem; margin:0 0 4px; font-weight:700;}
   .msg{color:${accent}; font-weight:600; margin:14px 0 24px; font-size:0.95rem;}
   .stamps{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:0 0 6px;}
-  .dot{aspect-ratio:1; border-radius:50%; border:2px solid ${accent}; position:relative; display:flex; align-items:center; justify-content:center;}
+  .dot{aspect-ratio:1; border-radius:50%; border:2px solid ${accent}; position:relative; display:flex; align-items:center; justify-content:center; transition:background 0.2s;}
   .dot.filled{background:${accent};}
-  .dot-shape{border:none; background:transparent;}
-  .dot-shape svg{width:62%; height:62%; fill:none; stroke:${accent}; stroke-width:1.6;}
-  .dot-shape.filled svg{fill:${accent}; stroke:${accent};}
+  .dot-icon svg{width:56%; height:56%; fill:${accent}; stroke:${accent}; opacity:0.55;}
+  .dot-icon.filled svg{fill:#fff; stroke:#fff; opacity:1;}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
   .count{font-size:0.85rem; color:#948d9c; margin-top:14px;}

@@ -151,6 +151,9 @@
   .cp-name{font-weight:700; font-size:1.1rem;}
   .cp-msg{font-size:0.8rem; margin:4px 0 18px;}
   .cp-dots{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px;}
+  .cp-stamps-panel{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:14px 12px 10px; margin-bottom:14px;}
+  .cp-stamps-panel .cp-dots{margin-bottom:8px;}
+  .cp-stamps-panel .cp-count{margin-bottom:0;}
   .cp-dot{aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center;}
   .cp-dot svg{width:60%; height:60%;}
   .cp-count{font-size:0.75rem; color:#948d9c; margin-bottom:14px;}
@@ -456,8 +459,10 @@
                 <div class="cp-logo" id="cpLogo"></div>
                 <div class="cp-name" id="cpName">Dein Laden</div>
                 <div class="cp-msg" id="cpMsg">Stempel gesammelt!</div>
-                <div class="cp-dots" id="cpDots"></div>
-                <div class="cp-count" id="cpCount">7 / 10 Stempel</div>
+                <div class="cp-stamps-panel">
+                  <div class="cp-dots" id="cpDots"></div>
+                  <div class="cp-count" id="cpCount">7 / 10 Stempel</div>
+                </div>
                 <div class="cp-note">
                   <div id="cpNoteL1">Noch 3 Stempel bis zur</div>
                   <div id="cpNoteL2" style="font-weight:700;">Belohnung</div>
@@ -740,20 +745,29 @@
   const COLOR_PALETTE = ['#e5543d', '#6366f1', '#0e7490', '#16a34a', '#9333ea', '#d97706'];
   const ICON_OPTIONS = [
     { id: 'circle', label: '●' },
-    { id: 'star', svg: '<path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/>' },
-    { id: 'heart', svg: '<path d="M12,21.35l-1.45-1.32C5.4,15.36,2,12.28,2,8.5 2,5.42,4.42,3,7.5,3c1.74,0,3.41,0.81,4.5,2.09C13.09,3.81,14.76,3,16.5,3 19.58,3,22,5.42,22,8.5c0,3.78-3.4,6.86-8.55,11.54L12,21.35z"/>' },
-    { id: 'coffee', svg: '<path d="M4 8h13l-1 9a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M17 9h2a3 3 0 010 6h-1" fill="none"/>' },
-    { id: 'tea', svg: '<path d="M6 9h11l-1 7a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M17 10h1.5a2 2 0 010 4H17" fill="none"/><ellipse cx="11.5" cy="20" rx="6.5" ry="1.2" fill="none"/>' },
-    { id: 'food', svg: '<rect x="6" y="2" width="1.6" height="8" rx="0.8"/><rect x="9" y="2" width="1.6" height="8" rx="0.8"/><rect x="12" y="2" width="1.6" height="8" rx="0.8"/><path d="M6 10c0 2 2.5 3 3.8 3s3.8-1 3.8-3" fill="none" stroke-linecap="round"/><rect x="8.9" y="13" width="1.8" height="9" rx="0.9"/><path d="M18 2c-2 0-3.5 2-3.5 5s1.2 4.5 2.6 4.9V22" fill="none" stroke-linecap="round"/>' },
-    { id: 'scissors', svg: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8l12 10M8 16L20 6" fill="none" stroke-linecap="round"/>' },
-    { id: 'flower', svg: '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.6"/><circle cx="18" cy="12" r="2.6"/><circle cx="12" cy="18" r="2.6"/><circle cx="6" cy="12" r="2.6"/>' },
-    { id: 'bag', svg: '<path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M9 8V6a3 3 0 016 0v2" fill="none"/>' },
-    { id: 'leaf', svg: '<path d="M20 4C10 4 4 10 4 18c8 0 14-6 14-14z"/>' },
-    { id: 'paw', svg: '<circle cx="7" cy="8" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="17" cy="8" r="2.1"/><path d="M12 12c-3.5 0-6 2.2-6 4.8 0 1.8 1.5 3.2 3.4 3.2.9 0 1.6-.4 2.6-.4s1.7.4 2.6.4c1.9 0 3.4-1.4 3.4-3.2 0-2.6-2.5-4.8-6-4.8z"/>' },
-    { id: 'dumbbell', svg: '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><rect x="6" y="8" width="2.5" height="8" rx="1"/><rect x="15.5" y="8" width="2.5" height="8" rx="1"/><rect x="8.5" y="11" width="7" height="2"/>' },
+    { id: 'star', emoji: '⭐' },
+    { id: 'heart', emoji: '❤️' },
+    { id: 'coffee', emoji: '☕' },
+    { id: 'tea', emoji: '🍵' },
+    { id: 'food', emoji: '🍽️' },
+    { id: 'pizza', emoji: '🍕' },
+    { id: 'cocktail', emoji: '🍸' },
+    { id: 'beer', emoji: '🍺' },
+    { id: 'bread', emoji: '🥐' },
+    { id: 'cupcake', emoji: '🧁' },
+    { id: 'icecream', emoji: '🍦' },
+    { id: 'scissors', emoji: '✂️' },
+    { id: 'nails', emoji: '💅' },
+    { id: 'flower', emoji: '🌸' },
+    { id: 'spa', emoji: '🧘' },
+    { id: 'bag', emoji: '🛍️' },
+    { id: 'paw', emoji: '🐾' },
+    { id: 'dumbbell', emoji: '🏋️' },
+    { id: 'ball', emoji: '⚽' },
+    { id: 'book', emoji: '📚' },
+    { id: 'car', emoji: '🚗' },
+    { id: 'leaf', emoji: '🍃' },
     { id: 'shisha', svg: '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>' },
-    { id: 'cocktail', svg: '<path d="M5 4h14l-6 8v7h3v2H8v-2h3v-7z"/>' },
-    { id: 'bread', svg: '<path d="M4 15c0-4 2-7 4-8 1-2 3-3 4-3s3 1 4 3c2 1 4 4 4 8 0 3-3 5-8 5s-8-2-8-5z"/><ellipse cx="8" cy="7" rx="2.2" ry="2"/><ellipse cx="12" cy="5.5" rx="2.4" ry="2.2"/><ellipse cx="16" cy="7" rx="2.2" ry="2"/>' },
   ];
   const PATTERN_OPTIONS = [
     { id: 'branche', label: 'Passend zur Branche' },
@@ -777,9 +791,10 @@
   renderSwatches();
 
   function renderIconPicker() {
-    $('iconPicker').innerHTML = ICON_OPTIONS.map(i => `
-      <div class="icon-opt" data-icon="${i.id}">${i.svg ? `<svg viewBox="0 0 24 24">${i.svg}</svg>` : i.label}</div>
-    `).join('');
+    $('iconPicker').innerHTML = ICON_OPTIONS.map(i => {
+      const content = i.svg ? `<svg viewBox="0 0 24 24">${i.svg}</svg>` : (i.emoji || i.label);
+      return `<div class="icon-opt" data-icon="${i.id}">${content}</div>`;
+    }).join('');
     document.querySelectorAll('.icon-opt').forEach(el => el.onclick = () => {
       document.querySelectorAll('.icon-opt').forEach(x => x.classList.remove('on'));
       el.classList.add('on');
@@ -826,11 +841,6 @@
     renderPreview();
   };
 
-  function iconSvgFor(iconId) {
-    const opt = ICON_OPTIONS.find(i => i.id === iconId) || ICON_OPTIONS[0];
-    return opt.svg ? `<svg viewBox="0 0 24 24">${opt.svg}</svg>` : '';
-  }
-
   function renderPreview() {
     const accent = shop.accent_color || COLOR_PALETTE[0];
     const threshold = Math.max(1, parseInt($('set-threshold').value) || 8);
@@ -851,14 +861,18 @@
     $('cpBanner').style.display = bannerSrc ? 'block' : 'none';
 
     const icon = shop.stamp_icon || 'circle';
+    const iconOpt = ICON_OPTIONS.find(i => i.id === icon);
     $('cpDots').innerHTML = Array.from({ length: Math.min(threshold, 10) }, (_, i) => {
       const isFilled = i < filled;
       const bgCol = isFilled ? accent : 'transparent';
-      if (icon === 'circle') {
+      if (icon === 'circle' || !iconOpt) {
         return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol};"></div>`;
       }
+      if (iconOpt.emoji) {
+        return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol}; display:flex; align-items:center; justify-content:center;"><span style="font-size:1.05rem; opacity:${isFilled ? 1 : 0.4}; filter:${isFilled ? 'none' : 'saturate(0.5)'};">${iconOpt.emoji}</span></div>`;
+      }
       const iconCol = isFilled ? '#fff' : accent;
-      const svg = iconSvgFor(icon).replace('<svg', `<svg style="width:56%;height:56%;fill:${iconCol};stroke:${iconCol};opacity:${isFilled ? 1 : 0.55}"`);
+      const svg = `<svg viewBox="0 0 24 24" style="width:56%;height:56%;fill:${iconCol};stroke:${iconCol};opacity:${isFilled ? 1 : 0.55}">${iconOpt.svg}</svg>`;
       return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol}; display:flex; align-items:center; justify-content:center;">${svg}</div>`;
     }).join('');
 

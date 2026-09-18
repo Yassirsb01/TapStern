@@ -44,12 +44,19 @@ export default {
       if (method === 'POST' && path === '/api/stempel/upload-banner') return handleStempelUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'stempel-banner', resultKey: 'bannerUrl' });
       if (method === 'POST' && path === '/api/stempel/remove-logo') return handleStempelRemoveImage(request, env, 'logo_key');
       if (method === 'POST' && path === '/api/stempel/remove-banner') return handleStempelRemoveImage(request, env, 'banner_key');
+      if (method === 'GET'  && path === '/api/stempel/employees') return handleStempelListEmployees(request, env);
+      if (method === 'POST' && path === '/api/stempel/employees') return handleStempelAddEmployee(request, env);
+      const stempelEmpMatch = path.match(/^\/api\/stempel\/employees\/([^/]+)$/);
+      if (method === 'DELETE' && stempelEmpMatch) return handleStempelDeleteEmployee(request, env, stempelEmpMatch[1]);
+      if (method === 'POST' && path === '/api/stempel/checkout-subscription') return handleStempelCheckoutSubscription(request, env);
+      if (method === 'POST' && path === '/api/stempel/checkout-card') return handleStempelCheckoutCard(request, env);
+      if (method === 'POST' && path === '/webhook/stripe-stempel') return handleStempelStripeWebhook(request, env);
 
       const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
       if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
-      const stempelQrMatch = path.match(/^\/s\/([^/]+)\/qr$/);
-      if (method === 'GET' && stempelQrMatch) return handleStempelQrPage(request, env, stempelQrMatch[1]);
-      if (method === 'POST' && path === '/api/stempel/qr-redeem') return handleStempelQrRedeem(request, env);
+      const staffRedeemMatch = path.match(/^\/staff-redeem\/([^/]+)$/);
+      if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
+      if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env);
 
       /* ── Business Hub ── */
       if (method === 'POST' && path === '/api/hub/submit') return handleHubSubmit(request, env);
@@ -1144,6 +1151,7 @@ async function handleStempelSignup(request, env) {
   const lastName = str(data.last_name);
   const phone = str(data.phone);
   const companySize = str(data.company_size);
+  const referralCode = str(data.referral_code).toUpperCase();
 
   if (!email || !name || password.length < 8) {
     return json({ error: 'Bitte Name, gültige E-Mail und Passwort (min. 8 Zeichen) angeben' }, 400);
@@ -1164,14 +1172,14 @@ async function handleStempelSignup(request, env) {
   if (existing) {
     // Unverifizierten Versuch mit neuen Daten überschreiben, statt einen zweiten Datensatz anzulegen
     await env.DB.prepare(
-      `UPDATE stempel_shops SET name = ?, password_hash = ?, branche = ?, first_name = ?, last_name = ?, phone = ?, company_size = ?, verify_code_hash = ? WHERE id = ?`
-    ).bind(name, passwordHash, branche, firstName || null, lastName || null, phone || null, companySize || null, codeHash, existing.id).run();
+      `UPDATE stempel_shops SET name = ?, password_hash = ?, branche = ?, first_name = ?, last_name = ?, phone = ?, company_size = ?, verify_code_hash = ?, referral_code = ? WHERE id = ?`
+    ).bind(name, passwordHash, branche, firstName || null, lastName || null, phone || null, companySize || null, codeHash, referralCode || null, existing.id).run();
   } else {
     const id = crypto.randomUUID();
     await env.DB.prepare(
-      `INSERT INTO stempel_shops (id, slug, name, email, password_hash, branche, first_name, last_name, phone, company_size, verify_code_hash, verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-    ).bind(id, slug, name, email, passwordHash, branche, firstName || null, lastName || null, phone || null, companySize || null, codeHash).run();
+      `INSERT INTO stempel_shops (id, slug, name, email, password_hash, branche, first_name, last_name, phone, company_size, verify_code_hash, referral_code, verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+    ).bind(id, slug, name, email, passwordHash, branche, firstName || null, lastName || null, phone || null, companySize || null, codeHash, referralCode || null).run();
   }
 
   await sendMail(env, email, 'Dein Bestätigungscode für Tapstempel',
@@ -1308,33 +1316,54 @@ async function grantStamp(env, request, shop) {
   if (!customer) {
     isNew = true;
     const newToken = crypto.randomUUID();
+    const redeemToken = crypto.randomUUID();
     const id = crypto.randomUUID();
     await env.DB.prepare(
-      `INSERT INTO stempel_customers (id, shop_id, device_token, stamps, last_stamp_at) VALUES (?, ?, ?, 1, datetime('now'))`
-    ).bind(id, shop.id, newToken).run();
+      `INSERT INTO stempel_customers (id, shop_id, device_token, redeem_token, stamps, last_stamp_at) VALUES (?, ?, ?, ?, 1, datetime('now'))`
+    ).bind(id, shop.id, newToken, redeemToken).run();
     await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`).bind(crypto.randomUUID(), id, shop.id).run();
-    customer = { id, stamps: 1, redeemed_count: 0 };
+    customer = { id, stamps: 1, redeemed_count: 0, redeem_token: redeemToken };
     headers.append('Set-Cookie', `stempel_device=${newToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000`);
   } else {
-    const lastStamp = customer.last_stamp_at ? new Date(customer.last_stamp_at + 'Z').getTime() : 0;
-    const cooldownMs = (shop.min_stamp_interval_minutes || 240) * 60 * 1000;
-    if (Date.now() - lastStamp < cooldownMs) {
-      cooldownHit = true;
-    } else if (customer.stamps >= shop.reward_threshold) {
-      await env.DB.prepare(
-        `UPDATE stempel_customers SET stamps = 1, redeemed_count = redeemed_count + 1, last_stamp_at = datetime('now') WHERE id = ?`
-      ).bind(customer.id).run();
-      customer.stamps = 1; customer.redeemed_count += 1;
-    } else {
-      await env.DB.prepare(
-        `UPDATE stempel_customers SET stamps = stamps + 1, last_stamp_at = datetime('now') WHERE id = ?`
-      ).bind(customer.id).run();
-      customer.stamps += 1;
-      await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`).bind(crypto.randomUUID(), customer.id, shop.id).run();
+    if (!customer.redeem_token) {
+      customer.redeem_token = crypto.randomUUID();
+      await env.DB.prepare(`UPDATE stempel_customers SET redeem_token = ? WHERE id = ?`).bind(customer.redeem_token, customer.id).run();
     }
+    const result = await applyStampLogic(env, customer, shop, null);
+    customer = result.customer; cooldownHit = result.cooldownHit;
   }
 
   return { headers, customer, isNew, cooldownHit };
+}
+
+/* Erhöht den Stempelstand eines bereits bekannten Kunden — genutzt vom NFC-Tap (bestehender Kunde)
+   und vom Personal-Scan-Weg (Kunde per redeem_token bereits ermittelt). employeeId ist null bei NFC. */
+async function applyStampLogic(env, customer, shop, employeeId) {
+  const lastStamp = customer.last_stamp_at ? new Date(customer.last_stamp_at + 'Z').getTime() : 0;
+  const cooldownMs = (shop.min_stamp_interval_minutes || 240) * 60 * 1000;
+  let cooldownHit = false;
+
+  if (Date.now() - lastStamp < cooldownMs) {
+    cooldownHit = true;
+  } else if (customer.stamps >= shop.reward_threshold) {
+    await env.DB.prepare(
+      `UPDATE stempel_customers SET stamps = 1, redeemed_count = redeemed_count + 1, last_stamp_at = datetime('now') WHERE id = ?`
+    ).bind(customer.id).run();
+    customer.stamps = 1; customer.redeemed_count += 1;
+  } else {
+    await env.DB.prepare(
+      `UPDATE stempel_customers SET stamps = stamps + 1, last_stamp_at = datetime('now') WHERE id = ?`
+    ).bind(customer.id).run();
+    customer.stamps += 1;
+    await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id, employee_id) VALUES (?, ?, ?, ?)`)
+      .bind(crypto.randomUUID(), customer.id, shop.id, employeeId).run();
+  }
+  return { customer, cooldownHit };
+}
+
+async function grantStampToCustomer(env, customer, shop, employeeId) {
+  const result = await applyStampLogic(env, customer, shop, employeeId);
+  return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit };
 }
 
 async function handleStempelTap(request, env, slug) {
@@ -1351,16 +1380,210 @@ async function handleStempelTap(request, env, slug) {
   return new Response(html, { headers });
 }
 
-/* ── QR-Fallback: braucht einen Code vom Personal, bevor gestempelt wird ── */
-async function handleStempelQrPage(request, env, slug) {
-  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
-  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
-  if (!shop.staff_pin) return new Response('QR-Stempeln ist für diesen Laden noch nicht eingerichtet.', { status: 400 });
+/* ── Mitarbeiter-Verwaltung ── */
+async function handleStempelListEmployees(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, created_at FROM stempel_employees WHERE shop_id = ? ORDER BY created_at`
+  ).bind(shop.id).all();
+  return json({ employees: results, plan: shop.plan || 'basic' });
+}
+
+async function handleStempelAddEmployee(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const data = await readJson(request);
+  const name = str(data?.name);
+  const pin = str(data?.pin);
+  if (!name) return json({ error: 'Bitte einen Namen angeben' }, 400);
+  if (!/^\d{4,6}$/.test(pin)) return json({ error: 'PIN muss 4-6 Ziffern haben' }, 400);
+
+  const limit = (shop.plan === 'premium') ? Infinity : 5;
+  const { results: existing } = await env.DB.prepare(`SELECT id FROM stempel_employees WHERE shop_id = ?`).bind(shop.id).all();
+  if ((existing || []).length >= limit) {
+    return json({ error: `Dein Paket erlaubt maximal ${limit} Mitarbeiter. Für mehr auf Premium wechseln.` }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO stempel_employees (id, shop_id, name, pin_hash) VALUES (?, ?, ?, ?)`)
+    .bind(id, shop.id, name, await sha256(pin)).run();
+  return json({ success: true, id });
+}
+
+async function handleStempelDeleteEmployee(request, env, id) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const row = await env.DB.prepare(`SELECT id FROM stempel_employees WHERE id = ? AND shop_id = ?`).bind(id, shop.id).first();
+  if (!row) return json({ error: 'Nicht gefunden' }, 404);
+  await env.DB.prepare(`DELETE FROM stempel_employees WHERE id = ?`).bind(id).run();
+  return json({ success: true });
+}
+
+/* ── Pakete & Preise ──
+   TODO: Jahrespreis ist vorerst "10 Monate zahlen, 12 bekommen" — bitte prüfen/anpassen. */
+const STEMPEL_PLAN_PRICES = {
+  basic:   { monthly: 1999, yearly: 1999 * 10 },
+  premium: { monthly: 2999, yearly: 2999 * 10 },
+};
+const STEMPEL_CARD_FIRST_CENTS = 2000;
+const STEMPEL_CARD_EXTRA_CENTS = 500;
+
+async function handleStempelCheckoutSubscription(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet' }, 500);
+
+  const data = await readJson(request);
+  const plan = ['basic', 'premium'].includes(str(data?.plan)) ? str(data.plan) : 'basic';
+  const interval = ['monthly', 'yearly'].includes(str(data?.interval)) ? str(data.interval) : 'monthly';
+  const amountCents = STEMPEL_PLAN_PRICES[plan][interval];
+  const stripeInterval = interval === 'yearly' ? 'year' : 'month';
+
+  const origin = new URL(request.url).origin;
+  const params = new URLSearchParams();
+  params.set('mode', 'subscription');
+  params.set('success_url', origin + '/stempel.html?abo=erfolg');
+  params.set('cancel_url', origin + '/stempel.html?abo=abgebrochen');
+  params.set('customer_email', shop.email);
+  params.set('client_reference_id', shop.id);
+  params.set('line_items[0][price_data][currency]', 'eur');
+  params.set('line_items[0][price_data][product_data][name]', `Tapstempel ${plan === 'premium' ? 'Premium' : 'Basic'} (${interval === 'yearly' ? 'jährlich' : 'monatlich'})`);
+  params.set('line_items[0][price_data][unit_amount]', String(amountCents));
+  params.set('line_items[0][price_data][recurring][interval]', stripeInterval);
+  params.set('line_items[0][quantity]', '1');
+  params.set('metadata[shop_id]', shop.id);
+  params.set('metadata[plan]', plan);
+  params.set('metadata[interval]', interval);
+  params.set('subscription_data[metadata][shop_id]', shop.id);
+  params.set('subscription_data[metadata][plan]', plan);
+
+  if (shop.referral_code && env.STEMPEL_REFERRAL_CODE && shop.referral_code.toUpperCase() === env.STEMPEL_REFERRAL_CODE.toUpperCase()) {
+    params.set('subscription_data[trial_period_days]', '60');
+  }
+
+  try {
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    const session = await res.json();
+    if (!res.ok) return json({ error: session.error?.message || 'Stripe-Fehler' }, 502);
+    return json({ url: session.url });
+  } catch (e) {
+    return json({ error: 'Zahlung konnte nicht gestartet werden: ' + e.message }, 500);
+  }
+}
+
+async function handleStempelCheckoutCard(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  if (shop.subscription_status !== 'active') {
+    return json({ error: 'Karten können erst nach einem aktiven Abo bestellt werden' }, 403);
+  }
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet' }, 500);
+
+  const data = await readJson(request);
+  const quantity = Math.max(1, Math.min(200, parseInt(data?.quantity) || 1));
+  const amountCents = STEMPEL_CARD_FIRST_CENTS + (quantity - 1) * STEMPEL_CARD_EXTRA_CENTS;
+
+  const orderId = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO stempel_card_orders (id, shop_id, quantity, amount_cents, status) VALUES (?, ?, ?, ?, 'pending')`
+  ).bind(orderId, shop.id, quantity, amountCents).run();
+
+  const origin = new URL(request.url).origin;
+  const params = new URLSearchParams();
+  params.set('mode', 'payment');
+  params.set('success_url', origin + '/stempel.html?karten=erfolg');
+  params.set('cancel_url', origin + '/stempel.html?karten=abgebrochen');
+  params.set('customer_email', shop.email);
+  params.set('line_items[0][price_data][currency]', 'eur');
+  params.set('line_items[0][price_data][product_data][name]', `Tapstempel NFC-Karten (${quantity} Stück, NTAG424 DNA)`);
+  params.set('line_items[0][price_data][unit_amount]', String(amountCents));
+  params.set('line_items[0][quantity]', '1');
+  params.set('metadata[shop_id]', shop.id);
+  params.set('metadata[order_id]', orderId);
+
+  try {
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    const session = await res.json();
+    if (!res.ok) return json({ error: session.error?.message || 'Stripe-Fehler' }, 502);
+    await env.DB.prepare(`UPDATE stempel_card_orders SET stripe_session_id = ? WHERE id = ?`).bind(session.id, orderId).run();
+    return json({ url: session.url });
+  } catch (e) {
+    return json({ error: 'Zahlung konnte nicht gestartet werden: ' + e.message }, 500);
+  }
+}
+
+/* ── Stripe-Webhook: hält subscription_status / plan automatisch aktuell.
+   Braucht STEMPEL_STRIPE_WEBHOOK_SECRET als Secret — im Stripe-Dashboard unter
+   Webhooks einen Endpunkt auf /webhook/stripe-stempel anlegen, Signing Secret kopieren. */
+async function verifyStripeSignature(rawBody, sigHeader, secret) {
+  if (!sigHeader) return false;
+  const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
+  const signedPayload = parts.t + '.' + rawBody;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
+  const expected = [...new Uint8Array(sigBuf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return expected === parts.v1;
+}
+
+async function handleStempelStripeWebhook(request, env) {
+  const rawBody = await request.text();
+  if (env.STEMPEL_STRIPE_WEBHOOK_SECRET) {
+    const ok = await verifyStripeSignature(rawBody, request.headers.get('stripe-signature'), env.STEMPEL_STRIPE_WEBHOOK_SECRET);
+    if (!ok) return new Response('Ungültige Signatur', { status: 400 });
+  }
+  let event;
+  try { event = JSON.parse(rawBody); } catch (e) { return new Response('Ungültiger Body', { status: 400 }); }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    if (session.mode === 'subscription' && session.metadata?.shop_id) {
+      await env.DB.prepare(
+        `UPDATE stempel_shops SET subscription_status = 'active', plan = ?, billing_interval = ?, stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?`
+      ).bind(session.metadata.plan, session.metadata.interval, session.customer, session.subscription, session.metadata.shop_id).run();
+    }
+    if (session.mode === 'payment' && session.metadata?.order_id) {
+      await env.DB.prepare(`UPDATE stempel_card_orders SET status = 'bezahlt' WHERE id = ?`).bind(session.metadata.order_id).run();
+      const order = await env.DB.prepare(`SELECT * FROM stempel_card_orders WHERE id = ?`).bind(session.metadata.order_id).first();
+      const shop = order ? await env.DB.prepare(`SELECT * FROM stempel_shops WHERE id = ?`).bind(order.shop_id).first() : null;
+      if (shop && env.MAIL_FROM) {
+        sendMail(env, parseSender(env.MAIL_FROM).email, 'Tapstempel: Kartenbestellung bezahlt — ' + shop.name,
+          'Neue Kartenbestellung', `${shop.name} hat ${order.quantity} Karte(n) bestellt und bezahlt (${(order.amount_cents / 100).toFixed(2)}€).`).catch(() => {});
+      }
+    }
+  }
+
+  if (event.type === 'customer.subscription.deleted' || event.type === 'customer.subscription.updated') {
+    const sub = event.data.object;
+    const status = sub.status === 'active' || sub.status === 'trialing' ? 'active' : 'canceled';
+    await env.DB.prepare(`UPDATE stempel_shops SET subscription_status = ? WHERE stripe_subscription_id = ?`)
+      .bind(status, sub.id).run();
+  }
+
+  return json({ received: true });
+}
+
+/* ── Personal scannt den EIGENEN Code des Kunden, gibt dann den eigenen Mitarbeiter-PIN ein ──
+   Kein Laden-Login auf dem Scan-Gerät nötig — der Mitarbeiter-PIN allein autorisiert den Stempel,
+   und wird pro Mitarbeiter im Dashboard vergeben, damit im Verlauf sichtbar ist, wer gestempelt hat. */
+async function handleStaffRedeemPage(request, env, token) {
+  const customer = await env.DB.prepare('SELECT * FROM stempel_customers WHERE redeem_token = ?').bind(token).first();
+  if (!customer) return new Response('Karte nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
+  if (!shop) return new Response('Laden nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 
   const accent = shop.accent_color || '#6366f1';
   return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(shop.name)} — Stempel per Code</title>
+<title>${escapeHtml(shop.name)} — Stempel vergeben</title>
 <style>
   body{margin:0; font-family:'Inter',system-ui,sans-serif; background:#14131a; color:#f3f0ea; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;}
   .card{background:#211f29; border-radius:20px; padding:32px 28px; max-width:340px; width:100%; text-align:center;}
@@ -1373,9 +1596,9 @@ async function handleStempelQrPage(request, env, slug) {
 <body>
   <div class="card">
     <h1>${escapeHtml(shop.name)}</h1>
-    <p>Frag das Personal nach dem Stempel-Code</p>
+    <p>Für diesen Gast einen Stempel vergeben — gib deinen persönlichen Mitarbeiter-PIN ein</p>
     <input type="text" inputmode="numeric" maxlength="6" id="pin" placeholder="••••">
-    <button id="go">Stempel abholen</button>
+    <button id="go">Stempel vergeben</button>
     <div class="err" id="err"></div>
   </div>
 <script>
@@ -1384,13 +1607,13 @@ async function handleStempelQrPage(request, env, slug) {
     var btn = this;
     btn.disabled = true;
     try {
-      var res = await fetch('/api/stempel/qr-redeem', {
+      var res = await fetch('/api/stempel/staff-redeem', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ slug: '${slug}', pin: pin })
+        body: JSON.stringify({ token: '${token}', pin: pin })
       });
       if (!res.ok) {
         var data = await res.json().catch(function(){ return {}; });
-        document.getElementById('err').textContent = data.error || 'Code falsch';
+        document.getElementById('err').textContent = data.error || 'PIN falsch';
         document.getElementById('err').style.display = 'block';
         btn.disabled = false;
         return;
@@ -1406,18 +1629,25 @@ async function handleStempelQrPage(request, env, slug) {
 </body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-async function handleStempelQrRedeem(request, env) {
+async function handleStaffRedeemSubmit(request, env) {
   const data = await readJson(request);
-  const slug = str(data?.slug);
+  const token = str(data?.token);
   const pin = str(data?.pin);
-  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
-  if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
-  if (!shop.staff_pin || pin !== shop.staff_pin) return json({ error: 'Code falsch' }, 401);
 
-  const { headers, customer, isNew, cooldownHit } = await grantStamp(env, request, shop);
-  const rewardReached = customer.stamps >= shop.reward_threshold;
-  const html = renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached });
-  return new Response(html, { headers });
+  const customer = await env.DB.prepare('SELECT * FROM stempel_customers WHERE redeem_token = ?').bind(token).first();
+  if (!customer) return json({ error: 'Karte nicht gefunden' }, 404);
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
+  if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
+
+  const pinHash = await sha256(pin);
+  const employee = await env.DB.prepare('SELECT * FROM stempel_employees WHERE shop_id = ? AND pin_hash = ?')
+    .bind(shop.id, pinHash).first();
+  if (!employee) return json({ error: 'PIN falsch' }, 401);
+
+  const { customer: updated, isNew, cooldownHit } = await grantStampToCustomer(env, customer, shop, employee.id);
+  const rewardReached = updated.stamps >= shop.reward_threshold;
+  const html = renderStempelTapPage(shop, updated, { isNew: false, cooldownHit, rewardReached });
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 /* Branchen-Symbol fürs Hintergrundmuster — Farbe kommt vom Laden, Form von der Branche */
@@ -1488,6 +1718,9 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     display:inline-block; margin-top:20px; padding:11px 22px; border-radius:10px;
     border:1px solid ${accent}; color:${accent}; text-decoration:none; font-size:0.88rem; font-weight:600;
   }
+  .qr-fallback{margin-top:18px; font-size:0.8rem; color:#948d9c;}
+  .qr-fallback summary{cursor:pointer; color:${accent};}
+  .qr-fallback #myQr{background:#fff; padding:10px; border-radius:10px;}
 </style></head>
 <body>
   <canvas id="confetti" style="position:fixed; inset:0; pointer-events:none; z-index:0;"></canvas>
@@ -1503,6 +1736,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
         ).join('')}
       </div>
       <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
+      <details class="qr-fallback">
+        <summary>Kein NFC? Zeig das dem Personal</summary>
+        <div id="myQr" style="margin:14px auto 0; width:150px;"></div>
+      </details>
       ${linkHtml}
     </div>
   </div>
@@ -1529,6 +1766,17 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     }
     requestAnimationFrame(frame);
   })();` : ''}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+  document.querySelector('.qr-fallback').addEventListener('toggle', function(e){
+    if (!e.target.open || e.target.dataset.rendered) return;
+    e.target.dataset.rendered = '1';
+    var url = location.origin + '/staff-redeem/${escapeAttr(customer.redeem_token || '')}';
+    QRCode.toCanvas(url, { width: 150, margin: 1 }, function(err, canvas){
+      if (!err) document.getElementById('myQr').appendChild(canvas);
+    });
+  });
 </script>
 </body></html>`;
 }

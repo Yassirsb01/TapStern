@@ -183,6 +183,8 @@
       <button data-go="home" class="on">Übersicht</button>
       <button data-go="customers">Kunden</button>
       <button data-go="card">NFC-Karte</button>
+      <button data-go="employees">Mitarbeiter</button>
+      <button data-go="billing">Abo &amp; Karten</button>
       <button data-go="settings">Einstellungen</button>
     </div>
     <button class="logout" id="logout">Abmelden</button>
@@ -238,6 +240,35 @@
         <div style="margin-top:18px;" id="qr"></div>
         <button class="btn btn-ghost" style="width:auto; padding:10px 20px; margin-top:14px;" id="copyLink">Link kopieren</button>
       </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <p style="color:var(--muted); margin-top:0;">Kunden ohne NFC-fähiges Handy bekommen automatisch ihren <strong>eigenen</strong> QR-Code auf ihrer Stempelkarte angezeigt — dein Personal scannt den beim nächsten Besuch selbst und gibt den eigenen Mitarbeiter-PIN ein. Kein zusätzlicher Aufdruck nötig, das läuft automatisch. Mitarbeiter-PINs richtest du unter "Mitarbeiter" ein.</p>
+      </div>
+    </section>
+
+    <!-- EMPLOYEES -->
+    <section id="p-employees" class="hide">
+      <h2 style="margin-bottom:18px;">Mitarbeiter</h2>
+      <div class="panel">
+        <p style="color:var(--muted); margin-top:0;">Jeder Mitarbeiter bekommt einen eigenen Namen und PIN — damit stempelt er, wenn er den QR-Code eines Kunden scannt. Im Verlauf siehst du dann, wer wann gestempelt hat.</p>
+        <p id="empLimitNote" style="font-size:0.85rem; color:var(--muted);"></p>
+        <div id="employeeList" style="margin:16px 0;"></div>
+        <div class="row" style="gap:10px;">
+          <input type="text" id="emp-name" placeholder="Name" style="flex:1; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--ink-soft); color:var(--text);">
+          <input type="text" id="emp-pin" maxlength="6" placeholder="PIN (4-6 Ziffern)" style="width:150px; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--ink-soft); color:var(--text);">
+          <button class="btn btn-primary" id="addEmployeeBtn">Hinzufügen</button>
+        </div>
+        <div id="empError" style="color:#f2765a; font-size:0.85rem; margin-top:10px;"></div>
+      </div>
+    </section>
+
+    <!-- BILLING -->
+    <section id="p-billing" class="hide">
+      <h2 style="margin-bottom:18px;">Abo &amp; Karten</h2>
+
+      <div class="panel" id="planPanel"></div>
+
+      <div class="panel" id="cardPanel" style="margin-top:16px;"></div>
     </section>
 
     <!-- SETTINGS -->
@@ -251,6 +282,15 @@
         <div class="field">
           <label>Belohnung</label>
           <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Kaffee deiner Wahl">
+        </div>
+        <div class="field">
+          <label>Mindestabstand zwischen zwei Stempeln</label>
+          <select id="set-cooldown">
+            <option value="240">4 Stunden (empfohlen)</option>
+            <option value="480">8 Stunden</option>
+            <option value="1440">1 Tag</option>
+            <option value="10080">1 Woche</option>
+          </select>
         </div>
         <div class="field">
           <label>Akzentfarbe auf der Kunden-Ansicht</label>
@@ -318,10 +358,12 @@
   /* ── Navigation ── */
   document.querySelectorAll('#navLinks button').forEach(b => b.onclick = () => showPage(b.dataset.go));
   function showPage(name) {
-    ['home', 'customers', 'card', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== name));
+    ['home', 'customers', 'card', 'employees', 'billing', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== name));
     document.querySelectorAll('#navLinks button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
     if (name === 'customers') loadCustomers();
     if (name === 'card') loadCard();
+    if (name === 'employees') loadEmployees();
+    if (name === 'billing') loadBilling();
   }
 
   /* ── Boot ── */
@@ -395,6 +437,99 @@
   }
   $('copyLink').onclick = () => { navigator.clipboard.writeText($('tapLink').textContent); $('copyLink').textContent = 'Kopiert!'; setTimeout(() => $('copyLink').textContent = 'Link kopieren', 1500); };
 
+  /* ── Mitarbeiter ── */
+  async function loadEmployees() {
+    const { employees, plan } = await api('/api/stempel/employees');
+    const limit = plan === 'premium' ? 'unbegrenzt' : '5';
+    $('empLimitNote').textContent = `Paket: ${plan === 'premium' ? 'Premium' : 'Basic'} — bis zu ${limit} Mitarbeiter.`;
+    $('employeeList').innerHTML = employees.map(e => `
+      <div class="row" style="justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line);">
+        <span>${e.name}</span>
+        <button class="btn btn-ghost" style="padding:6px 12px; font-size:0.8rem;" data-del="${e.id}">Entfernen</button>
+      </div>
+    `).join('') || '<p style="color:var(--muted);">Noch keine Mitarbeiter angelegt.</p>';
+    document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      await api('/api/stempel/employees/' + b.dataset.del, { method: 'DELETE' });
+      loadEmployees();
+    });
+  }
+  $('addEmployeeBtn').onclick = async () => {
+    $('empError').textContent = '';
+    try {
+      await api('/api/stempel/employees', { method: 'POST', body: JSON.stringify({
+        name: $('emp-name').value.trim(), pin: $('emp-pin').value.trim()
+      })});
+      $('emp-name').value = ''; $('emp-pin').value = '';
+      loadEmployees();
+    } catch (e) { $('empError').textContent = e.message; }
+  };
+
+  /* ── Abo & Karten ── */
+  const PLAN_PRICES = { basic: { monthly: '19,99€/Monat', yearly: '16,66€/Monat, jährlich abgerechnet' }, premium: { monthly: '29,99€/Monat', yearly: '24,99€/Monat, jährlich abgerechnet' } };
+
+  function loadBilling() {
+    const active = shop.subscription_status === 'active';
+    const planPanel = $('planPanel');
+
+    if (active) {
+      planPanel.innerHTML = `
+        <h3 style="margin-top:0;">Dein Paket</h3>
+        <p><strong>${shop.plan === 'premium' ? 'Premium' : 'Basic'}</strong> — ${shop.billing_interval === 'yearly' ? 'jährliche' : 'monatliche'} Abrechnung, aktiv.</p>
+        <p style="color:var(--muted); font-size:0.85rem;">${shop.plan === 'premium' ? 'Unbegrenzte Mitarbeiter, eigene Nachrichten, Nähe-Benachrichtigung (sobald Wallet aktiv).' : 'Bis zu 5 Mitarbeiter, feste Belohnungs-Nachricht.'}</p>
+      `;
+    } else {
+      planPanel.innerHTML = `
+        <h3 style="margin-top:0;">Paket wählen</h3>
+        <p style="color:var(--muted); margin-top:0;">Karten bestellen geht erst nach Abschluss eines Abos.</p>
+        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:12px;">
+          <button class="btn btn-primary planBtn" data-plan="basic" data-interval="monthly">Basic monatlich — ${PLAN_PRICES.basic.monthly}</button>
+          <button class="btn btn-ghost planBtn" data-plan="basic" data-interval="yearly">Basic jährlich — ${PLAN_PRICES.basic.yearly}</button>
+        </div>
+        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <button class="btn btn-primary planBtn" data-plan="premium" data-interval="monthly">Premium monatlich — ${PLAN_PRICES.premium.monthly}</button>
+          <button class="btn btn-ghost planBtn" data-plan="premium" data-interval="yearly">Premium jährlich — ${PLAN_PRICES.premium.yearly}</button>
+        </div>
+        <div id="billingErr" style="color:#f2765a; font-size:0.85rem; margin-top:12px;"></div>
+      `;
+      document.querySelectorAll('.planBtn').forEach(b => b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const r = await api('/api/stempel/checkout-subscription', { method: 'POST', body: JSON.stringify({ plan: b.dataset.plan, interval: b.dataset.interval }) });
+          window.location.href = r.url;
+        } catch (e) { $('billingErr').textContent = e.message; b.disabled = false; }
+      });
+    }
+
+    const cardPanel = $('cardPanel');
+    if (!active) {
+      cardPanel.innerHTML = `<p style="color:var(--muted);">NFC-Karten bestellen ist verfügbar, sobald ein Abo aktiv ist.</p>`;
+    } else {
+      cardPanel.innerHTML = `
+        <h3 style="margin-top:0;">NFC-Karten bestellen</h3>
+        <p style="color:var(--muted); margin-top:0;">20€ für die erste Karte, 5€ für jede weitere — NTAG424 DNA, dein Design.</p>
+        <div class="row" style="gap:10px; align-items:center;">
+          <input type="number" id="cardQty" value="1" min="1" max="200" style="width:80px; padding:9px; border-radius:8px; border:1px solid var(--line); background:var(--ink-soft); color:var(--text);">
+          <span id="cardTotal" style="font-weight:600;">20,00€</span>
+          <button class="btn btn-primary" id="orderCardsBtn">Jetzt bestellen</button>
+        </div>
+        <div id="cardErr" style="color:#f2765a; font-size:0.85rem; margin-top:10px;"></div>
+      `;
+      const updateTotal = () => {
+        const q = Math.max(1, parseInt($('cardQty').value) || 1);
+        const total = (2000 + (q - 1) * 500) / 100;
+        $('cardTotal').textContent = total.toFixed(2).replace('.', ',') + '€';
+      };
+      $('cardQty').oninput = updateTotal;
+      $('orderCardsBtn').onclick = async () => {
+        $('orderCardsBtn').disabled = true;
+        try {
+          const r = await api('/api/stempel/checkout-card', { method: 'POST', body: JSON.stringify({ quantity: parseInt($('cardQty').value) || 1 }) });
+          window.location.href = r.url;
+        } catch (e) { $('cardErr').textContent = e.message; $('orderCardsBtn').disabled = false; }
+      };
+    }
+  }
+
   /* ── Settings ── */
   const COLORS = ['#6366f1', '#d1512d', '#0e7490', '#16a34a', '#9333ea'];
   function renderSwatches() {
@@ -409,6 +544,7 @@
   async function loadSettingsForm() {
     $('set-threshold').value = shop.reward_threshold;
     $('set-reward').value = shop.reward_text;
+    $('set-cooldown').value = shop.min_stamp_interval_minutes || 240;
     $('set-link-label').value = shop.extra_link_label || '';
     $('set-link-url').value = shop.extra_link_url || '';
     $('logo-status').textContent = shop.logo_key ? 'Logo gesetzt' : 'kein Logo';
@@ -463,7 +599,8 @@
         reward_text: $('set-reward').value,
         accent_color: selected ? selected.dataset.c : shop.accent_color,
         extra_link_label: $('set-link-label').value,
-        extra_link_url: $('set-link-url').value
+        extra_link_url: $('set-link-url').value,
+        min_stamp_interval_minutes: $('set-cooldown').value
       })});
       shop.reward_threshold = parseInt($('set-threshold').value);
       shop.reward_text = $('set-reward').value;

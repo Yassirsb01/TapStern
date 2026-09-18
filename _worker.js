@@ -1242,19 +1242,23 @@ async function handleStempelSettings(request, env) {
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   const data = await request.json();
 
-  const pinRaw = str(data.staff_pin);
-  const staffPin = /^\d{4,6}$/.test(pinRaw) ? pinRaw : (shop.staff_pin || null);
+  const validIcons = ['circle', 'star', 'heart', 'coffee', 'tea', 'food', 'scissors', 'flower', 'bag', 'leaf', 'paw', 'dumbbell', 'shisha', 'cocktail', 'bread'];
+  const stampIcon = validIcons.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
+  const validPatterns = ['branche', 'none', 'dots', 'stripes'];
+  const bgPattern = validPatterns.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'none');
+  const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
 
   await env.DB.prepare(
-    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, staff_pin = ? WHERE id = ?`
+    `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
   ).bind(
     Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
     str(data.reward_text) || shop.reward_text,
-    str(data.accent_color) || shop.accent_color,
+    accentColor,
     str(data.extra_link_url) || null,
     str(data.extra_link_label) || null,
     Math.max(10, parseInt(data.min_stamp_interval_minutes) || shop.min_stamp_interval_minutes),
-    staffPin,
+    stampIcon,
+    bgPattern,
     shop.id
   ).run();
 
@@ -1661,10 +1665,43 @@ function brancheIconPath(branche) {
   return icons[branche] || '<path d="M13 2 L15.3 9.7 L23 12 L15.3 14.3 L13 22 L10.7 14.3 L3 12 L10.7 9.7 Z" fill="C"/>';
 }
 
-function patternBackgroundCss(branche, colorHex) {
+function patternBackgroundCss(branche, colorHex, bgPattern) {
+  const pattern = bgPattern || 'branche';
+  if (pattern === 'none') return 'none';
+  if (pattern === 'dots') {
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><circle cx='4' cy='4' r='1.6' fill='${colorHex}' opacity='0.22'/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  }
+  if (pattern === 'stripes') {
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><line x1='0' y1='26' x2='26' y2='0' stroke='${colorHex}' stroke-width='2' opacity='0.16'/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  }
   const raw = brancheIconPath(branche).replace(/C/g, colorHex);
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72'><g opacity='0.16'>${raw}</g><g opacity='0.16' transform='translate(36 36)'>${raw}</g></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+/* Stempel-Symbol statt festem Kreis — der Laden wählt in den Einstellungen */
+function stampIconShape(icon, accent, extraClass) {
+  const cls = `dot ${extraClass}`;
+  const shapes = {
+    star: '<path d="M12 2l2.9 6.4 7 .8-5.2 4.8 1.4 6.9L12 17.6 5.9 20.9l1.4-6.9L2.1 9.2l7-.8z"/>',
+    heart: '<path d="M12 21s-7.5-4.6-10-9.3C.4 8.2 2.3 5 5.7 5c1.9 0 3.5 1 4.3 2.5C10.8 6 12.4 5 14.3 5c3.4 0 5.3 3.2 3.7 6.7C19.5 16.4 12 21 12 21z"/>',
+    coffee: '<path d="M4 8h13l-1 9a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M17 9h2a3 3 0 010 6h-1" fill="none" stroke-width="1.6"/>',
+    tea: '<path d="M6 9h11l-1 7a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M17 10h1.5a2 2 0 010 4H17" fill="none"/><ellipse cx="11.5" cy="20" rx="6.5" ry="1.2" fill="none" stroke-width="1.4"/>',
+    food: '<path d="M7 2v8a1.5 1.5 0 003 0V2M7 2v4M9 2v4M8.5 10v11" fill="none" stroke-width="1.6" stroke-linecap="round"/><path d="M16 2c-2 0-3 2-3 5s1 4 2 4v10" fill="none" stroke-width="1.6" stroke-linecap="round"/>',
+    scissors: '<circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 8l12 10M8 16L20 6" fill="none" stroke-width="1.6" stroke-linecap="round"/>',
+    flower: '<circle cx="12" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.6"/><circle cx="18" cy="12" r="2.6"/><circle cx="12" cy="18" r="2.6"/><circle cx="6" cy="12" r="2.6"/>',
+    bag: '<path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2z"/><path d="M9 8V6a3 3 0 016 0v2" fill="none" stroke-width="1.6"/>',
+    leaf: '<path d="M20 4C10 4 4 10 4 18c8 0 14-6 14-14z"/>',
+    paw: '<circle cx="7" cy="8" r="2.1"/><circle cx="12" cy="5.5" r="2.1"/><circle cx="17" cy="8" r="2.1"/><path d="M12 12c-3.5 0-6 2.2-6 4.8 0 1.8 1.5 3.2 3.4 3.2.9 0 1.6-.4 2.6-.4s1.7.4 2.6.4c1.9 0 3.4-1.4 3.4-3.2 0-2.6-2.5-4.8-6-4.8z"/>',
+    dumbbell: '<rect x="2" y="10" width="3" height="4" rx="1"/><rect x="19" y="10" width="3" height="4" rx="1"/><rect x="6" y="8" width="2.5" height="8" rx="1"/><rect x="15.5" y="8" width="2.5" height="8" rx="1"/><rect x="8.5" y="11" width="7" height="2"/>',
+    shisha: '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>',
+    cocktail: '<path d="M5 4h14l-6 8v7h3v2H8v-2h3v-7z"/>',
+    bread: '<path d="M4 14c0-5 3.5-9 8-9s8 4 8 9c0 3-3.5 5-8 5s-8-2-8-5z"/><path d="M8 10v6M12 9v7M16 10v6" fill="none" stroke-width="1.4" stroke-linecap="round"/>',
+  };
+  if (!shapes[icon]) return `<div class="${cls}"></div>`;
+  return `<div class="${cls} dot-shape"><svg viewBox="0 0 24 24">${shapes[icon]}</svg></div>`;
 }
 
 function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }) {
@@ -1675,7 +1712,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
       ? `Belohnung erreicht: ${escapeHtml(shop.reward_text)}`
       : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
   const newestIndex = cooldownHit ? -1 : customer.stamps - 1;
-  const patternCss = patternBackgroundCss(shop.branche, accent);
+  const patternCss = patternBackgroundCss(shop.branche, accent, shop.bg_pattern);
   const bannerHtml = shop.banner_key
     ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(shop.banner_key)}')"></div>` : '';
   const logoHtml = shop.logo_key
@@ -1711,6 +1748,9 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .stamps{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:0 0 6px;}
   .dot{aspect-ratio:1; border-radius:50%; border:2px solid ${accent}; position:relative; display:flex; align-items:center; justify-content:center;}
   .dot.filled{background:${accent};}
+  .dot-shape{border:none; background:transparent;}
+  .dot-shape svg{width:62%; height:62%; fill:none; stroke:${accent}; stroke-width:1.6;}
+  .dot-shape.filled svg{fill:${accent}; stroke:${accent};}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
   .count{font-size:0.85rem; color:#948d9c; margin-top:14px;}
@@ -1732,7 +1772,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
       <div class="msg">${message}</div>
       <div class="stamps">
         ${Array.from({ length: shop.reward_threshold }, (_, i) =>
-          `<div class="dot ${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}"></div>`
+          stampIconShape(shop.stamp_icon, accent, `${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}`)
         ).join('')}
       </div>
       <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>

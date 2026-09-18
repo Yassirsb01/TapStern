@@ -1711,21 +1711,37 @@ function lightenHex(hex, amt) {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
 }
 
-/* Kontrast-Fläche fürs Emoji-Kästchen: bei dunklem Kartenhintergrund heller machen,
-   bei hellem Kartenhintergrund dunkler — passt sich automatisch an, egal welche Farbe der Laden wählt. */
-function adaptiveSurface(hex, amt) {
+function luminanceOf(hex) {
   const n = parseInt(hex.replace('#', ''), 16);
   const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.55 ? lightenHex(hex, -amt) : lightenHex(hex, amt);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+function mixHex(hex, target, pct) {
+  const n1 = parseInt(hex.replace('#', ''), 16), n2 = parseInt(target.replace('#', ''), 16);
+  const r = Math.round(((n1 >> 16) & 0xff) + (((n2 >> 16) & 0xff) - ((n1 >> 16) & 0xff)) * pct);
+  const g = Math.round(((n1 >> 8) & 0xff) + (((n2 >> 8) & 0xff) - ((n1 >> 8) & 0xff)) * pct);
+  const b = Math.round((n1 & 0xff) + ((n2 & 0xff) - (n1 & 0xff)) * pct);
+  return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+/* Kontrast-Fläche fürs Emoji-Kästchen: bei dunklem Kartenhintergrund deutlich heller machen (Richtung Weiß),
+   bei hellem Kartenhintergrund deutlich dunkler (Richtung Schwarz) — echte Prozent-Mischung statt kleiner Zahl,
+   damit man's wirklich sieht, egal welche Farbe der Laden wählt. */
+function adaptiveSurface(hex) {
+  return luminanceOf(hex) > 0.55 ? mixHex(hex, '#000000', 0.14) : mixHex(hex, '#ffffff', 0.24);
 }
 
 function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
-  const bgSurface = lightenHex(bg, 14);
-  const bgSurface2 = lightenHex(bg, 22);
-  const emojiBox = adaptiveSurface(bg, 20);
+  const isLightBg = luminanceOf(bg) > 0.55;
+  const bgSurface = isLightBg ? mixHex(bg, '#000000', 0.06) : mixHex(bg, '#ffffff', 0.09);
+  const bgSurface2 = isLightBg ? mixHex(bg, '#000000', 0.10) : mixHex(bg, '#ffffff', 0.15);
+  const emojiBox = adaptiveSurface(bg);
+  const textColor = isLightBg ? '#1a1a1a' : '#f3f0ea';
+  const mutedColor = isLightBg ? '#6b6b6b' : '#948d9c';
+  const cardBorder = isLightBg ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.08)';
   const message = cooldownHit
     ? 'Dieser Stempel wurde gerade schon erfasst — versuch es beim nächsten Besuch nochmal.'
     : rewardReached
@@ -1746,12 +1762,12 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
 <style>
   @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important;} }
   body{
-    margin:0; font-family:'Inter',system-ui,sans-serif; background-color:${bg}; color:#f3f0ea;
+    margin:0; font-family:'Inter',system-ui,sans-serif; background-color:${bg}; color:${textColor};
     background-image:${patternCss}; background-repeat:repeat;
     min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden;
   }
   .card{
-    background:${bgSurface}; border:1px solid rgba(255,255,255,0.08); border-radius:20px; overflow:hidden;
+    background:${bgSurface}; border:1px solid ${cardBorder}; border-radius:20px; overflow:hidden;
     max-width:360px; width:100%; text-align:center; position:relative; z-index:1;
     animation:cardIn 0.5s cubic-bezier(.16,1,.3,1);
   }
@@ -1774,14 +1790,14 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .dot-emoji span{font-size:1.65rem; line-height:1; opacity:0.4; filter:saturate(0.5); transition:opacity 0.2s, filter 0.2s;}
   .dot-emoji.filled span{opacity:1; filter:none;}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
-  .stamps-panel{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:16px 14px 12px;}
+  .stamps-panel{background:${mixHex(bg, luminanceOf(bg) > 0.55 ? '#000000' : '#ffffff', 0.06)}; border:1px solid ${mixHex(bg, luminanceOf(bg) > 0.55 ? '#000000' : '#ffffff', 0.14)}; border-radius:16px; padding:16px 14px 12px;}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
-  .count{font-size:0.85rem; color:#948d9c; margin-top:14px;}
+  .count{font-size:0.85rem; color:${mutedColor}; margin-top:14px;}
   .extra-link{
     display:inline-block; margin-top:20px; padding:11px 22px; border-radius:10px;
     border:1px solid ${accent}; color:${accent}; text-decoration:none; font-size:0.88rem; font-weight:600;
   }
-  .qr-fallback{margin-top:18px; font-size:0.8rem; color:#948d9c;}
+  .qr-fallback{margin-top:18px; font-size:0.8rem; color:${mutedColor};}
   .qr-fallback summary{cursor:pointer; color:${accent};}
   .qr-fallback #myQr{background:#fff; padding:10px; border-radius:10px;}
 </style></head>
@@ -1814,7 +1830,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     var c = document.getElementById('confetti'), ctx = c.getContext('2d');
     c.width = innerWidth; c.height = innerHeight;
-    var colors = ['${accent}', '#f3f0ea', '#e8663d'];
+    var colors = ['${accent}', '${textColor}', '#e8663d'];
     var pieces = Array.from({length: 90}, function(){
       return { x: Math.random()*c.width, y: -20 - Math.random()*200, r: 3+Math.random()*4,
         c: colors[Math.floor(Math.random()*colors.length)], vy: 2+Math.random()*3, vx: -1.5+Math.random()*3, rot: Math.random()*360, vr: -6+Math.random()*12 };

@@ -3,322 +3,282 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tapstempel — Dashboard</title>
+<title>Tapstempel — Partner Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#121118;
-    --ink-soft:#1c1a24;
-    --surface:#211f29;
-    --surface-2:#2a2733;
-    --paper:#f6f1e7;
-    --text:#f3f0ea;
-    --muted:#948d9c;
-    --stamp:#d1512d;
-    --stamp-bright:#e8663d;
-    --stamp-dim: color-mix(in srgb, var(--stamp) 22%, transparent);
-    --line: color-mix(in srgb, var(--text) 10%, transparent);
+    --ink:#111114;
+    --panel:#1a1a1f;
+    --cream:#f5f1e8;
+    --paper:#f9f7f2;
+    --card-bg:#ffffff;
+    --coral:#e5543d;
+    --coral-light:#ff735b;
+    --muted:#827d75;
+    --line:#e4ded5;
+    --line-dark:rgba(245,241,232,.14);
     --radius:14px;
+    font-family:"DM Sans", sans-serif;
+    color:var(--ink);
+    background:var(--cream);
   }
-  *,*::before,*::after{box-sizing:border-box;}
-  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important;} }
-
-  body{
-    margin:0; min-height:100vh; background:var(--ink); color:var(--text);
-    font-family:'Inter',system-ui,sans-serif; font-size:15px; line-height:1.55;
-  }
-  h1,h2,h3{font-weight:700; letter-spacing:-0.01em; margin:0;}
-  a{color:inherit;}
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; background:var(--cream); color:var(--ink); line-height:1.55;}
+  h1,h2,h3,h4{font-family:"Roboto Slab", serif; font-weight:700; margin:0; letter-spacing:-0.03em;}
+  a{color:inherit; text-decoration:none;}
   .hide{display:none !important;}
 
-  .wrap{max-width:1040px; margin:0 auto; padding:0 24px 80px;}
-
-  /* NAV */
-  nav{
-    display:flex; align-items:center; gap:20px; padding:18px 24px;
-    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10;
-    background:color-mix(in srgb, var(--ink) 90%, transparent); backdrop-filter:blur(10px);
+  /* AUTH CONTAINER */
+  .auth-wrap{max-width:440px; margin:80px auto; padding:0 24px;}
+  .auth-card{background:var(--paper); border:1px solid #d9d3cb; border-radius:18px; padding:38px; box-shadow:0 20px 50px rgba(0,0,0,0.06);}
+  .brand-logo{display:flex; align-items:center; gap:10px; font-family:"Roboto Slab",serif; font-size:20px; font-weight:700;}
+  .brand-seal{width:28px; height:28px; border:2px solid var(--coral); border-radius:50%; display:grid; place-items:center; font:700 8px "DM Mono"; color:var(--coral); transform:rotate(-10deg);}
+  
+  .field{display:grid; gap:6px; margin-bottom:16px;}
+  .field label{font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;}
+  .field input, .field select{
+    border:1px solid #d5d0c9; border-radius:8px; padding:12px; background:#fffefa; font-size:14px; color:var(--ink);
+    outline-color:var(--coral); font-family:inherit;
   }
-  .brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:1.05rem; margin-right:auto;}
-  .brand .mark{
-    width:28px; height:28px; border-radius:50%; border:2.5px solid var(--stamp);
-    display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:800; color:var(--stamp);
-    transform:rotate(-8deg);
-  }
-  .nav-links{display:flex; gap:4px;}
-  .nav-links button{
-    font:inherit; font-size:0.9rem; font-weight:500; color:var(--muted); background:none; border:none;
-    padding:8px 14px; border-radius:9px; cursor:pointer;
-  }
-  .nav-links button.on{color:var(--text); background:var(--surface);}
-  .logout{font:inherit; font-size:0.85rem; color:var(--muted); background:none; border:1px solid var(--line); border-radius:9px; padding:7px 14px; cursor:pointer;}
-
-  /* AUTH */
-  .auth-wrap{max-width:400px; margin:80px auto; padding:0 24px;}
-  .auth-card{background:var(--surface); border-radius:var(--radius); padding:32px; border:1px solid var(--line);}
-  .seg{display:flex; background:var(--ink-soft); border-radius:10px; padding:3px; margin-bottom:24px;}
-  .seg button{flex:1; font:inherit; font-size:0.88rem; padding:9px; border:none; border-radius:8px; background:none; color:var(--muted); cursor:pointer;}
-  .seg button.on{background:var(--surface-2); color:var(--text); font-weight:600;}
-  .field{display:grid; gap:5px; margin-bottom:14px;}
-  .field label{font-size:0.78rem; color:var(--muted); font-weight:500;}
-  .field input, .field select, .field textarea{
-    font:inherit; font-size:0.92rem; color:var(--text); background:var(--ink-soft);
-    border:1px solid var(--line); border-radius:9px; padding:10px 12px; width:100%;
-  }
-  .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--stamp); outline-offset:1px;}
   .btn{
-    font:inherit; font-size:0.92rem; font-weight:600; border-radius:10px; border:none;
-    padding:12px; cursor:pointer; width:100%; transition:transform 0.15s ease, background 0.15s ease;
+    border:0; border-radius:100px; padding:12px 20px; font-size:14px; font-weight:600; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px; transition:.2s;
   }
-  .btn-primary{background:var(--stamp); color:#fff;}
-  .btn-primary:hover{background:var(--stamp-bright);}
-  .btn-primary:active{transform:scale(0.98);}
-  .btn-ghost{background:none; border:1px solid var(--line); color:var(--text);}
-  .err{color:#f2765a; font-size:0.85rem; margin-top:10px; display:none;}
+  .btn-coral{background:var(--coral); color:#fff;}
+  .btn-coral:hover{background:var(--coral-light); transform:translateY(-1px);}
+  .btn-dark{background:var(--ink); color:var(--cream);}
+  .btn-dark:hover{opacity:0.9;}
+  .btn-ghost{background:transparent; border:1px solid #d9d3cb; color:var(--ink);}
+  .btn-ghost:hover{background:#ede7dc;}
+  .err{color:#c0392b; font-size:12px; margin-top:10px; display:none; text-align:center;}
 
-  /* HERO STAMP */
-  .hero{padding:56px 0 40px; display:flex; flex-direction:column; align-items:center; text-align:center;}
-  .stamp-ring{position:relative; width:220px; height:220px; margin-bottom:22px;}
-  .stamp-ring svg{width:100%; height:100%; transform:rotate(-90deg);}
-  .stamp-ring circle{fill:none; stroke-width:10; stroke-linecap:round;}
-  .stamp-ring .track{stroke:var(--surface-2);}
-  .stamp-ring .fill{stroke:var(--stamp); stroke-dasharray:597; stroke-dashoffset:597; animation:fillRing 1.1s cubic-bezier(.16,1,.3,1) 0.15s forwards;}
-  @keyframes fillRing{ to{ stroke-dashoffset:var(--offset); } }
-  .stamp-ring .center{
-    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    transform:scale(0.7) rotate(-6deg); opacity:0; animation:stampHit 0.5s cubic-bezier(.34,1.56,.64,1) 0.5s forwards;
+  /* DASHBOARD WRAPPER (Wie im Screenshot!) */
+  .dash-layout{
+    max-width:1160px; margin:40px auto 80px; padding:0 24px;
   }
-  @keyframes stampHit{ 60%{ transform:scale(1.08) rotate(2deg); opacity:1;} 100%{ transform:scale(1) rotate(0deg); opacity:1;} }
-  .stamp-ring .num{font-size:2.6rem; font-weight:800; line-height:1;}
-  .stamp-ring .lbl{font-size:0.8rem; color:var(--muted); margin-top:4px;}
-  .hero h1{font-size:1.3rem;}
-  .hero p{color:var(--muted); margin:6px 0 0; max-width:38ch;}
-
-  /* STAT TILES */
-  .tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:36px;}
-  .tile{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px;}
-  .tile .n{font-size:1.5rem; font-weight:700;}
-  .tile .l{font-size:0.8rem; color:var(--muted); margin-top:2px;}
-
-  /* CHART */
-  .panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:22px; margin-top:16px;}
-  .panel h3{font-size:0.95rem; margin-bottom:16px;}
-  .chart{display:flex; align-items:flex-end; gap:6px; height:120px;}
-  .chart .bar{flex:1; background:var(--stamp-dim); border-radius:4px 4px 0 0; position:relative; transform:scaleY(0); transform-origin:bottom;}
-  .chart .bar.animate{animation:barGrow 0.5s ease forwards;}
-  @keyframes barGrow{ to{ transform:scaleY(1); } }
-
-  /* TABLE */
-  table{width:100%; border-collapse:collapse; font-size:0.88rem;}
-  th{text-align:left; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line);}
-  td{padding:11px 10px; border-bottom:1px solid var(--line);}
-  .stamp-dots{display:inline-flex; gap:3px;}
-  .stamp-dots span{width:7px; height:7px; border-radius:50%; background:var(--surface-2); display:inline-block;}
-  .stamp-dots span.on{background:var(--stamp);}
-
-  /* SETTINGS */
-  .settings-grid{display:grid; gap:16px;}
-  .swatches{display:flex; gap:10px;}
-  .swatch{width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
-  .swatch.on{border-color:var(--text);}
-
-  /* NFC LINK PAGE */
-  .link-box{
-    font-family:ui-monospace,monospace; font-size:0.85rem; color:var(--stamp-bright);
-    background:var(--ink-soft); border:1px dashed var(--line); border-radius:10px; padding:14px; word-break:break-all;
+  .dash-panel{
+    background:var(--paper); border:1px solid #d9d3cb; box-shadow:0 28px 60px rgba(118,108,96,0.18);
+    min-height:680px; display:grid; grid-template-columns:220px 1fr; border-radius:18px; overflow:hidden;
   }
-  #qr{background:var(--paper); border-radius:10px; padding:14px; display:inline-block;}
+  .dash-panel aside{
+    padding:28px 16px; border-right:1px solid var(--line); background:#f4efe6; display:flex; flex-direction:column;
+  }
+  .dash-panel aside nav{display:flex; flex-direction:column; gap:4px; margin-top:28px;}
+  .dash-panel aside a{
+    display:flex; align-items:center; gap:10px; padding:11px 14px; color:#78726b; font-size:13px; font-weight:500;
+    border-radius:8px; transition:.15s; cursor:pointer;
+  }
+  .dash-panel aside a:hover{color:var(--ink); background:#eae4db;}
+  .dash-panel aside a.active{background:#eae4db; color:var(--ink); font-weight:700;}
+  .aside-footer{margin-top:auto; padding-top:20px; border-top:1px solid var(--line);}
+  
+  .dash-content{padding:36px 42px; overflow-y:auto;}
+  .dash-title{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;}
+  .dash-title small{color:var(--muted); font:11px "DM Mono";}
+  .dash-title h2{font-size:28px; margin:4px 0 0;}
+  .dash-avatar{width:36px; height:36px; display:grid; place-items:center; background:#d7b08e; border-radius:50%; font-size:11px; font-weight:700;}
 
-  @media (max-width:640px){
-    .tiles{grid-template-columns:1fr;}
-    .stamp-ring{width:180px; height:180px;}
+  /* METRIKEN KACHELN */
+  .metrics{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:14px; margin-bottom:28px;}
+  .metric-card{background:#ffffff; border:1px solid #dfd9d0; padding:20px; border-radius:12px;}
+  .metric-card small{color:var(--muted); font:11px "DM Mono";}
+  .metric-card strong{display:block; font:700 32px "Roboto Slab"; letter-spacing:-.05em; margin-top:8px;}
+  .metric-card i{color:#299267; font:11px "DM Mono"; font-style:normal;}
+  .metric-card p{color:#78726b; font-size:12px; margin:8px 0 0;}
+  .spark{height:34px; margin-top:14px; display:flex; gap:4px; align-items:end;}
+  .spark span{flex:1; background:var(--coral); border-radius:3px 3px 0 0; display:block;}
+
+  /* LIVE-AKTIVITÄT */
+  .activity{background:#ffffff; border:1px solid #dfd9d0; border-radius:12px; padding:20px 24px; margin-bottom:28px;}
+  .activity-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .activity-head h4{font-size:14px;}
+  .activity-head span{color:var(--coral); font-size:11px; font-weight:600;}
+  .activity-item{display:flex; align-items:center; gap:12px; font-size:13px; padding:12px 0; border-top:1px solid #e5dfd7;}
+  .activity-item:first-of-type{border-top:none;}
+  .activity-item small{margin-left:auto; color:#958e85; font-size:11px;}
+  .act-icon{width:24px; height:24px; display:grid; place-items:center; border-radius:50%; font-size:11px; font-weight:700;}
+  .act-icon.stamp{background:#fee4de; color:var(--coral);}
+  .act-icon.reward{background:#f6eed1; color:#947a1f;}
+  .act-icon.new{background:#e1f1e8; color:#29875e;}
+
+  /* TABELLEN */
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; font:600 11px "DM Mono"; text-transform:uppercase; color:var(--muted); padding:10px 12px; border-bottom:1px solid var(--line);}
+  td{padding:14px 12px; border-bottom:1px solid var(--line);}
+  .dot-row{display:inline-flex; gap:4px;}
+  .dot-stamp{width:9px; height:9px; border-radius:50%; background:#dfd9d0; display:inline-block;}
+  .dot-stamp.on{background:var(--coral);}
+
+  @media (max-width:900px){
+    .dash-panel{grid-template-columns:1fr;}
+    .dash-panel aside{display:none;}
+    .metrics{grid-template-columns:1fr;}
   }
 </style>
 </head>
 <body>
 
-<!-- ═══ AUTH ═══ -->
-<section id="s-auth" class="auth-wrap">
-  <div class="brand" style="justify-content:center; margin-bottom:10px;">
-    <span class="mark">S</span> Tapstempel
-  </div>
-  <div style="text-align:center; margin-bottom:24px;">
-    <a href="index.html" style="font-size:0.8rem; color:var(--muted); text-decoration:none;">← Zur Tapstern-Startseite</a>
-  </div>
+<!-- ═══ LOGIN SCREEN (Falls nicht angemeldet) ═══ -->
+<div class="auth-wrap" id="s-auth">
   <div class="auth-card">
-    <div class="seg">
-      <button id="tab-login" class="on">Anmelden</button>
-      <button id="tab-signup">Registrieren</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+      <a href="tapstempel.html" class="brand-logo"><span class="brand-seal">TS</span><span>tapstempel</span></a>
     </div>
+    <h2>Partner Login</h2>
+    <p style="color:var(--muted); font-size:13px; margin:6px 0 24px;">Melde dich mit deinen Zugangsdaten an, um dein Dashboard zu öffnen.</p>
 
-    <div id="pane-login">
-      <div class="field"><label>E-Mail</label><input type="email" id="li-email"></div>
-      <div class="field"><label>Passwort</label><input type="password" id="li-pw"></div>
-      <button class="btn btn-primary" id="do-login">Anmelden</button>
+    <div class="field">
+      <label>E-Mail</label>
+      <input type="email" id="li-email" placeholder="name@deinladen.de">
     </div>
-
-    <div id="pane-signup" class="hide">
-      <div class="field"><label>Ladenname</label><input type="text" id="su-name" placeholder="Café Sonnenblick"></div>
-      <div class="field"><label>Branche</label>
-        <select id="su-branche">
-          <option>Café</option><option>Restaurant</option><option>Shishabar</option>
-          <option>Bar</option><option>Sonstiges</option>
-        </select>
-      </div>
-      <div class="field"><label>E-Mail</label><input type="email" id="su-email"></div>
-      <div class="field"><label>Passwort</label><input type="password" id="su-pw" placeholder="mind. 8 Zeichen"></div>
-      <button class="btn btn-primary" id="do-signup">Konto anlegen</button>
+    <div class="field">
+      <label>Passwort</label>
+      <input type="password" id="li-pw" placeholder="••••••••">
     </div>
+    <button class="btn btn-coral" id="do-login" style="width:100%; margin-top:8px;">Anmelden <span>→</span></button>
     <div class="err" id="auth-err"></div>
+
+    <p style="text-align:center; margin-top:22px; font-size:12px; color:var(--muted);">
+      Noch kein Konto? <a href="tapstempel.html#top" style="color:var(--coral); font-weight:600;">Jetzt kostenlos registrieren</a>
+    </p>
   </div>
-</section>
+</div>
 
-<!-- ═══ APP ═══ -->
-<div id="s-app" class="hide">
-  <nav>
-    <div class="brand"><span class="mark">S</span> Tapstempel</div>
-    <div class="nav-links" id="navLinks">
-      <button data-go="home" class="on">Übersicht</button>
-      <button data-go="customers">Kunden</button>
-      <button data-go="card">NFC-Karte</button>
-      <button data-go="employees">Mitarbeiter</button>
-      <button data-go="billing">Abo &amp; Karten</button>
-      <button data-go="settings">Einstellungen</button>
-    </div>
-    <button class="logout" id="logout">Abmelden</button>
-  </nav>
+<!-- ═══ ECHTES PARTNER DASHBOARD (Im exakten Look deines Screenshots!) ═══ -->
+<div class="dash-layout hide" id="s-app">
+  <div class="dash-panel">
+    
+    <!-- SEITENLEISTE LINKS -->
+    <aside>
+      <a href="tapstempel.html" class="brand-logo" style="margin-bottom:12px;"><span class="brand-seal">TS</span><span>tapstempel</span></a>
+      <nav>
+        <a class="active" data-go="home">◈ Übersicht</a>
+        <a data-go="customers">◎ Kunden</a>
+        <a data-go="card">◇ NFC &amp; QR-Code</a>
+        <a data-go="employees">👥 Mitarbeiter</a>
+        <a data-go="billing">💳 Abo &amp; Karten</a>
+        <a data-go="settings">◌ Einstellungen</a>
+      </nav>
+      <div class="aside-footer">
+        <button class="btn btn-ghost" id="logout" style="width:100%; font-size:12px; padding:8px;">Abmelden</button>
+      </div>
+    </aside>
 
-  <div class="wrap">
-    <!-- HOME -->
-    <section id="p-home">
-      <div class="hero">
-        <div class="stamp-ring">
-          <svg viewBox="0 0 220 220">
-            <circle class="track" cx="110" cy="110" r="95"/>
-            <circle class="fill" id="ringFill" cx="110" cy="110" r="95"/>
-          </svg>
-          <div class="center">
-            <div class="num" id="heroNum">0</div>
-            <div class="lbl">Stempel diese Woche</div>
+    <!-- HAUPTINHALT RECHTS -->
+    <main class="dash-content">
+      <div class="dash-title">
+        <div>
+          <small id="dashDate">Heute</small>
+          <h2 id="dashGreeting">Guten Tag</h2>
+        </div>
+        <div class="dash-avatar" id="dashAvatar">TS</div>
+      </div>
+
+      <!-- SEITE 1: ÜBERSICHT (HOME) -->
+      <div id="p-home">
+        <div class="metrics">
+          <div class="metric-card">
+            <small>Stempel diese Woche</small>
+            <strong id="m-week-stamps">0 <i>↗ live</i></strong>
+            <div class="spark">
+              <span style="height:35%"></span><span style="height:55%"></span><span style="height:45%"></span>
+              <span style="height:80%"></span><span style="height:60%"></span><span style="height:90%"></span><span style="height:100%"></span>
+            </div>
+          </div>
+          <div class="metric-card">
+            <small>Aktive Kunden</small>
+            <strong id="m-customers">0</strong>
+            <p>Registrierte Treuekarten</p>
+          </div>
+          <div class="metric-card">
+            <small>Belohnungen eingelöst</small>
+            <strong id="m-redeemed">0</strong>
+            <p>Erfolgreich belohnt</p>
           </div>
         </div>
-        <h1 id="heroShopName">Dein Laden</h1>
-        <p>So läuft dein Treueprogramm gerade — Kunden sammeln, Belohnungen lösen ein.</p>
-      </div>
 
-      <div class="tiles">
-        <div class="tile"><div class="n" id="tileCustomers">0</div><div class="l">Kunden gesamt</div></div>
-        <div class="tile"><div class="n" id="tileRedeemed">0</div><div class="l">Belohnungen eingelöst</div></div>
-        <div class="tile"><div class="n" id="tileAvg">0</div><div class="l">Ø Stempel pro Kunde</div></div>
-      </div>
-
-      <div class="panel">
-        <h3>Stempel der letzten 14 Tage</h3>
-        <div class="chart" id="chart"></div>
-      </div>
-    </section>
-
-    <!-- CUSTOMERS -->
-    <section id="p-customers" class="hide">
-      <h2 style="margin-bottom:18px;">Kunden</h2>
-      <div class="panel" style="padding:0; overflow:hidden;">
-        <table>
-          <thead><tr><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
-          <tbody id="customerRows"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- NFC CARD -->
-    <section id="p-card" class="hide">
-      <h2 style="margin-bottom:18px;">Deine NFC-Karte</h2>
-      <div class="panel">
-        <p style="color:var(--muted); margin-top:0;">Dieser Link liegt auf der NFC-Karte an deiner Kasse. Jeder Tap gibt einen Stempel — neue Kunden werden automatisch angelegt.</p>
-        <div class="link-box" id="tapLink"></div>
-        <div style="margin-top:18px;" id="qr"></div>
-        <button class="btn btn-ghost" style="width:auto; padding:10px 20px; margin-top:14px;" id="copyLink">Link kopieren</button>
-      </div>
-
-      <div class="panel" style="margin-top:16px;">
-        <p style="color:var(--muted); margin-top:0;">Kunden ohne NFC-fähiges Handy bekommen automatisch ihren <strong>eigenen</strong> QR-Code auf ihrer Stempelkarte angezeigt — dein Personal scannt den beim nächsten Besuch selbst und gibt den eigenen Mitarbeiter-PIN ein. Kein zusätzlicher Aufdruck nötig, das läuft automatisch. Mitarbeiter-PINs richtest du unter "Mitarbeiter" ein.</p>
-      </div>
-    </section>
-
-    <!-- EMPLOYEES -->
-    <section id="p-employees" class="hide">
-      <h2 style="margin-bottom:18px;">Mitarbeiter</h2>
-      <div class="panel">
-        <p style="color:var(--muted); margin-top:0;">Jeder Mitarbeiter bekommt einen eigenen Namen und PIN — damit stempelt er, wenn er den QR-Code eines Kunden scannt. Im Verlauf siehst du dann, wer wann gestempelt hat.</p>
-        <p id="empLimitNote" style="font-size:0.85rem; color:var(--muted);"></p>
-        <div id="employeeList" style="margin:16px 0;"></div>
-        <div class="row" style="gap:10px;">
-          <input type="text" id="emp-name" placeholder="Name" style="flex:1; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--ink-soft); color:var(--text);">
-          <input type="text" id="emp-pin" maxlength="6" placeholder="PIN (4-6 Ziffern)" style="width:150px; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--ink-soft); color:var(--text);">
-          <button class="btn btn-primary" id="addEmployeeBtn">Hinzufügen</button>
-        </div>
-        <div id="empError" style="color:#f2765a; font-size:0.85rem; margin-top:10px;"></div>
-      </div>
-    </section>
-
-    <!-- BILLING -->
-    <section id="p-billing" class="hide">
-      <h2 style="margin-bottom:18px;">Abo &amp; Karten</h2>
-
-      <div class="panel" id="planPanel"></div>
-
-      <div class="panel" id="cardPanel" style="margin-top:16px;"></div>
-    </section>
-
-    <!-- SETTINGS -->
-    <section id="p-settings" class="hide">
-      <h2 style="margin-bottom:18px;">Einstellungen</h2>
-      <div class="panel settings-grid">
-        <div class="field">
-          <label>Stempel bis zur Belohnung</label>
-          <input type="number" id="set-threshold" min="1" max="30">
-        </div>
-        <div class="field">
-          <label>Belohnung</label>
-          <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Kaffee deiner Wahl">
-        </div>
-        <div class="field">
-          <label>Mindestabstand zwischen zwei Stempeln</label>
-          <select id="set-cooldown">
-            <option value="240">4 Stunden (empfohlen)</option>
-            <option value="480">8 Stunden</option>
-            <option value="1440">1 Tag</option>
-            <option value="10080">1 Woche</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Akzentfarbe auf der Kunden-Ansicht</label>
-          <div class="swatches" id="swatches"></div>
-        </div>
-        <div class="field">
-          <label>Logo</label>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <label class="btn-ghost" style="width:auto; padding:9px 16px; cursor:pointer; display:inline-block;">Datei wählen<input type="file" id="f-logo" accept="image/*" hidden></label>
-            <span id="logo-status" style="font-size:0.8rem; color:var(--muted);">kein Logo</span>
+        <div class="activity">
+          <div class="activity-head">
+            <h4>Live-Aktivität</h4>
+            <span>Neueste Ereignisse</span>
+          </div>
+          <div id="activityList">
+            <p style="color:var(--muted); font-size:12px; margin:10px 0;">Noch keine Aktivitäten vorhanden.</p>
           </div>
         </div>
-        <div class="field">
-          <label>Bannerbild <span style="font-weight:400;">(optional)</span></label>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <label class="btn-ghost" style="width:auto; padding:9px 16px; cursor:pointer; display:inline-block;">Datei wählen<input type="file" id="f-banner" accept="image/*" hidden></label>
-            <span id="banner-status" style="font-size:0.8rem; color:var(--muted);">kein Banner</span>
-          </div>
-        </div>
-        <div class="field">
-          <label>Zusätzlicher Link-Button <span style="font-weight:400;">(optional, z. B. Speisekarte oder Instagram)</span></label>
-          <input type="text" id="set-link-label" placeholder="Button-Text, z. B. Speisekarte ansehen" style="margin-bottom:8px;">
-          <input type="text" id="set-link-url" placeholder="Ziel-Adresse, z. B. instagram.com/deincafe">
-        </div>
-        <button class="btn btn-primary" style="width:auto; padding:11px 24px;" id="saveSettings">Speichern</button>
-        <span id="saveMsg" style="font-size:0.85rem; color:var(--muted);"></span>
       </div>
-    </section>
+
+      <!-- SEITE 2: KUNDEN -->
+      <div id="p-customers" class="hide">
+        <h3>Kundenkartei</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Alle Gäste, die deine digitale Stempelkarte besitzen.</p>
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; overflow:hidden;">
+          <table>
+            <thead><tr><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
+            <tbody id="customerRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SEITE 3: NFC & QR-CODE -->
+      <div id="p-card" class="hide">
+        <h3>Deine Kundenkarte</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Diesen Link scannen oder tippen deine Kunden an der Kasse an.</p>
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:480px;">
+          <div style="font-family:'DM Mono', monospace; font-size:13px; color:var(--coral); background:#f4efe6; padding:12px; border-radius:8px; word-break:break-all;" id="tapLink"></div>
+          <div style="margin:20px 0;" id="qr"></div>
+          <button class="btn btn-dark" id="copyLink">Link kopieren</button>
+        </div>
+      </div>
+
+      <!-- SEITE 4: MITARBEITER -->
+      <div id="p-employees" class="hide">
+        <h3>Mitarbeiter &amp; PINs</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 16px;">
+          Lege hier deine Mitarbeiter an. Jeder Mitarbeiter bekommt einen 4-stelligen PIN, um Stempel beim Scannen freizugeben.
+        </p>
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:20px; max-width:520px; margin-bottom:20px;" id="employeeList"></div>
+
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:20px; max-width:520px;">
+          <h4 style="margin-bottom:12px;">Mitarbeiter hinzufügen</h4>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <input type="text" id="emp-name" placeholder="Name (z.B. Jonas)" style="flex:1; padding:10px; border-radius:8px; border:1px solid var(--line);">
+            <input type="text" id="emp-pin" maxlength="6" placeholder="PIN (z.B. 1234)" style="width:140px; padding:10px; border-radius:8px; border:1px solid var(--line);">
+            <button class="btn btn-coral" id="addEmployeeBtn">Speichern</button>
+          </div>
+          <div id="empError" style="color:#c0392b; font-size:12px; margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <!-- SEITE 5: ABO & KARTEN -->
+      <div id="p-billing" class="hide">
+        <h3>Dein Abonnement &amp; Karten</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Verwalte dein Tapstempel-Paket und bestelle physische NFC-Aufsteller nach.</p>
+        <div id="planPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; margin-bottom:20px;"></div>
+        <div id="cardPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;"></div>
+      </div>
+
+      <!-- SEITE 6: EINSTELLUNGEN -->
+      <div id="p-settings" class="hide">
+        <h3>Laden-Einstellungen</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Passe das Aussehen deiner digitalen Kundenkarte an.</p>
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; max-width:520px; display:grid; gap:16px;">
+          <div class="field">
+            <label>Stempel bis zur Belohnung</label>
+            <input type="number" id="set-threshold" min="1" max="30">
+          </div>
+          <div class="field">
+            <label>Belohnungstext</label>
+            <input type="text" id="set-reward" placeholder="z. B. Ein Gratis-Cappuccino deiner Wahl">
+          </div>
+          <button class="btn btn-coral" id="saveSettings" style="width:max-content;">Einstellungen speichern</button>
+          <span id="saveMsg" style="font-size:12px; color:var(--muted);"></span>
+        </div>
+      </div>
+
+    </main>
   </div>
 </div>
 
@@ -334,288 +294,163 @@
     return data;
   }
 
-  /* ── Auth ── */
-  $('tab-login').onclick = () => { $('tab-login').classList.add('on'); $('tab-signup').classList.remove('on'); $('pane-login').classList.remove('hide'); $('pane-signup').classList.add('hide'); };
-  $('tab-signup').onclick = () => { $('tab-signup').classList.add('on'); $('tab-login').classList.remove('on'); $('pane-signup').classList.remove('hide'); $('pane-login').classList.add('hide'); };
-
-  $('do-signup').onclick = async () => {
-    try {
-      await api('/api/stempel/signup', { method: 'POST', body: JSON.stringify({
-        name: $('su-name').value, branche: $('su-branche').value, email: $('su-email').value, password: $('su-pw').value
-      })});
-      const r = await api('/api/stempel/login', { method: 'POST', body: JSON.stringify({ email: $('su-email').value, password: $('su-pw').value }) });
-      boot(r.shop);
-    } catch (e) { $('auth-err').textContent = e.message; $('auth-err').style.display = 'block'; }
-  };
+  /* LOGIN */
   $('do-login').onclick = async () => {
+    $('auth-err').style.display = 'none';
     try {
-      const r = await api('/api/stempel/login', { method: 'POST', body: JSON.stringify({ email: $('li-email').value, password: $('li-pw').value }) });
+      const r = await api('/api/stempel/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: $('li-email').value.trim(), password: $('li-pw').value })
+      });
       boot(r.shop);
-    } catch (e) { $('auth-err').textContent = e.message; $('auth-err').style.display = 'block'; }
+    } catch(e) {
+      $('auth-err').textContent = e.message;
+      $('auth-err').style.display = 'block';
+    }
   };
   $('logout').onclick = () => { document.cookie = 'stempel_session=; Max-Age=0; Path=/'; location.reload(); };
 
-  /* ── Navigation ── */
-  document.querySelectorAll('#navLinks button').forEach(b => b.onclick = () => showPage(b.dataset.go));
-  function showPage(name) {
-    ['home', 'customers', 'card', 'employees', 'billing', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== name));
-    document.querySelectorAll('#navLinks button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
-    if (name === 'customers') loadCustomers();
-    if (name === 'card') loadCard();
-    if (name === 'employees') loadEmployees();
-    if (name === 'billing') loadBilling();
-  }
+  /* NAVIGATION */
+  document.querySelectorAll('aside a[data-go]').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('aside a').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const target = b.dataset.go;
+      ['home', 'customers', 'card', 'employees', 'billing', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
+      if (target === 'customers') loadCustomers();
+      if (target === 'card') loadCard();
+      if (target === 'employees') loadEmployees();
+      if (target === 'billing') loadBilling();
+      if (target === 'settings') loadSettingsForm();
+    };
+  });
 
-  /* ── Boot ── */
+  /* INITIALISIERUNG */
   async function boot(shopData) {
     shop = shopData;
     $('s-auth').classList.add('hide');
     $('s-app').classList.remove('hide');
-    $('heroShopName').textContent = shop.name;
+    
+    // Begrüßung wie im Screenshot
+    const today = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+    $('dashDate').textContent = today;
+    $('dashGreeting').textContent = 'Guten Tag, ' + (shop.first_name || shop.name);
+    $('dashAvatar').textContent = (shop.name || 'TS').slice(0, 2).toUpperCase();
+
     await loadHome();
   }
 
   async function loadHome() {
-    const { customers } = await api('/api/stempel/customers');
-    const totalStamps = customers.reduce((s, c) => s + c.stamps, 0);
-    const redeemed = customers.reduce((s, c) => s + c.redeemed_count, 0);
-    const avg = customers.length ? (totalStamps / customers.length).toFixed(1) : '0';
-    const weekStamps = customers.filter(c => c.last_stamp_at && (Date.now() - new Date(c.last_stamp_at + 'Z')) < 7 * 86400000).length;
+    try {
+      const { customers } = await api('/api/stempel/customers');
+      $('m-customers').textContent = customers.length;
+      const redeemed = customers.reduce((sum, c) => sum + (c.redeemed_count || 0), 0);
+      $('m-redeemed').textContent = redeemed;
+      const weekStamps = customers.filter(c => c.last_stamp_at && (Date.now() - new Date(c.last_stamp_at + 'Z')) < 7 * 86400000).length;
+      $('m-week-stamps').innerHTML = weekStamps + ' <i>↗ aktiv</i>';
 
-    animateNumber($('heroNum'), weekStamps);
-    animateNumber($('tileCustomers'), customers.length);
-    animateNumber($('tileRedeemed'), redeemed);
-    $('tileAvg').textContent = avg;
-
-    const target = Math.min(1, weekStamps / 50);
-    const circumference = 2 * Math.PI * 95;
-    $('ringFill').style.setProperty('--offset', circumference * (1 - target));
-
-    renderChart(customers);
-  }
-
-  function animateNumber(el, target) {
-    const dur = 700, start = performance.now();
-    function tick(now) {
-      const p = Math.min(1, (now - start) / dur);
-      el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
-      if (p < 1) requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-  }
-
-  function renderChart(customers) {
-    const days = Array.from({ length: 14 }, (_, i) => {
-      const d = new Date(); d.setDate(d.getDate() - (13 - i));
-      return d.toISOString().slice(0, 10);
-    });
-    const counts = days.map(d => customers.filter(c => c.last_stamp_at && c.last_stamp_at.startsWith(d)).length);
-    const max = Math.max(1, ...counts);
-    $('chart').innerHTML = counts.map(c =>
-      `<div class="bar animate" style="height:${Math.max(4, (c / max) * 100)}%"></div>`
-    ).join('');
+      // Live Aktivitäten rendern
+      if (customers.length) {
+        $('activityList').innerHTML = customers.slice(0, 5).map(c => `
+          <div class="activity-item">
+            <span class="act-icon stamp">+</span>
+            <span>Kunde hat ${c.stamps}. Stempel gesammelt</span>
+            <small>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'}) : 'vor kurzem'}</small>
+          </div>
+        `).join('');
+      }
+    } catch(e){}
   }
 
   async function loadCustomers() {
     const { customers } = await api('/api/stempel/customers');
+    const th = shop.reward_threshold || 8;
     $('customerRows').innerHTML = customers.map(c => {
-      const dots = Array.from({ length: shop.reward_threshold || 10 }, (_, i) =>
-        `<span class="${i < c.stamps ? 'on' : ''}"></span>`).join('');
-      const status = c.stamps >= (shop.reward_threshold || 10) ? 'Belohnung bereit' : c.stamps + '/' + (shop.reward_threshold || 10);
-      return `<tr><td><span class="stamp-dots">${dots}</span></td><td>${status}</td>
+      const dots = Array.from({length: th}, (_, i) => `<span class="dot-stamp ${i < c.stamps ? 'on' : ''}"></span>`).join('');
+      const status = c.stamps >= th ? '<strong style="color:var(--coral);">Belohnung bereit</strong>' : `${c.stamps}/${th}`;
+      return `<tr>
+        <td><div class="dot-row">${dots}</div></td>
+        <td>${status}</td>
         <td>${new Date(c.created_at + 'Z').toLocaleDateString('de-DE')}</td>
-        <td>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleDateString('de-DE') : '—'}</td></tr>`;
-    }).join('') || '<tr><td colspan="4" style="color:var(--muted)">Noch keine Kunden.</td></tr>';
+        <td>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleDateString('de-DE') : '—'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="color:var(--muted); padding:20px;">Noch keine Kunden verzeichnet.</td></tr>';
   }
 
   function loadCard() {
     const url = location.origin + '/s/' + shop.slug;
     $('tapLink').textContent = url;
-    QRCode.toCanvas(url, { width: 180, margin: 1 }, (err, canvas) => {
+    QRCode.toCanvas(url, { width: 160, margin: 1 }, (err, canvas) => {
       if (!err) { $('qr').innerHTML = ''; $('qr').appendChild(canvas); }
     });
   }
-  $('copyLink').onclick = () => { navigator.clipboard.writeText($('tapLink').textContent); $('copyLink').textContent = 'Kopiert!'; setTimeout(() => $('copyLink').textContent = 'Link kopieren', 1500); };
+  $('copyLink').onclick = () => {
+    navigator.clipboard.writeText($('tapLink').textContent);
+    $('copyLink').textContent = 'Kopiert!';
+    setTimeout(() => $('copyLink').textContent = 'Link kopieren', 1500);
+  };
 
-  /* ── Mitarbeiter ── */
   async function loadEmployees() {
-    const { employees, plan } = await api('/api/stempel/employees');
-    const limit = plan === 'premium' ? 'unbegrenzt' : '5';
-    $('empLimitNote').textContent = `Paket: ${plan === 'premium' ? 'Premium' : 'Basic'} — bis zu ${limit} Mitarbeiter.`;
+    const { employees } = await api('/api/stempel/employees');
     $('employeeList').innerHTML = employees.map(e => `
-      <div class="row" style="justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line);">
-        <span>${e.name}</span>
-        <button class="btn btn-ghost" style="padding:6px 12px; font-size:0.8rem;" data-del="${e.id}">Entfernen</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
+        <div><strong>${e.name}</strong></div>
+        <button class="btn btn-ghost" style="padding:6px 12px; font-size:11px;" onclick="delEmp('${e.id}')">Entfernen</button>
       </div>
-    `).join('') || '<p style="color:var(--muted);">Noch keine Mitarbeiter angelegt.</p>';
-    document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-      await api('/api/stempel/employees/' + b.dataset.del, { method: 'DELETE' });
-      loadEmployees();
-    });
+    `).join('') || '<p style="color:var(--muted); font-size:12px; margin:0;">Noch keine Mitarbeiter angelegt.</p>';
   }
+  window.delEmp = async id => {
+    await api('/api/stempel/employees/' + id, { method: 'DELETE' });
+    loadEmployees();
+  };
   $('addEmployeeBtn').onclick = async () => {
     $('empError').textContent = '';
     try {
-      await api('/api/stempel/employees', { method: 'POST', body: JSON.stringify({
-        name: $('emp-name').value.trim(), pin: $('emp-pin').value.trim()
-      })});
+      await api('/api/stempel/employees', {
+        method: 'POST',
+        body: JSON.stringify({ name: $('emp-name').value.trim(), pin: $('emp-pin').value.trim() })
+      });
       $('emp-name').value = ''; $('emp-pin').value = '';
       loadEmployees();
-    } catch (e) { $('empError').textContent = e.message; }
+    } catch(e){ $('empError').textContent = e.message; }
   };
-
-  /* ── Abo & Karten ── */
-  const PLAN_PRICES = { basic: { monthly: '19,99€/Monat', yearly: '16,66€/Monat, jährlich abgerechnet' }, premium: { monthly: '29,99€/Monat', yearly: '24,99€/Monat, jährlich abgerechnet' } };
 
   function loadBilling() {
     const active = shop.subscription_status === 'active';
-    const planPanel = $('planPanel');
-
-    if (active) {
-      planPanel.innerHTML = `
-        <h3 style="margin-top:0;">Dein Paket</h3>
-        <p><strong>${shop.plan === 'premium' ? 'Premium' : 'Basic'}</strong> — ${shop.billing_interval === 'yearly' ? 'jährliche' : 'monatliche'} Abrechnung, aktiv.</p>
-        <p style="color:var(--muted); font-size:0.85rem;">${shop.plan === 'premium' ? 'Unbegrenzte Mitarbeiter, eigene Nachrichten, Nähe-Benachrichtigung (sobald Wallet aktiv).' : 'Bis zu 5 Mitarbeiter, feste Belohnungs-Nachricht.'}</p>
-      `;
-    } else {
-      planPanel.innerHTML = `
-        <h3 style="margin-top:0;">Paket wählen</h3>
-        <p style="color:var(--muted); margin-top:0;">Karten bestellen geht erst nach Abschluss eines Abos.</p>
-        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:12px;">
-          <button class="btn btn-primary planBtn" data-plan="basic" data-interval="monthly">Basic monatlich — ${PLAN_PRICES.basic.monthly}</button>
-          <button class="btn btn-ghost planBtn" data-plan="basic" data-interval="yearly">Basic jährlich — ${PLAN_PRICES.basic.yearly}</button>
-        </div>
-        <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:10px;">
-          <button class="btn btn-primary planBtn" data-plan="premium" data-interval="monthly">Premium monatlich — ${PLAN_PRICES.premium.monthly}</button>
-          <button class="btn btn-ghost planBtn" data-plan="premium" data-interval="yearly">Premium jährlich — ${PLAN_PRICES.premium.yearly}</button>
-        </div>
-        <div id="billingErr" style="color:#f2765a; font-size:0.85rem; margin-top:12px;"></div>
-      `;
-      document.querySelectorAll('.planBtn').forEach(b => b.onclick = async () => {
-        b.disabled = true;
-        try {
-          const r = await api('/api/stempel/checkout-subscription', { method: 'POST', body: JSON.stringify({ plan: b.dataset.plan, interval: b.dataset.interval }) });
-          window.location.href = r.url;
-        } catch (e) { $('billingErr').textContent = e.message; b.disabled = false; }
-      });
-    }
-
-    const cardPanel = $('cardPanel');
-    if (!active) {
-      cardPanel.innerHTML = `<p style="color:var(--muted);">NFC-Karten bestellen ist verfügbar, sobald ein Abo aktiv ist.</p>`;
-    } else {
-      cardPanel.innerHTML = `
-        <h3 style="margin-top:0;">NFC-Karten bestellen</h3>
-        <p style="color:var(--muted); margin-top:0;">20€ für die erste Karte, 5€ für jede weitere — NTAG424 DNA, dein Design.</p>
-        <div class="row" style="gap:10px; align-items:center;">
-          <input type="number" id="cardQty" value="1" min="1" max="200" style="width:80px; padding:9px; border-radius:8px; border:1px solid var(--line); background:var(--ink-soft); color:var(--text);">
-          <span id="cardTotal" style="font-weight:600;">20,00€</span>
-          <button class="btn btn-primary" id="orderCardsBtn">Jetzt bestellen</button>
-        </div>
-        <div id="cardErr" style="color:#f2765a; font-size:0.85rem; margin-top:10px;"></div>
-      `;
-      const updateTotal = () => {
-        const q = Math.max(1, parseInt($('cardQty').value) || 1);
-        const total = (2000 + (q - 1) * 500) / 100;
-        $('cardTotal').textContent = total.toFixed(2).replace('.', ',') + '€';
-      };
-      $('cardQty').oninput = updateTotal;
-      $('orderCardsBtn').onclick = async () => {
-        $('orderCardsBtn').disabled = true;
-        try {
-          const r = await api('/api/stempel/checkout-card', { method: 'POST', body: JSON.stringify({ quantity: parseInt($('cardQty').value) || 1 }) });
-          window.location.href = r.url;
-        } catch (e) { $('cardErr').textContent = e.message; $('orderCardsBtn').disabled = false; }
-      };
-    }
+    $('planPanel').innerHTML = active
+      ? `<h4>Dein Abo: ${shop.plan === 'premium' ? 'Premium' : 'Basic'} (Aktiv)</h4><p style="font-size:13px; color:var(--muted);">Alle Funktionen für deinen Laden sind freigeschaltet.</p>`
+      : `<h4>Paket aktivieren</h4><p style="font-size:13px; color:var(--muted);">Wähle ein Paket, um Karten zu bestellen und das Treueprogramm dauerhaft zu nutzen.</p>
+         <button class="btn btn-coral" onclick="sub('basic')">Basic aktivieren (19,99€ / Monat)</button>`;
+    $('cardPanel').innerHTML = active
+      ? `<h4>NFC-Aufsteller für die Kasse bestellen</h4><p style="font-size:13px; color:var(--muted);">20 € für den ersten Aufsteller, 5 € für jeden weiteren.</p>`
+      : `<p style="font-size:13px; color:var(--muted);">Kartenbestellung nach Abo-Aktivierung verfügbar.</p>`;
   }
 
-  /* ── Settings ── */
-  const COLORS = ['#6366f1', '#d1512d', '#0e7490', '#16a34a', '#9333ea'];
-  function renderSwatches() {
-    $('swatches').innerHTML = COLORS.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('');
-    document.querySelectorAll('.swatch').forEach(s => s.onclick = () => {
-      document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
-      s.classList.add('on'); s.dataset.selected = 'true';
-    });
+  function loadSettingsForm() {
+    $('set-threshold').value = shop.reward_threshold || 8;
+    $('set-reward').value = shop.reward_text || '';
   }
-  renderSwatches();
-
-  async function loadSettingsForm() {
-    $('set-threshold').value = shop.reward_threshold;
-    $('set-reward').value = shop.reward_text;
-    $('set-cooldown').value = shop.min_stamp_interval_minutes || 240;
-    $('set-link-label').value = shop.extra_link_label || '';
-    $('set-link-url').value = shop.extra_link_url || '';
-    $('logo-status').textContent = shop.logo_key ? 'Logo gesetzt' : 'kein Logo';
-    $('banner-status').textContent = shop.banner_key ? 'Banner gesetzt' : 'kein Banner';
-    document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.c === shop.accent_color));
-  }
-
-  function resizeImage(file, maxDim, quality) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        let w = img.width, h = img.height;
-        if (w > h && w > maxDim) { h = Math.round(h * (maxDim / w)); w = maxDim; }
-        else if (h > maxDim) { w = Math.round(w * (maxDim / h)); h = maxDim; }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        canvas.toBlob(blob => blob ? resolve(new File([blob], 'img.jpg', { type: 'image/jpeg' })) : reject(new Error('Bild konnte nicht verarbeitet werden')), 'image/jpeg', quality);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Bild konnte nicht gelesen werden')); };
-      img.src = url;
-    });
-  }
-
-  function wireImageUpload(inputId, statusId, maxDim, endpoint, formField, stateKey, setLabel) {
-    $(inputId).onchange = async e => {
-      const f0 = e.target.files[0];
-      if (!f0) return;
-      $(statusId).textContent = 'Lädt hoch …';
-      try {
-        const f = await resizeImage(f0, maxDim, 0.82);
-        const fd = new FormData();
-        fd.append(formField, f);
-        const res = await fetch(endpoint, { method: 'POST', body: fd });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Fehler beim Hochladen');
-        shop[stateKey] = data[stateKey];
-        $(statusId).textContent = setLabel;
-      } catch (err) { $(statusId).textContent = err.message; }
-    };
-  }
-  wireImageUpload('f-logo', 'logo-status', 300, '/api/stempel/upload-logo', 'logo', 'logoUrl', 'Logo gesetzt');
-  wireImageUpload('f-banner', 'banner-status', 1000, '/api/stempel/upload-banner', 'banner', 'bannerUrl', 'Banner gesetzt');
-
   $('saveSettings').onclick = async () => {
-    const selected = document.querySelector('.swatch.on');
     try {
-      await api('/api/stempel/settings', { method: 'PUT', body: JSON.stringify({
-        reward_threshold: $('set-threshold').value,
-        reward_text: $('set-reward').value,
-        accent_color: selected ? selected.dataset.c : shop.accent_color,
-        extra_link_label: $('set-link-label').value,
-        extra_link_url: $('set-link-url').value,
-        min_stamp_interval_minutes: $('set-cooldown').value
-      })});
+      await api('/api/stempel/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ reward_threshold: $('set-threshold').value, reward_text: $('set-reward').value })
+      });
       shop.reward_threshold = parseInt($('set-threshold').value);
       shop.reward_text = $('set-reward').value;
-      $('saveMsg').textContent = 'Gespeichert.';
+      $('saveMsg').textContent = 'Gespeichert!';
       setTimeout(() => $('saveMsg').textContent = '', 2000);
-    } catch (e) { $('saveMsg').textContent = e.message; }
+    } catch(e){ $('saveMsg').textContent = e.message; }
   };
-  document.querySelector('[data-go="settings"]').addEventListener('click', loadSettingsForm);
 
-  /* ── Start ── */
+  // AUTO-LOGIN CHECK
   (async () => {
     try {
       const r = await api('/api/stempel/me');
       boot(r.shop);
-    } catch (e) { /* nicht angemeldet, Auth-Screen bleibt */ }
+    } catch(e) {
+      $('s-auth').classList.remove('hide');
+    }
   })();
 </script>
 </body>

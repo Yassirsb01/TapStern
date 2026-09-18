@@ -1711,11 +1711,21 @@ function lightenHex(hex, amt) {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
 }
 
+/* Kontrast-Fläche fürs Emoji-Kästchen: bei dunklem Kartenhintergrund heller machen,
+   bei hellem Kartenhintergrund dunkler — passt sich automatisch an, egal welche Farbe der Laden wählt. */
+function adaptiveSurface(hex, amt) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? lightenHex(hex, -amt) : lightenHex(hex, amt);
+}
+
 function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const bgSurface = lightenHex(bg, 14);
   const bgSurface2 = lightenHex(bg, 22);
+  const emojiBox = adaptiveSurface(bg, 20);
   const message = cooldownHit
     ? 'Dieser Stempel wurde gerade schon erfasst — versuch es beim nächsten Besuch nochmal.'
     : rewardReached
@@ -1760,7 +1770,8 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .dot.filled{background:${accent};}
   .dot-icon svg{width:56%; height:56%; fill:${accent}; stroke:${accent}; opacity:0.55;}
   .dot-icon.filled svg{fill:#fff; stroke:#fff; opacity:1;}
-  .dot-emoji span{font-size:1.15rem; line-height:1; opacity:0.4; filter:saturate(0.5);}
+  .dot-emoji, .dot.filled.dot-emoji{border:none; border-radius:12px; background:${emojiBox};}
+  .dot-emoji span{font-size:1.65rem; line-height:1; opacity:0.4; filter:saturate(0.5); transition:opacity 0.2s, filter 0.2s;}
   .dot-emoji.filled span{opacity:1; filter:none;}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
   .stamps-panel{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:16px 14px 12px;}

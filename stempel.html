@@ -841,6 +841,20 @@
     renderPreview();
   };
 
+  function lightenHexJs(hex, amt) {
+    const n = parseInt(hex.replace('#', ''), 16);
+    const r = Math.min(255, Math.max(0, (n >> 16) + amt));
+    const g = Math.min(255, Math.max(0, ((n >> 8) & 0xff) + amt));
+    const b = Math.min(255, Math.max(0, (n & 0xff) + amt));
+    return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+  }
+  function adaptiveSurfaceJs(hex, amt) {
+    const n = parseInt(hex.replace('#', ''), 16);
+    const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.55 ? lightenHexJs(hex, -amt) : lightenHexJs(hex, amt);
+  }
+
   function renderPreview() {
     const accent = shop.accent_color || COLOR_PALETTE[0];
     const threshold = Math.max(1, parseInt($('set-threshold').value) || 8);
@@ -869,7 +883,8 @@
         return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol};"></div>`;
       }
       if (iconOpt.emoji) {
-        return `<div class="cp-dot" style="border:2px solid ${accent}; background:${bgCol}; display:flex; align-items:center; justify-content:center;"><span style="font-size:1.05rem; opacity:${isFilled ? 1 : 0.4}; filter:${isFilled ? 'none' : 'saturate(0.5)'};">${iconOpt.emoji}</span></div>`;
+        const boxCol = adaptiveSurfaceJs(shop.card_bg_color || '#14131a', 20);
+        return `<div class="cp-dot" style="border:none; border-radius:10px; background:${boxCol}; display:flex; align-items:center; justify-content:center;"><span style="font-size:1.5rem; opacity:${isFilled ? 1 : 0.4}; filter:${isFilled ? 'none' : 'saturate(0.5)'};">${iconOpt.emoji}</span></div>`;
       }
       const iconCol = isFilled ? '#fff' : accent;
       const svg = `<svg viewBox="0 0 24 24" style="width:56%;height:56%;fill:${iconCol};stroke:${iconCol};opacity:${isFilled ? 1 : 0.55}">${iconOpt.svg}</svg>`;

@@ -188,6 +188,15 @@ async function handleVerifyLink(request, env) {
 
   await env.DB.prepare('UPDATE users SET verified = 1, verify_token = NULL, verify_expires = NULL WHERE id = ?').bind(u.id).run();
   await env.DB.prepare('UPDATE businesscards SET published = 1 WHERE user_id = ?').bind(u.id).run();
+
+  if (env.MAIL_FROM) {
+    sendMail(env, parseSender(env.MAIL_FROM).email, 'Neue Visitenkarten-Registrierung: ' + u.email,
+      'Neuer Nutzer registriert',
+      `${u.email} hat sich gerade bei den Tapstern-Visitenkarten registriert und bestätigt.`,
+      'Zum Admin-Bereich', new URL(request.url).origin + '/app.html'
+    ).catch(() => {});
+  }
+
   return verifyPage(true, 'E-Mail bestätigt. Deine Karten sind jetzt öffentlich erreichbar.');
 }
 
@@ -1223,6 +1232,15 @@ async function handleStempelVerifyEmail(request, env) {
   const token = randomToken();
   await env.DB.prepare('UPDATE stempel_shops SET verified = 1, verify_code_hash = NULL, session_token_hash = ? WHERE id = ?')
     .bind(await sha256(token), shop.id).run();
+
+  if (env.MAIL_FROM) {
+    const adminUrl = new URL(request.url).origin + '/stempel.html';
+    sendMail(env, parseSender(env.MAIL_FROM).email, 'Neue Tapstempel-Registrierung: ' + shop.name,
+      'Neuer Laden registriert',
+      `${shop.name} (${shop.branche || 'keine Branche angegeben'}) hat sich gerade bei Tapstempel registriert und bestätigt. Ansprechpartner: ${[shop.first_name, shop.last_name].filter(Boolean).join(' ') || '–'}, Telefon: ${shop.phone || '–'}, E-Mail: ${email}.`,
+      'Zum Dashboard', adminUrl
+    ).catch(() => {});
+  }
 
   const { password_hash, session_token_hash, verify_code_hash, ...safe } = shop;
   safe.verified = 1;

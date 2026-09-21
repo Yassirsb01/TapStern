@@ -1665,6 +1665,11 @@ async function handleGoogleWalletSave(request, env, slug) {
     ...(shop.logo_key ? { programLogo: { sourceUri: { uri: `${origin}/photo/${shop.logo_key}` } } } : {}),
   };
 
+  const remaining = Math.max(0, shop.reward_threshold - customer.stamps);
+  const rewardMsg = remaining === 0
+    ? `Belohnung bereit: ${shop.reward_text}`
+    : `Noch ${remaining} Stempel bis zu: ${shop.reward_text}`;
+
   const loyaltyObject = {
     id: objectId,
     classId: classId,
@@ -1673,13 +1678,18 @@ async function handleGoogleWalletSave(request, env, slug) {
     accountName: shop.name,
     loyaltyPoints: {
       label: 'Stempel',
-      balance: { string: `${customer.stamps} / ${shop.reward_threshold}` },
+      balance: { string: `${customer.stamps}/${shop.reward_threshold}` },
     },
+    textModulesData: [
+      { id: 'reward_info', header: 'Deine Belohnung', body: rewardMsg },
+    ],
     barcode: {
       type: 'QR_CODE',
       value: `${origin}/staff-redeem/${customer.redeem_token}`,
+      alternateText: 'Für Personal',
     },
     hexBackgroundColor: shop.card_bg_color || '#14131a',
+    ...(shop.banner_key ? { heroImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } } : {}),
   };
 
   const payload = {

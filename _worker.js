@@ -56,6 +56,8 @@ export default {
       if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
       const staffRedeemMatch = path.match(/^\/staff-redeem\/([^/]+)$/);
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
+      const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
+      if (method === 'GET' && googleWalletMatch) return handleGoogleWalletSave(request, env, googleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env);
 
       /* ── Business Hub ── */
@@ -1596,6 +1598,109 @@ async function handleStempelStripeWebhook(request, env) {
 /* ── Personal scannt den EIGENEN Code des Kunden, gibt dann den eigenen Mitarbeiter-PIN ein ──
    Kein Laden-Login auf dem Scan-Gerät nötig — der Mitarbeiter-PIN allein autorisiert den Stempel,
    und wird pro Mitarbeiter im Dashboard vergeben, damit im Verlauf sichtbar ist, wer gestempelt hat. */
+/* ── Google Wallet ──
+   Braucht drei Secrets (wrangler secret put):
+   GOOGLE_WALLET_ISSUER_ID           — aus der Google Pay & Wallet Console
+   GOOGLE_WALLET_SERVICE_ACCOUNT     — die "client_email" aus deiner Dienstkonto-JSON-Datei
+   GOOGLE_WALLET_PRIVATE_KEY         — die "private_key" aus derselben Datei (mit \n als echte Zeilenumbrüche) */
+
+function base64url(input) {
+  let str;
+  if (typeof input === 'string') {
+    str = btoa(input);
+  } else {
+    str = btoa(String.fromCharCode(...new Uint8Array(input)));
+  }
+  return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function signGoogleWalletJwt(payload, serviceAccountEmail, privateKeyPem) {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const headerB64 = base64url(JSON.stringify(header));
+  const payloadB64 = base64url(JSON.stringify(payload));
+  const signingInput = `${headerB64}.${payloadB64}`;
+
+  const pemBody = privateKeyPem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\\n/g, '')
+    .replace(/\s/g, '');
+  const binaryDer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+
+  const key = await crypto.subtle.importKey(
+    'pkcs8', binaryDer.buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signingInput)
+  );
+  return `${signingInput}.${base64url(signature)}`;
+}
+
+async function handleGoogleWalletSave(request, env, slug) {
+  if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) {
+    return new Response('Google Wallet ist noch nicht eingerichtet.', { status: 500 });
+  }
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+
+  const cookieMatch = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_device=([^;]+)/);
+  const customer = cookieMatch
+    ? await env.DB.prepare('SELECT * FROM stempel_customers WHERE device_token = ? AND shop_id = ?').bind(cookieMatch[1], shop.id).first()
+    : null;
+  if (!customer) return new Response('Keine Stempelkarte gefunden — erst antippen oder QR-Code beitreten.', { status: 404 });
+
+  const origin = new URL(request.url).origin;
+  const classId = `${env.GOOGLE_WALLET_ISSUER_ID}.${shop.slug}`;
+  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customer.id}`;
+  const accent = shop.accent_color || '#6366f1';
+
+  const loyaltyClass = {
+    id: classId,
+    issuerName: 'Tapstempel',
+    programName: shop.name,
+    reviewStatus: 'UNDER_REVIEW',
+    hexBackgroundColor: shop.card_bg_color || '#14131a',
+    ...(shop.logo_key ? { programLogo: { sourceUri: { uri: `${origin}/photo/${shop.logo_key}` } } } : {}),
+  };
+
+  const loyaltyObject = {
+    id: objectId,
+    classId: classId,
+    state: 'ACTIVE',
+    accountId: customer.id,
+    accountName: shop.name,
+    loyaltyPoints: {
+      label: 'Stempel',
+      balance: { string: `${customer.stamps} / ${shop.reward_threshold}` },
+    },
+    barcode: {
+      type: 'QR_CODE',
+      value: `${origin}/staff-redeem/${customer.redeem_token}`,
+    },
+    hexBackgroundColor: shop.card_bg_color || '#14131a',
+  };
+
+  const payload = {
+    iss: env.GOOGLE_WALLET_SERVICE_ACCOUNT,
+    aud: 'google',
+    typ: 'savetowallet',
+    iat: Math.floor(Date.now() / 1000),
+    payload: {
+      loyaltyClasses: [loyaltyClass],
+      loyaltyObjects: [loyaltyObject],
+    },
+  };
+
+  try {
+    const jwt = await signGoogleWalletJwt(payload, env.GOOGLE_WALLET_SERVICE_ACCOUNT, env.GOOGLE_WALLET_PRIVATE_KEY);
+    return Response.redirect(`https://pay.google.com/gp/v/save/${jwt}`, 302);
+  } catch (e) {
+    return new Response('Google Wallet konnte nicht erstellt werden: ' + e.message, { status: 500 });
+  }
+}
+
 async function handleStaffRedeemPage(request, env, token) {
   const customer = await env.DB.prepare('SELECT * FROM stempel_customers WHERE redeem_token = ?').bind(token).first();
   if (!customer) return new Response('Karte nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
@@ -1814,6 +1919,11 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     border:1px solid ${accent}; color:${accent}; text-decoration:none; font-size:0.88rem; font-weight:600;
   }
   .qr-fallback{margin-top:18px; font-size:0.8rem; color:${mutedColor};}
+  .wallet-btn{
+    display:flex; align-items:center; justify-content:center; gap:8px; margin-top:18px;
+    padding:12px 16px; border-radius:10px; background:#fff; color:#1a1a1a; text-decoration:none;
+    font-size:0.88rem; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.15);
+  }
   .qr-fallback summary{cursor:pointer; color:${accent};}
   .qr-fallback #myQr{background:#fff; padding:10px; border-radius:10px;}
   .qr-fallback #myQr svg{width:100%; height:auto; display:block;}
@@ -1834,6 +1944,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
         </div>
         <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
       </div>
+      <a class="wallet-btn" href="${origin}/wallet/google/${shop.slug}">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7 3.5v8.6l-7 3.5-7-3.5V7.7l7-3.5z"/></svg>
+        Zu Google Wallet hinzufügen
+      </a>
       <details class="qr-fallback">
         <summary>Kein NFC? Zeig das dem Personal</summary>
         <div id="myQr" style="margin:14px auto 0; width:150px;">${generateQrSvg(origin + '/staff-redeem/' + (customer.redeem_token || ''))}</div>

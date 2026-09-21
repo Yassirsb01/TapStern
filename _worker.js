@@ -53,12 +53,12 @@ export default {
       if (method === 'POST' && path === '/webhook/stripe-stempel') return handleStempelStripeWebhook(request, env);
 
       const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
-      if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1]);
+      if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1], ctx);
       const staffRedeemMatch = path.match(/^\/staff-redeem\/([^/]+)$/);
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
       const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
       if (method === 'GET' && googleWalletMatch) return handleGoogleWalletSave(request, env, googleWalletMatch[1]);
-      if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env);
+      if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
 
       /* ── Business Hub ── */
       if (method === 'POST' && path === '/api/hub/submit') return handleHubSubmit(request, env);
@@ -1327,7 +1327,7 @@ async function handleStempelCustomers(request, env) {
 }
 
 /* Der Kern: NFC-Tap an der Laden-Karte, GET /s/:slug */
-async function grantStamp(env, request, shop) {
+async function grantStamp(env, request, shop, ctx) {
   const cookieMatch = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_device=([^;]+)/);
   const deviceToken = cookieMatch ? cookieMatch[1] : null;
   let customer = deviceToken
@@ -1353,7 +1353,7 @@ async function grantStamp(env, request, shop) {
       customer.redeem_token = crypto.randomUUID();
       await env.DB.prepare(`UPDATE stempel_customers SET redeem_token = ? WHERE id = ?`).bind(customer.redeem_token, customer.id).run();
     }
-    const result = await applyStampLogic(env, customer, shop, null);
+    const result = await applyStampLogic(env, customer, shop, null, request, ctx);
     customer = result.customer; cooldownHit = result.cooldownHit;
   }
 
@@ -1361,11 +1361,14 @@ async function grantStamp(env, request, shop) {
 }
 
 /* Erhöht den Stempelstand eines bereits bekannten Kunden — genutzt vom NFC-Tap (bestehender Kunde)
-   und vom Personal-Scan-Weg (Kunde per redeem_token bereits ermittelt). employeeId ist null bei NFC. */
-async function applyStampLogic(env, customer, shop, employeeId) {
+   und vom Personal-Scan-Weg (Kunde per redeem_token bereits ermittelt). employeeId ist null bei NFC.
+   Stößt danach (per ctx.waitUntil, blockiert die Response nicht) einen Live-Update-Push an Google
+   Wallet an, damit bereits gespeicherte Karten den neuen Stempelstand zeigen. */
+async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
   const lastStamp = customer.last_stamp_at ? new Date(customer.last_stamp_at + 'Z').getTime() : 0;
   const cooldownMs = (shop.min_stamp_interval_minutes || 240) * 60 * 1000;
   let cooldownHit = false;
+  let stampChanged = false;
 
   if (Date.now() - lastStamp < cooldownMs) {
     cooldownHit = true;
@@ -1374,6 +1377,7 @@ async function applyStampLogic(env, customer, shop, employeeId) {
       `UPDATE stempel_customers SET stamps = 1, redeemed_count = redeemed_count + 1, last_stamp_at = datetime('now') WHERE id = ?`
     ).bind(customer.id).run();
     customer.stamps = 1; customer.redeemed_count += 1;
+    stampChanged = true;
   } else {
     await env.DB.prepare(
       `UPDATE stempel_customers SET stamps = stamps + 1, last_stamp_at = datetime('now') WHERE id = ?`
@@ -1381,20 +1385,29 @@ async function applyStampLogic(env, customer, shop, employeeId) {
     customer.stamps += 1;
     await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id, employee_id) VALUES (?, ?, ?, ?)`)
       .bind(crypto.randomUUID(), customer.id, shop.id, employeeId).run();
+    stampChanged = true;
   }
+
+  if (stampChanged && ctx && request) {
+    const origin = new URL(request.url).origin;
+    ctx.waitUntil(
+      pushGoogleWalletUpdate(env, origin, shop, customer).catch(e => console.error('Google Wallet Update fehlgeschlagen:', e))
+    );
+  }
+
   return { customer, cooldownHit };
 }
 
-async function grantStampToCustomer(env, customer, shop, employeeId) {
-  const result = await applyStampLogic(env, customer, shop, employeeId);
+async function grantStampToCustomer(env, customer, shop, employeeId, request, ctx) {
+  const result = await applyStampLogic(env, customer, shop, employeeId, request, ctx);
   return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit };
 }
 
-async function handleStempelTap(request, env, slug) {
+async function handleStempelTap(request, env, slug, ctx) {
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
   if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
 
-  const { headers, customer, isNew, cooldownHit } = await grantStamp(env, request, shop);
+  const { headers, customer, isNew, cooldownHit } = await grantStamp(env, request, shop, ctx);
 
   // TODO: sobald Apple/Google-Zertifikate als Secrets gesetzt sind, hier
   // echte Wallet-Karte erzeugen (isNew) bzw. per Push aktualisieren.
@@ -1605,12 +1618,14 @@ async function handleStempelStripeWebhook(request, env) {
    GOOGLE_WALLET_PRIVATE_KEY         — die "private_key" aus derselben Datei (mit \n als echte Zeilenumbrüche) */
 
 function base64url(input) {
-  let str;
-  if (typeof input === 'string') {
-    str = btoa(input);
-  } else {
-    str = btoa(String.fromCharCode(...new Uint8Array(input)));
-  }
+  // Strings müssen erst als UTF-8-Bytes kodiert werden, bevor btoa() sie
+  // base64-kodiert — sonst kippt btoa() Zeichen wie "ü" in ein falsches
+  // Einzelbyte (statt der 2-Byte-UTF-8-Folge), und beim Dekodieren wird
+  // daraus "�" (kaputte Umlaute in Google-Wallet-Texten).
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const str = btoa(binary);
   return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -1638,6 +1653,58 @@ async function signGoogleWalletJwt(payload, serviceAccountEmail, privateKeyPem) 
   return `${signingInput}.${base64url(signature)}`;
 }
 
+/* Baut Class-/Object-IDs und den Belohnungstext — gemeinsam genutzt vom initialen
+   "Zu Google Wallet hinzufügen" (JWT-Save) und vom späteren Live-Update (REST-Patch),
+   damit beide Wege exakt denselben Text/Stand erzeugen. */
+function buildLoyaltyIds(env, shop, customer) {
+  return {
+    classId: `${env.GOOGLE_WALLET_ISSUER_ID}.${shop.slug}`,
+    objectId: `${env.GOOGLE_WALLET_ISSUER_ID}.${customer.id}`,
+  };
+}
+
+function buildRewardMessage(shop, customer) {
+  const remaining = Math.max(0, shop.reward_threshold - customer.stamps);
+  return remaining === 0
+    ? `Belohnung bereit: ${shop.reward_text}`
+    : `Noch ${remaining} Stempel bis zu: ${shop.reward_text}`;
+}
+
+function buildLoyaltyClass(env, origin, shop, classId) {
+  return {
+    id: classId,
+    issuerName: 'Tapstempel',
+    programName: shop.name,
+    reviewStatus: 'UNDER_REVIEW',
+    hexBackgroundColor: shop.card_bg_color || '#14131a',
+    ...(shop.logo_key ? { programLogo: { sourceUri: { uri: `${origin}/photo/${shop.logo_key}` } } } : {}),
+  };
+}
+
+function buildLoyaltyObject(env, origin, shop, customer, classId, objectId) {
+  return {
+    id: objectId,
+    classId: classId,
+    state: 'ACTIVE',
+    accountId: customer.id,
+    accountName: shop.name,
+    loyaltyPoints: {
+      label: 'Stempel',
+      balance: { string: `${customer.stamps}/${shop.reward_threshold}` },
+    },
+    textModulesData: [
+      { id: 'reward_info', header: 'Deine Belohnung', body: buildRewardMessage(shop, customer) },
+    ],
+    barcode: {
+      type: 'QR_CODE',
+      value: `${origin}/staff-redeem/${customer.redeem_token}`,
+      alternateText: 'Für Personal',
+    },
+    hexBackgroundColor: shop.card_bg_color || '#14131a',
+    ...(shop.banner_key ? { heroImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } } : {}),
+  };
+}
+
 async function handleGoogleWalletSave(request, env, slug) {
   if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) {
     return new Response('Google Wallet ist noch nicht eingerichtet.', { status: 500 });
@@ -1652,45 +1719,10 @@ async function handleGoogleWalletSave(request, env, slug) {
   if (!customer) return new Response('Keine Stempelkarte gefunden — erst antippen oder QR-Code beitreten.', { status: 404 });
 
   const origin = new URL(request.url).origin;
-  const classId = `${env.GOOGLE_WALLET_ISSUER_ID}.${shop.slug}`;
-  const objectId = `${env.GOOGLE_WALLET_ISSUER_ID}.${customer.id}`;
-  const accent = shop.accent_color || '#6366f1';
+  const { classId, objectId } = buildLoyaltyIds(env, shop, customer);
 
-  const loyaltyClass = {
-    id: classId,
-    issuerName: 'Tapstempel',
-    programName: shop.name,
-    reviewStatus: 'UNDER_REVIEW',
-    hexBackgroundColor: shop.card_bg_color || '#14131a',
-    ...(shop.logo_key ? { programLogo: { sourceUri: { uri: `${origin}/photo/${shop.logo_key}` } } } : {}),
-  };
-
-  const remaining = Math.max(0, shop.reward_threshold - customer.stamps);
-  const rewardMsg = remaining === 0
-    ? `Belohnung bereit: ${shop.reward_text}`
-    : `Noch ${remaining} Stempel bis zu: ${shop.reward_text}`;
-
-  const loyaltyObject = {
-    id: objectId,
-    classId: classId,
-    state: 'ACTIVE',
-    accountId: customer.id,
-    accountName: shop.name,
-    loyaltyPoints: {
-      label: 'Stempel',
-      balance: { string: `${customer.stamps}/${shop.reward_threshold}` },
-    },
-    textModulesData: [
-      { id: 'reward_info', header: 'Deine Belohnung', body: rewardMsg },
-    ],
-    barcode: {
-      type: 'QR_CODE',
-      value: `${origin}/staff-redeem/${customer.redeem_token}`,
-      alternateText: 'Für Personal',
-    },
-    hexBackgroundColor: shop.card_bg_color || '#14131a',
-    ...(shop.banner_key ? { heroImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } } : {}),
-  };
+  const loyaltyClass = buildLoyaltyClass(env, origin, shop, classId);
+  const loyaltyObject = buildLoyaltyObject(env, origin, shop, customer, classId, objectId);
 
   const payload = {
     iss: env.GOOGLE_WALLET_SERVICE_ACCOUNT,
@@ -1708,6 +1740,62 @@ async function handleGoogleWalletSave(request, env, slug) {
     return Response.redirect(`https://pay.google.com/gp/v/save/${jwt}`, 302);
   } catch (e) {
     return new Response('Google Wallet konnte nicht erstellt werden: ' + e.message, { status: 500 });
+  }
+}
+
+/* Holt ein OAuth-Access-Token fürs Dienstkonto (JWT-Bearer-Flow), um danach
+   authentifiziert gegen die Google Wallet REST-API zu sprechen. Nötig, weil der
+   "Save"-JWT oben NUR den initialen "Zu Wallet hinzufügen"-Klick abdeckt — spätere
+   Änderungen an einer bereits gespeicherten Karte erreichen den Nutzer nur über
+   einen echten PATCH-Call hier. */
+async function getGoogleWalletAccessToken(env) {
+  const payload = {
+    iss: env.GOOGLE_WALLET_SERVICE_ACCOUNT,
+    scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  };
+  const jwt = await signGoogleWalletJwt(payload, env.GOOGLE_WALLET_SERVICE_ACCOUNT, env.GOOGLE_WALLET_PRIVATE_KEY);
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('Google OAuth fehlgeschlagen: ' + JSON.stringify(data));
+  return data.access_token;
+}
+
+/* Schreibt den aktuellen Stempelstand + Belohnungstext auf das bei Google bereits
+   gespeicherte Objekt zurück, damit iPhone/Android/Browser sofort denselben,
+   aktuellen Stand zeigen — statt des Standes vom letzten "Zu Wallet hinzufügen". */
+async function pushGoogleWalletUpdate(env, origin, shop, customer) {
+  if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) return;
+  if (!customer.redeem_token) return;
+
+  const { objectId } = buildLoyaltyIds(env, shop, customer);
+  const accessToken = await getGoogleWalletAccessToken(env);
+
+  const res = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loyaltyPoints: {
+        label: 'Stempel',
+        balance: { string: `${customer.stamps}/${shop.reward_threshold}` },
+      },
+      textModulesData: [
+        { id: 'reward_info', header: 'Deine Belohnung', body: buildRewardMessage(shop, customer) },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    // 404 heißt meist: Kunde hat die Karte nie zu Google Wallet hinzugefügt — kein Fehler, nur nichts zu tun.
+    if (res.status !== 404) {
+      throw new Error(`Google Wallet PATCH ${res.status}: ${await res.text()}`);
+    }
   }
 }
 
@@ -1766,7 +1854,7 @@ async function handleStaffRedeemPage(request, env, token) {
 </body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-async function handleStaffRedeemSubmit(request, env) {
+async function handleStaffRedeemSubmit(request, env, ctx) {
   const data = await readJson(request);
   const token = str(data?.token);
   const pin = str(data?.pin);
@@ -1781,7 +1869,7 @@ async function handleStaffRedeemSubmit(request, env) {
     .bind(shop.id, pinHash).first();
   if (!employee) return json({ error: 'PIN falsch' }, 401);
 
-  const { customer: updated, isNew, cooldownHit } = await grantStampToCustomer(env, customer, shop, employee.id);
+  const { customer: updated, isNew, cooldownHit } = await grantStampToCustomer(env, customer, shop, employee.id, request, ctx);
   const rewardReached = updated.stamps >= shop.reward_threshold;
   const html = renderStempelTapPage(shop, updated, { isNew: false, cooldownHit, rewardReached }, new URL(request.url).origin);
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });

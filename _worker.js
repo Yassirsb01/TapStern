@@ -1770,31 +1770,38 @@ async function getGoogleWalletAccessToken(env) {
 /* Schreibt den aktuellen Stempelstand + Belohnungstext auf das bei Google bereits
    gespeicherte Objekt zurück, damit iPhone/Android/Browser sofort denselben,
    aktuellen Stand zeigen — statt des Standes vom letzten "Zu Wallet hinzufügen". */
+/* Schickt bei jedem Stempel das KOMPLETTE Class- und Object-JSON an Google (nicht nur
+   Stempelstand + Text). Dadurch heilen sich alte/kaputte Karten (falsches Barcode-Alt-Text,
+   fehlendes Banner/Logo, veraltete Farben) automatisch beim nächsten Stempel selbst — ohne
+   dass der Kunde die Karte löschen und neu hinzufügen muss. PATCH überschreibt bei Google
+   nur die mitgeschickten Felder, das komplette Objekt mitzuschicken ist also unkritisch. */
 async function pushGoogleWalletUpdate(env, origin, shop, customer) {
   if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) return;
   if (!customer.redeem_token) return;
 
-  const { objectId } = buildLoyaltyIds(env, shop, customer);
+  const { classId, objectId } = buildLoyaltyIds(env, shop, customer);
   const accessToken = await getGoogleWalletAccessToken(env);
+  const authHeaders = { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
 
-  const res = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
+  const classRes = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}`, {
     method: 'PATCH',
-    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      loyaltyPoints: {
-        label: 'Stempel',
-        balance: { string: `${customer.stamps}/${shop.reward_threshold}` },
-      },
-      textModulesData: [
-        { id: 'reward_info', header: 'Deine Belohnung', body: buildRewardMessage(shop, customer) },
-      ],
-    }),
+    headers: authHeaders,
+    body: JSON.stringify(buildLoyaltyClass(env, origin, shop, classId)),
+  });
+  if (!classRes.ok && classRes.status !== 404) {
+    console.error(`Google Wallet Class-PATCH ${classRes.status}: ${await classRes.text()}`);
+  }
+
+  const objectRes = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
+    method: 'PATCH',
+    headers: authHeaders,
+    body: JSON.stringify(buildLoyaltyObject(env, origin, shop, customer, classId, objectId)),
   });
 
-  if (!res.ok) {
+  if (!objectRes.ok) {
     // 404 heißt meist: Kunde hat die Karte nie zu Google Wallet hinzugefügt — kein Fehler, nur nichts zu tun.
-    if (res.status !== 404) {
-      throw new Error(`Google Wallet PATCH ${res.status}: ${await res.text()}`);
+    if (objectRes.status !== 404) {
+      throw new Error(`Google Wallet Object-PATCH ${objectRes.status}: ${await objectRes.text()}`);
     }
   }
 }

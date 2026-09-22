@@ -1278,8 +1278,7 @@ async function handleStempelSettings(request, env) {
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   const data = await request.json();
 
-  const validIcons = ['circle', 'star', 'heart', 'coffee', 'tea', 'food', 'pizza', 'cocktail', 'beer', 'bread', 'cupcake', 'icecream', 'scissors', 'nails', 'flower', 'spa', 'bag', 'paw', 'dumbbell', 'ball', 'book', 'car', 'leaf', 'shisha'];
-  const stampIcon = validIcons.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
+  const stampIcon = STAMP_ICON_IDS.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
   const validPatterns = ['branche', 'none', 'dots', 'stripes'];
   const bgPattern = validPatterns.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'none');
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
@@ -1915,44 +1914,58 @@ function patternBackgroundCss(branche, colorHex, bgPattern) {
   const pattern = bgPattern || 'branche';
   if (pattern === 'none') return 'none';
   if (pattern === 'dots') {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><circle cx='4' cy='4' r='1.6' fill='${colorHex}' opacity='0.22'/></svg>`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><circle cx='4' cy='4' r='1.6' fill='${colorHex}' opacity='0.14'/></svg>`;
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
   if (pattern === 'stripes') {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><line x1='0' y1='26' x2='26' y2='0' stroke='${colorHex}' stroke-width='2' opacity='0.16'/></svg>`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><line x1='0' y1='26' x2='26' y2='0' stroke='${colorHex}' stroke-width='2' opacity='0.10'/></svg>`;
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
   const raw = brancheIconPath(branche).replace(/C/g, colorHex);
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72'><g opacity='0.16'>${raw}</g><g opacity='0.16' transform='translate(36 36)'>${raw}</g></svg>`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72'><g opacity='0.09'>${raw}</g><g opacity='0.09' transform='translate(36 36)'>${raw}</g></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
-/* Stempel-Symbol statt festem Kreis — der Laden wählt in den Einstellungen */
-const EMOJI_ICONS = {
-  star: '⭐', heart: '❤️', coffee: '☕', tea: '🍵', food: '🍽️', pizza: '🍕',
-  cocktail: '🍸', beer: '🍺', bread: '🥐', cupcake: '🧁', icecream: '🍦',
-  scissors: '✂️', nails: '💅', flower: '🌸', spa: '🧘', bag: '🛍️',
-  paw: '🐾', dumbbell: '🏋️', ball: '⚽', book: '📚', car: '🚗', leaf: '🍃',
+/* ══ Tapstempel Icon-System ══
+   Eigene flache Vektor-Icons statt Emoji-Font: ein 24×24-Raster, eine Strichstärke,
+   runde Enden — eine visuelle Sprache über alle Branchen hinweg. Reine Pfade ohne
+   Farbangabe: Farbe/Füllung kommt per CSS (gefüllt = Akzentfarbe, leer = gedämpft).
+   ACHTUNG: identisch in _worker.js und stempel.html halten. */
+const STAMP_ICONS = {
+  circle:   '<circle cx="12" cy="12" r="6.2"/>',
+  star:     '<path d="M12 4.6l2.28 4.63 5.11.74-3.7 3.6.88 5.09L12 16.26l-4.57 2.4.88-5.09-3.7-3.6 5.11-.74z"/>',
+  heart:    '<path d="M12 19.3l-5.65-5.43a3.7 3.7 0 0 1 0-5.35 3.9 3.9 0 0 1 5.65 0 3.9 3.9 0 0 1 5.65 0 3.7 3.7 0 0 1 0 5.35z"/>',
+  coffee:   '<path d="M5.6 9.2h10.2v5.1a4.2 4.2 0 0 1-4.2 4.2H9.8a4.2 4.2 0 0 1-4.2-4.2z"/><path d="M15.8 10.6h1.5a2.2 2.2 0 0 1 0 4.4h-1.5"/><path d="M9 4.3c-.7.9-.7 1.8 0 2.7M12.4 4.3c-.7.9-.7 1.8 0 2.7"/>',
+  tea:      '<path d="M6.2 9.6h9.4l-1 7.3a2.6 2.6 0 0 1-2.6 2.3h-2.2a2.6 2.6 0 0 1-2.6-2.3z"/><path d="M13.4 9.6l2.6-3.6"/><rect x="15.2" y="3" width="3.4" height="2.8" rx="0.7"/>',
+  food:     '<path d="M7.2 4v4.6a2 2 0 0 0 4 0V4"/><path d="M9.2 8.6V20"/><path d="M16.9 4c1.5.9 2.3 2.4 2.3 4.3 0 1.6-.8 2.5-2.3 2.7V20"/>',
+  pizza:    '<path d="M12 4.6l6.9 12.2a1 1 0 0 1-.9 1.5H6a1 1 0 0 1-.9-1.5z"/><path d="M7.4 10.9h9.2"/><circle cx="10.3" cy="13.6" r="1"/><circle cx="13.7" cy="15.2" r="1"/>',
+  cocktail: '<path d="M4.9 6.5h14.2L12 13.4z"/><path d="M12 13.4V19"/><path d="M8.7 19h6.6"/><path d="M14.6 6.5a2.6 2.6 0 0 1 3.6-2.3"/>',
+  beer:     '<path d="M7 9.4h8.4v7.6a2.4 2.4 0 0 1-2.4 2.4H9.4A2.4 2.4 0 0 1 7 17z"/><path d="M15.4 11.2h1.7a1.9 1.9 0 0 1 0 3.8h-1.7"/><path d="M7 9.4a2.2 2.2 0 0 1 1.5-3.6 2.7 2.7 0 0 1 4.3-.6 2.2 2.2 0 0 1 2.6 4.2"/>',
+  bread:    '<path d="M4.6 13.7c0-3 3.3-5.5 7.4-5.5s7.4 2.5 7.4 5.5v2.5a1.4 1.4 0 0 1-1.4 1.4H6a1.4 1.4 0 0 1-1.4-1.4z"/><path d="M9.4 8.5l-1.2 9M14.6 8.5l1.2 9"/>',
+  cupcake:  '<path d="M6.6 13.5h10.8l-1.3 4.3a1.6 1.6 0 0 1-1.6 1.2H9.5a1.6 1.6 0 0 1-1.6-1.2z"/><path d="M7.7 13.5a2.7 2.7 0 0 1 1.2-5.1 3.4 3.4 0 0 1 6.2 0 2.7 2.7 0 0 1 1.2 5.1"/>',
+  icecream: '<path d="M8.2 11.4a3.8 3.8 0 0 1 7.6 0z"/><path d="M7.6 11.4h8.8"/><path d="M9.3 11.4l2 7.2a.7.7 0 0 0 1.4 0l2-7.2"/>',
+  scissors: '<circle cx="7.2" cy="17.3" r="2.3"/><circle cx="16.8" cy="17.3" r="2.3"/><path d="M8.9 15.7L17.2 4.4M15.1 15.7L6.8 4.4"/>',
+  nails:    '<rect x="9.1" y="9.8" width="5.8" height="9.3" rx="1.7"/><path d="M10.7 9.8V7.3h2.6v2.5"/><path d="M12 4.2v3.1"/><path d="M17.6 5.6l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/>',
+  flower:   '<ellipse cx="12" cy="7.7" rx="2.2" ry="3.2"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(72 12 12)"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(144 12 12)"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(216 12 12)"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(288 12 12)"/>',
+  spa:      '<path d="M12 19.2c0-5 1.6-8.4 4.8-10.2 1.3 4.9-.3 8.3-4.8 10.2z"/><path d="M12 19.2c0-5-1.6-8.4-4.8-10.2-1.3 4.9.3 8.3 4.8 10.2z"/><path d="M12 19.2c-1.7-3.3-1.7-6.4 0-9.2 1.7 2.8 1.7 5.9 0 9.2z"/>',
+  bag:      '<path d="M6.2 8.6h11.6l.8 9.2a1.5 1.5 0 0 1-1.5 1.6H6.9a1.5 1.5 0 0 1-1.5-1.6z"/><path d="M9.2 10.5V7.7a2.8 2.8 0 0 1 5.6 0v2.8"/>',
+  paw:      '<ellipse cx="12" cy="16.3" rx="3.6" ry="2.9"/><ellipse cx="7.3" cy="11.8" rx="1.8" ry="2.2"/><ellipse cx="16.7" cy="11.8" rx="1.8" ry="2.2"/><ellipse cx="10" cy="8" rx="1.7" ry="2.1"/><ellipse cx="14" cy="8" rx="1.7" ry="2.1"/>',
+  dumbbell: '<path d="M4.4 10.2v3.6M7.3 8.5v7M16.7 8.5v7M19.6 10.2v3.6M7.3 12h9.4"/>',
+  ball:     '<circle cx="12" cy="12" r="7.4"/><path d="M12 8.3l3.1 2.3-1.2 3.7h-3.8l-1.2-3.7z"/><path d="M12 4.6v3.7M18.9 10.1l-3.8.5M16.4 17.8l-2.3-3.5M7.6 17.8l2.3-3.5M5.1 10.1l3.8.5"/>',
+  book:     '<path d="M4.7 5.4h4.6A2.7 2.7 0 0 1 12 8.1v10.5a2.2 2.2 0 0 0-2.2-2.2H4.7z"/><path d="M19.3 5.4h-4.6A2.7 2.7 0 0 0 12 8.1v10.5a2.2 2.2 0 0 1 2.2-2.2h5.1z"/>',
+  car:      '<path d="M4.7 16.3v-3.1l1.9-4.1a1.8 1.8 0 0 1 1.6-1h7.6a1.8 1.8 0 0 1 1.6 1l1.9 4.1v3.1"/><path d="M4.7 13.2h14.6"/><circle cx="8.1" cy="16.5" r="1.7"/><circle cx="15.9" cy="16.5" r="1.7"/>',
+  leaf:     '<path d="M19 5c0 7.3-4 11.4-9.4 11.4A4.6 4.6 0 0 1 5 11.8C5 7 10.6 5 19 5z"/><path d="M15.3 8.7L6.3 18.5"/>',
+  shisha:   '<path d="M9.8 3.6h4.4l-1 2.8h-2.4z"/><path d="M12 6.4v6.5"/><ellipse cx="12" cy="16.5" rx="3.9" ry="3.5"/>',
 };
 
-function stampIconShape(icon, accent, extraClass) {
-  const cls = `dot ${extraClass}`;
-  if (icon === 'shisha') {
-    const svg = '<ellipse cx="12" cy="17" rx="4.5" ry="4"/><rect x="11.3" y="6" width="1.4" height="9"/><path d="M9.5 6h5l-1 2.5h-3z"/>';
-    return `<div class="${cls} dot-icon"><svg viewBox="0 0 24 24">${svg}</svg></div>`;
-  }
-  if (EMOJI_ICONS[icon]) {
-    return `<div class="${cls} dot-emoji"><span>${EMOJI_ICONS[icon]}</span></div>`;
-  }
-  return `<div class="${cls}"></div>`;
-}
+const STAMP_ICON_IDS = Object.keys(STAMP_ICONS);
 
-function lightenHex(hex, amt) {
-  const n = parseInt(hex.replace('#', ''), 16);
-  const r = Math.min(255, Math.max(0, (n >> 16) + amt));
-  const g = Math.min(255, Math.max(0, ((n >> 8) & 0xff) + amt));
-  const b = Math.min(255, Math.max(0, (n & 0xff) + amt));
-  return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+/* Ein Stempel: Kachel + Icon. Gefüllt = kräftige Akzentfarbe mit Verlauf,
+   leer = outline-only in gedämpftem Ton. Der Kreis-Stempel bleibt eine reine Fläche. */
+function stampIconShape(icon, accent, extraClass) {
+  const cls = `dot ${extraClass}`.trim();
+  if (!icon || icon === 'circle' || !STAMP_ICONS[icon]) return `<div class="${cls}"></div>`;
+  return `<div class="${cls} dot-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${STAMP_ICONS[icon]}</svg></div>`;
 }
 
 function luminanceOf(hex) {
@@ -1969,29 +1982,60 @@ function mixHex(hex, target, pct) {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
 }
 
-/* Kontrast-Fläche fürs Emoji-Kästchen: bei dunklem Kartenhintergrund deutlich heller machen (Richtung Weiß),
-   bei hellem Kartenhintergrund deutlich dunkler (Richtung Schwarz) — echte Prozent-Mischung statt kleiner Zahl,
-   damit man's wirklich sieht, egal welche Farbe der Laden wählt. */
-function adaptiveSurface(hex) {
-  return luminanceOf(hex) > 0.55 ? mixHex(hex, '#000000', 0.14) : mixHex(hex, '#ffffff', 0.24);
+/* Kartennummer: aus der Kunden-ID abgeleitet, stabil und ohne Extra-Spalte in der DB */
+function cardNumberOf(id) {
+  let h = 0;
+  for (let i = 0; i < String(id).length; i++) h = (h * 31 + String(id).charCodeAt(i)) >>> 0;
+  return String(1000000 + (h % 9000000));
+}
+
+/* Spaltenzahl fürs Stempelraster — teilerfreundlich, damit keine halbe Reihe übrig bleibt */
+function stampColumns(total) {
+  if (total <= 5) return total;
+  for (const c of [5, 6, 4]) if (total % c === 0) return c;
+  return 5;
 }
 
 function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }, origin) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLightBg = luminanceOf(bg) > 0.55;
-  const bgSurface = isLightBg ? mixHex(bg, '#000000', 0.06) : mixHex(bg, '#ffffff', 0.09);
-  const bgSurface2 = isLightBg ? mixHex(bg, '#000000', 0.10) : mixHex(bg, '#ffffff', 0.15);
-  const emojiBox = adaptiveSurface(bg);
-  const textColor = isLightBg ? '#1a1a1a' : '#f3f0ea';
-  const mutedColor = isLightBg ? '#6b6b6b' : '#948d9c';
-  const cardBorder = isLightBg ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.08)';
+  const toward = isLightBg ? '#000000' : '#ffffff';
+  const away = isLightBg ? '#ffffff' : '#000000';
+
+  /* Verlauf + Glanz: die gewählte Hintergrundfarbe bleibt die Basis, oben links wird
+     leicht aufgehellt und mit einem Hauch Akzentfarbe getönt, unten rechts abgedunkelt. */
+  const pageTop = mixHex(mixHex(bg, away, isLightBg ? 0.45 : 0.10), accent, 0.07);
+  const pageDeep = mixHex(bg, isLightBg ? '#000000' : '#000000', isLightBg ? 0.05 : 0.30);
+  const cardTop = mixHex(mixHex(bg, away, isLightBg ? 0.60 : 0.16), accent, 0.09);
+  const cardMid = mixHex(bg, away, isLightBg ? 0.34 : 0.07);
+  const cardLow = mixHex(bg, '#000000', isLightBg ? 0.04 : 0.22);
+  const glossColor = isLightBg ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.16)';
+
+  const panelTop = mixHex(bg, toward, isLightBg ? 0.05 : 0.09);
+  const panelLow = mixHex(bg, toward, isLightBg ? 0.10 : 0.03);
+  const panelBorder = mixHex(bg, toward, isLightBg ? 0.16 : 0.18);
+  const tileEmpty = mixHex(bg, toward, isLightBg ? 0.07 : 0.06);
+  const tileEmptyLine = mixHex(bg, accent, 0.42);
+  const iconMuted = mixHex(bg, accent, 0.55);
+  const onAccent = luminanceOf(accent) > 0.62 ? '#14110f' : '#ffffff';
+  const accentSoft = mixHex(accent, bg, 0.78);
+  const accentText = isLightBg ? mixHex(accent, '#000000', 0.18) : mixHex(accent, '#ffffff', 0.18);
+
+  const textColor = isLightBg ? '#15141a' : '#f6f3ee';
+  const mutedColor = isLightBg ? '#6b6b6b' : '#9c96a6';
+  const cardBorder = isLightBg ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.09)';
+
   const message = cooldownHit
     ? 'Dieser Stempel wurde gerade schon erfasst — versuch es beim nächsten Besuch nochmal.'
     : rewardReached
-      ? `Belohnung erreicht: ${escapeHtml(shop.reward_text)}`
+      ? 'Belohnung erreicht!'
       : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
   const newestIndex = cooldownHit ? -1 : customer.stamps - 1;
+  const total = shop.reward_threshold;
+  const done = Math.min(customer.stamps, total);
+  const remaining = Math.max(0, total - customer.stamps);
+  const cols = stampColumns(total);
   const patternCss = patternBackgroundCss(shop.branche, accent, shop.bg_pattern);
   const bannerHtml = shop.banner_key
     ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(shop.banner_key)}')"></div>` : '';
@@ -2005,50 +2049,93 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
 <title>${escapeHtml(shop.name)} — Treueprogramm</title>
 <style>
   @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; animation-iteration-count:1 !important;} }
+  *{box-sizing:border-box;}
   body{
-    margin:0; font-family:'Inter',system-ui,sans-serif; background-color:${bg}; color:${textColor};
-    background-image:${patternCss}; background-repeat:repeat;
-    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden;
+    margin:0; font-family:'Inter',system-ui,-apple-system,sans-serif; color:${textColor};
+    background-color:${bg};
+    background-image:${patternCss === 'none' ? '' : patternCss + ','} radial-gradient(130% 80% at 18% -10%, ${pageTop} 0%, ${bg} 52%, ${pageDeep} 100%);
+    background-repeat:repeat, no-repeat;
+    background-attachment:scroll, fixed;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 20px; overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
   }
   .card{
-    background:${bgSurface}; border:1px solid ${cardBorder}; border-radius:20px; overflow:hidden;
-    max-width:360px; width:100%; text-align:center; position:relative; z-index:1;
+    background:linear-gradient(158deg, ${cardTop} 0%, ${cardMid} 46%, ${cardLow} 100%);
+    border:1px solid ${cardBorder}; border-radius:24px; overflow:hidden;
+    max-width:380px; width:100%; position:relative; z-index:1;
+    box-shadow:0 24px 60px -20px rgba(0,0,0,${isLightBg ? '0.22' : '0.6'}), 0 2px 0 0 ${isLightBg ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.06)'} inset;
     animation:cardIn 0.5s cubic-bezier(.16,1,.3,1);
   }
+  /* Glanz-Highlight oben links — liegt über dem Verlauf, unter dem Inhalt */
+  .card::before{
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background:radial-gradient(115% 62% at 8% -14%, ${glossColor} 0%, transparent 62%);
+  }
+  .card > *{position:relative; z-index:1;}
   @keyframes cardIn{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
-  .banner{height:96px; background-size:cover; background-position:center;}
+  .banner{height:104px; background-size:cover; background-position:center;}
+  .body-pad{padding:${shop.banner_key ? '0 24px 26px' : '26px 24px'};}
+
+  .card-head{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; ${shop.banner_key ? 'padding-top:26px;' : ''}}
+  .head-left{display:flex; align-items:center; gap:11px; min-width:0;}
   .logo-badge{
-    width:52px; height:52px; border-radius:12px; overflow:hidden; margin:${shop.banner_key ? '-30px auto 6px' : '24px auto 6px'};
-    background:${bgSurface2}; box-shadow:0 0 0 3px ${bgSurface}; position:relative; z-index:2;
+    width:42px; height:42px; border-radius:12px; overflow:hidden; flex:none;
+    background:${panelTop}; box-shadow:0 0 0 1px ${panelBorder};
   }
-  .logo-badge img{width:100%; height:100%; object-fit:cover;}
-  .body-pad{padding:${shop.banner_key || shop.logo_key ? '0 28px 32px' : '32px 28px'};}
-  h1{font-size:1.25rem; margin:0 0 4px; font-weight:700;}
-  .msg{color:${accent}; font-weight:600; margin:14px 0 24px; font-size:0.95rem;}
-  .stamps{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:0 0 6px;}
-  .dot{aspect-ratio:1; border-radius:50%; border:2px solid ${accent}; position:relative; display:flex; align-items:center; justify-content:center; transition:background 0.2s;}
-  .dot.filled{background:${accent};}
-  .dot-icon svg{width:56%; height:56%; fill:${accent}; stroke:${accent}; opacity:0.55;}
-  .dot-icon.filled svg{fill:#fff; stroke:#fff; opacity:1;}
-  .dot-emoji, .dot.filled.dot-emoji{border:none; border-radius:12px; background:${emojiBox};}
-  .dot-emoji span{font-size:1.65rem; line-height:1; opacity:0.4; filter:saturate(0.5); transition:opacity 0.2s, filter 0.2s;}
-  .dot-emoji.filled span{opacity:1; filter:none;}
+  .logo-badge img{width:100%; height:100%; object-fit:cover; display:block;}
+  h1{font-size:1.18rem; line-height:1.2; margin:0; font-weight:700; letter-spacing:-0.015em; overflow-wrap:anywhere;}
+  .head-right{text-align:right; flex:none;}
+  .eyebrow{font-size:0.6rem; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; color:${mutedColor}; display:block;}
+  .progress-value{font-size:1.6rem; font-weight:800; line-height:1.05; letter-spacing:-0.02em; display:block; margin-top:3px;}
+  .progress-value .sep, .progress-value .of{color:${mutedColor}; font-weight:600;}
+
+  .msg{
+    display:inline-block; margin:16px 0 14px; padding:7px 13px; border-radius:999px;
+    background:${mixHex(bg, accent, 0.16)}; border:1px solid ${mixHex(bg, accent, 0.30)}; color:${accentText};
+    font-weight:600; font-size:0.82rem; line-height:1.35;
+  }
+
+  .stamps-panel{
+    background:linear-gradient(170deg, ${panelTop} 0%, ${panelLow} 100%);
+    border:1px solid ${panelBorder}; border-radius:18px; padding:16px 15px;
+  }
+  .stamps{display:grid; grid-template-columns:repeat(${cols},1fr); gap:10px;}
+  .dot{
+    aspect-ratio:1; border-radius:50%; border:1.5px solid ${tileEmptyLine}; background:${tileEmpty};
+    display:flex; align-items:center; justify-content:center;
+    transition:background 0.2s, border-color 0.2s;
+  }
+  .dot svg{width:58%; height:58%; fill:none; stroke:${iconMuted}; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;}
+  .dot.filled{
+    border-color:transparent;
+    background:linear-gradient(150deg, ${mixHex(accent, '#ffffff', 0.22)} 0%, ${accent} 58%, ${mixHex(accent, '#000000', 0.16)} 100%);
+    box-shadow:0 3px 10px -3px ${accentSoft}, inset 0 1px 0 rgba(255,255,255,0.34);
+  }
+  .dot.filled svg{stroke:${onAccent};}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
-  .stamps-panel{background:${mixHex(bg, luminanceOf(bg) > 0.55 ? '#000000' : '#ffffff', 0.06)}; border:1px solid ${mixHex(bg, luminanceOf(bg) > 0.55 ? '#000000' : '#ffffff', 0.14)}; border-radius:16px; padding:16px 14px 12px;}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
-  .count{font-size:0.85rem; color:${mutedColor}; margin-top:14px;}
+
+  .reward-row{display:flex; align-items:flex-end; justify-content:space-between; gap:14px; margin-top:16px;}
+  .reward-text{font-size:0.93rem; font-weight:600; line-height:1.3; margin-top:4px; overflow-wrap:anywhere;}
+  .reward-col{min-width:0;}
+  .card-no{text-align:right; flex:none;}
+  .card-no-value{font-size:0.86rem; font-weight:600; color:${mutedColor}; margin-top:4px; font-variant-numeric:tabular-nums;}
+  .hint{font-size:0.78rem; color:${mutedColor}; margin-top:12px;}
+
   .extra-link{
-    display:inline-block; margin-top:20px; padding:11px 22px; border-radius:10px;
-    border:1px solid ${accent}; color:${accent}; text-decoration:none; font-size:0.88rem; font-weight:600;
+    display:block; text-align:center; margin-top:10px; padding:12px 22px; border-radius:12px;
+    border:1px solid ${tileEmptyLine}; color:${accentText}; text-decoration:none; font-size:0.86rem; font-weight:600;
   }
-  .qr-fallback{margin-top:18px; font-size:0.8rem; color:${mutedColor};}
   .wallet-btn{
     display:flex; align-items:center; justify-content:center; gap:8px; margin-top:18px;
-    padding:12px 16px; border-radius:10px; background:#fff; color:#1a1a1a; text-decoration:none;
-    font-size:0.88rem; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.15);
+    padding:13px 16px; border-radius:12px;
+    background:linear-gradient(150deg, ${mixHex(accent, '#ffffff', 0.18)}, ${accent});
+    color:${onAccent}; text-decoration:none; font-size:0.88rem; font-weight:700;
+    box-shadow:0 10px 24px -12px ${accentSoft};
   }
-  .qr-fallback summary{cursor:pointer; color:${accent};}
-  .qr-fallback #myQr{background:#fff; padding:10px; border-radius:10px;}
+  .qr-fallback{margin-top:14px; font-size:0.78rem; color:${mutedColor}; text-align:center;}
+  .qr-fallback summary{cursor:pointer; color:${accentText};}
+  .qr-fallback #myQr{background:#fff; padding:10px; border-radius:12px;}
   .qr-fallback #myQr svg{width:100%; height:auto; display:block;}
 </style></head>
 <body>
@@ -2056,17 +2143,35 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   <div class="card">
     ${bannerHtml}
     <div class="body-pad">
-      ${logoHtml}
-      <h1>${escapeHtml(shop.name)}</h1>
-      <div class="msg">${message}</div>
+      <div class="card-head">
+        <div class="head-left">
+          ${logoHtml}
+          <h1>${escapeHtml(shop.name)}</h1>
+        </div>
+        <div class="head-right">
+          <span class="eyebrow">Fortschritt</span>
+          <span class="progress-value">${done}<span class="sep"> / </span><span class="of">${total}</span></span>
+        </div>
+      </div>
+      <div class="msg">${escapeHtml(message)}</div>
       <div class="stamps-panel">
         <div class="stamps">
-          ${Array.from({ length: shop.reward_threshold }, (_, i) =>
+          ${Array.from({ length: total }, (_, i) =>
             stampIconShape(shop.stamp_icon, accent, `${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}`)
           ).join('')}
         </div>
-        <div class="count">${customer.stamps} / ${shop.reward_threshold} Stempel</div>
       </div>
+      <div class="reward-row">
+        <div class="reward-col">
+          <span class="eyebrow">Deine Belohnung</span>
+          <div class="reward-text">${escapeHtml(shop.reward_text || '')}</div>
+        </div>
+        <div class="card-no">
+          <span class="eyebrow">Karte</span>
+          <div class="card-no-value">${cardNumberOf(customer.id)}</div>
+        </div>
+      </div>
+      <div class="hint">${rewardReached ? 'Zeig diese Karte beim nächsten Besuch vor und lös deine Belohnung ein.' : `Noch ${remaining} ${remaining === 1 ? 'Stempel' : 'Stempel'} bis zur Belohnung.`}</div>
       <a class="wallet-btn" href="${origin}/wallet/google/${shop.slug}">
         <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7 3.5v8.6l-7 3.5-7-3.5V7.7l7-3.5z"/></svg>
         Zu Google Wallet hinzufügen

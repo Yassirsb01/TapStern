@@ -1279,8 +1279,7 @@ async function handleStempelSettings(request, env) {
   const data = await request.json();
 
   const stampIcon = STAMP_ICON_IDS.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
-  const validPatterns = ['branche', 'none', 'dots', 'stripes'];
-  const bgPattern = validPatterns.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'none');
+  const bgPattern = BG_PATTERN_IDS.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'aurora');
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
   const cardBgColor = /^#[0-9a-fA-F]{6}$/.test(str(data.card_bg_color)) ? str(data.card_bg_color) : (shop.card_bg_color || '#14131a');
 
@@ -1899,87 +1898,204 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-/* Branchen-Symbol fürs Hintergrundmuster — Farbe kommt vom Laden, Form von der Branche */
-function brancheIconPath(branche) {
-  const icons = {
-    'Café': '<path d="M8 9 L9.5 20 Q9.7 22 11.5 22 L16.5 22 Q18.3 22 18.5 20 L20 9 Z" fill="C"/><path d="M20 11 Q25 11 25 15 Q25 19 20 18.3" fill="none" stroke="C" stroke-width="1.6"/>',
-    'Restaurant': '<line x1="8" y1="3" x2="8" y2="13" stroke="C" stroke-width="1.6"/><line x1="6" y1="3" x2="6" y2="9" stroke="C" stroke-width="1.6"/><line x1="10" y1="3" x2="10" y2="9" stroke="C" stroke-width="1.6"/><line x1="8" y1="13" x2="8" y2="23" stroke="C" stroke-width="1.6"/><path d="M21 3 L21 11 Q21 13 19 13 L19 23" fill="none" stroke="C" stroke-width="1.6"/>',
-    'Bar': '<path d="M6 5 L19 5 L12.5 14 Z" fill="none" stroke="C" stroke-width="1.6"/><line x1="12.5" y1="14" x2="12.5" y2="22" stroke="C" stroke-width="1.6"/><line x1="8.5" y1="22" x2="16.5" y2="22" stroke="C" stroke-width="1.6"/>',
-    'Shishabar': '<path d="M12 22 Q6 22 6 16.5 Q6 11 12.5 11 Q17 11 17 6.5 Q17 3 12.5 3" fill="none" stroke="C" stroke-width="1.6" stroke-linecap="round"/>',
-  };
-  return icons[branche] || '<path d="M13 2 L15.3 9.7 L23 12 L15.3 14.3 L13 22 L10.7 14.3 L3 12 L10.7 9.7 Z" fill="C"/>';
-}
+/* ══ Kartenhintergrund ══
+   Statt Flächenfarbe ein mehrschichtiger Verlauf: Basis aus der Ladenfarbe,
+   darüber je nach gewähltem Stil farbige Lichter, ein Raster oder ein
+   Glanz-Streifen. Alles reines CSS, keine Bilddateien.
+   Reihenfolge der Ebenen: Muster/Lichter zuerst, Basisverlauf zuletzt.
+   ACHTUNG: gleiche Werte in stempel.html (cardBackgroundLayers). */
+const BG_PATTERNS = [
+  { id: 'aurora', label: 'Aurora' },
+  { id: 'mesh', label: 'Farbnebel' },
+  { id: 'spotlight', label: 'Spotlight' },
+  { id: 'grid', label: 'Raster' },
+  { id: 'dots', label: 'Punkte' },
+  { id: 'rays', label: 'Glanzstreifen' },
+  { id: 'none', label: 'Nur Verlauf' },
+];
+const BG_PATTERN_IDS = BG_PATTERNS.map(p => p.id);
 
-function patternBackgroundCss(branche, colorHex, bgPattern) {
-  const pattern = bgPattern || 'branche';
-  if (pattern === 'none') return 'none';
-  if (pattern === 'dots') {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><circle cx='4' cy='4' r='1.6' fill='${colorHex}' opacity='0.14'/></svg>`;
-    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-  }
-  if (pattern === 'stripes') {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26'><line x1='0' y1='26' x2='26' y2='0' stroke='${colorHex}' stroke-width='2' opacity='0.10'/></svg>`;
-    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-  }
-  const raw = brancheIconPath(branche).replace(/C/g, colorHex);
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72'><g opacity='0.09'>${raw}</g><g opacity='0.09' transform='translate(36 36)'>${raw}</g></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-}
-
-/* ══ Tapstempel Icon-System ══
-   Eigene flache Vektor-Icons statt Emoji-Font: ein 24×24-Raster, eine Strichstärke,
-   runde Enden — eine visuelle Sprache über alle Branchen hinweg. Reine Pfade ohne
-   Farbangabe: Farbe/Füllung kommt per CSS (gefüllt = Akzentfarbe, leer = gedämpft).
-   ACHTUNG: identisch in _worker.js und stempel.html halten. */
-const STAMP_ICONS = {
-  circle:   '<circle cx="12" cy="12" r="6.2"/>',
-  star:     '<path d="M12 4.6l2.28 4.63 5.11.74-3.7 3.6.88 5.09L12 16.26l-4.57 2.4.88-5.09-3.7-3.6 5.11-.74z"/>',
-  heart:    '<path d="M12 19.3l-5.65-5.43a3.7 3.7 0 0 1 0-5.35 3.9 3.9 0 0 1 5.65 0 3.9 3.9 0 0 1 5.65 0 3.7 3.7 0 0 1 0 5.35z"/>',
-  coffee:   '<path d="M5.6 9.2h10.2v5.1a4.2 4.2 0 0 1-4.2 4.2H9.8a4.2 4.2 0 0 1-4.2-4.2z"/><path d="M15.8 10.6h1.5a2.2 2.2 0 0 1 0 4.4h-1.5"/><path d="M9 4.3c-.7.9-.7 1.8 0 2.7M12.4 4.3c-.7.9-.7 1.8 0 2.7"/>',
-  tea:      '<path d="M6.2 9.6h9.4l-1 7.3a2.6 2.6 0 0 1-2.6 2.3h-2.2a2.6 2.6 0 0 1-2.6-2.3z"/><path d="M13.4 9.6l2.6-3.6"/><rect x="15.2" y="3" width="3.4" height="2.8" rx="0.7"/>',
-  food:     '<path d="M7.2 4v4.6a2 2 0 0 0 4 0V4"/><path d="M9.2 8.6V20"/><path d="M16.9 4c1.5.9 2.3 2.4 2.3 4.3 0 1.6-.8 2.5-2.3 2.7V20"/>',
-  pizza:    '<path d="M12 4.6l6.9 12.2a1 1 0 0 1-.9 1.5H6a1 1 0 0 1-.9-1.5z"/><path d="M7.4 10.9h9.2"/><circle cx="10.3" cy="13.6" r="1"/><circle cx="13.7" cy="15.2" r="1"/>',
-  cocktail: '<path d="M4.9 6.5h14.2L12 13.4z"/><path d="M12 13.4V19"/><path d="M8.7 19h6.6"/><path d="M14.6 6.5a2.6 2.6 0 0 1 3.6-2.3"/>',
-  beer:     '<path d="M7 9.4h8.4v7.6a2.4 2.4 0 0 1-2.4 2.4H9.4A2.4 2.4 0 0 1 7 17z"/><path d="M15.4 11.2h1.7a1.9 1.9 0 0 1 0 3.8h-1.7"/><path d="M7 9.4a2.2 2.2 0 0 1 1.5-3.6 2.7 2.7 0 0 1 4.3-.6 2.2 2.2 0 0 1 2.6 4.2"/>',
-  bread:    '<path d="M4.6 13.7c0-3 3.3-5.5 7.4-5.5s7.4 2.5 7.4 5.5v2.5a1.4 1.4 0 0 1-1.4 1.4H6a1.4 1.4 0 0 1-1.4-1.4z"/><path d="M9.4 8.5l-1.2 9M14.6 8.5l1.2 9"/>',
-  cupcake:  '<path d="M6.6 13.5h10.8l-1.3 4.3a1.6 1.6 0 0 1-1.6 1.2H9.5a1.6 1.6 0 0 1-1.6-1.2z"/><path d="M7.7 13.5a2.7 2.7 0 0 1 1.2-5.1 3.4 3.4 0 0 1 6.2 0 2.7 2.7 0 0 1 1.2 5.1"/>',
-  icecream: '<path d="M8.2 11.4a3.8 3.8 0 0 1 7.6 0z"/><path d="M7.6 11.4h8.8"/><path d="M9.3 11.4l2 7.2a.7.7 0 0 0 1.4 0l2-7.2"/>',
-  scissors: '<circle cx="7.2" cy="17.3" r="2.3"/><circle cx="16.8" cy="17.3" r="2.3"/><path d="M8.9 15.7L17.2 4.4M15.1 15.7L6.8 4.4"/>',
-  nails:    '<rect x="9.1" y="9.8" width="5.8" height="9.3" rx="1.7"/><path d="M10.7 9.8V7.3h2.6v2.5"/><path d="M12 4.2v3.1"/><path d="M17.6 5.6l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/>',
-  flower:   '<ellipse cx="12" cy="7.7" rx="2.2" ry="3.2"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(72 12 12)"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(144 12 12)"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(216 12 12)"/><ellipse cx="12" cy="7.7" rx="2.2" ry="3.2" transform="rotate(288 12 12)"/>',
-  spa:      '<path d="M12 19.2c0-5 1.6-8.4 4.8-10.2 1.3 4.9-.3 8.3-4.8 10.2z"/><path d="M12 19.2c0-5-1.6-8.4-4.8-10.2-1.3 4.9.3 8.3 4.8 10.2z"/><path d="M12 19.2c-1.7-3.3-1.7-6.4 0-9.2 1.7 2.8 1.7 5.9 0 9.2z"/>',
-  bag:      '<path d="M6.2 8.6h11.6l.8 9.2a1.5 1.5 0 0 1-1.5 1.6H6.9a1.5 1.5 0 0 1-1.5-1.6z"/><path d="M9.2 10.5V7.7a2.8 2.8 0 0 1 5.6 0v2.8"/>',
-  paw:      '<ellipse cx="12" cy="16.3" rx="3.6" ry="2.9"/><ellipse cx="7.3" cy="11.8" rx="1.8" ry="2.2"/><ellipse cx="16.7" cy="11.8" rx="1.8" ry="2.2"/><ellipse cx="10" cy="8" rx="1.7" ry="2.1"/><ellipse cx="14" cy="8" rx="1.7" ry="2.1"/>',
-  dumbbell: '<path d="M4.4 10.2v3.6M7.3 8.5v7M16.7 8.5v7M19.6 10.2v3.6M7.3 12h9.4"/>',
-  ball:     '<circle cx="12" cy="12" r="7.4"/><path d="M12 8.3l3.1 2.3-1.2 3.7h-3.8l-1.2-3.7z"/><path d="M12 4.6v3.7M18.9 10.1l-3.8.5M16.4 17.8l-2.3-3.5M7.6 17.8l2.3-3.5M5.1 10.1l3.8.5"/>',
-  book:     '<path d="M4.7 5.4h4.6A2.7 2.7 0 0 1 12 8.1v10.5a2.2 2.2 0 0 0-2.2-2.2H4.7z"/><path d="M19.3 5.4h-4.6A2.7 2.7 0 0 0 12 8.1v10.5a2.2 2.2 0 0 1 2.2-2.2h5.1z"/>',
-  car:      '<path d="M4.7 16.3v-3.1l1.9-4.1a1.8 1.8 0 0 1 1.6-1h7.6a1.8 1.8 0 0 1 1.6 1l1.9 4.1v3.1"/><path d="M4.7 13.2h14.6"/><circle cx="8.1" cy="16.5" r="1.7"/><circle cx="15.9" cy="16.5" r="1.7"/>',
-  leaf:     '<path d="M19 5c0 7.3-4 11.4-9.4 11.4A4.6 4.6 0 0 1 5 11.8C5 7 10.6 5 19 5z"/><path d="M15.3 8.7L6.3 18.5"/>',
-  shisha:   '<path d="M9.8 3.6h4.4l-1 2.8h-2.4z"/><path d="M12 6.4v6.5"/><ellipse cx="12" cy="16.5" rx="3.9" ry="3.5"/>',
-};
-
-const STAMP_ICON_IDS = Object.keys(STAMP_ICONS);
-
-/* Ein Stempel: Kachel + Icon. Gefüllt = kräftige Akzentfarbe mit Verlauf,
-   leer = outline-only in gedämpftem Ton. Der Kreis-Stempel bleibt eine reine Fläche. */
-function stampIconShape(icon, accent, extraClass) {
-  const cls = `dot ${extraClass}`.trim();
-  if (!icon || icon === 'circle' || !STAMP_ICONS[icon]) return `<div class="${cls}"></div>`;
-  return `<div class="${cls} dot-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${STAMP_ICONS[icon]}</svg></div>`;
-}
-
+/* Helligkeit einer Farbe (0–1) — entscheidet über helles oder dunkles Kartenthema */
 function luminanceOf(hex) {
   const n = parseInt(hex.replace('#', ''), 16);
   const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
+/* Zwei Farben prozentual mischen — daraus leiten sich alle Flächen der Karte ab */
 function mixHex(hex, target, pct) {
   const n1 = parseInt(hex.replace('#', ''), 16), n2 = parseInt(target.replace('#', ''), 16);
   const r = Math.round(((n1 >> 16) & 0xff) + (((n2 >> 16) & 0xff) - ((n1 >> 16) & 0xff)) * pct);
   const g = Math.round(((n1 >> 8) & 0xff) + (((n2 >> 8) & 0xff) - ((n1 >> 8) & 0xff)) * pct);
   const b = Math.round((n1 & 0xff) + ((n2 & 0xff) - (n1 & 0xff)) * pct);
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+/* Hex + Alpha-Prozent → #rrggbbaa */
+function withAlpha(hex, pct) {
+  const a = Math.round(Math.max(0, Math.min(1, pct)) * 255).toString(16).padStart(2, '0');
+  return hex + a;
+}
+
+function cardBackgroundLayers(pattern, accent, bg, isLightBg) {
+  const away = isLightBg ? '#ffffff' : '#000000';
+  const top = mixHex(mixHex(bg, away, isLightBg ? 0.45 : 0.12), accent, 0.08);
+  const deep = mixHex(bg, '#000000', isLightBg ? 0.05 : 0.32);
+  const base = `radial-gradient(135% 85% at 18% -12%, ${top} 0%, ${bg} 52%, ${deep} 100%)`;
+  const strong = isLightBg ? 0.22 : 0.34;
+  const soft = isLightBg ? 0.13 : 0.22;
+  const line = withAlpha(accent, isLightBg ? 0.10 : 0.09);
+  /* Zweite Farbe fürs Farbnebel-Muster: Akzent Richtung Weiß bzw. Schwarz gedreht */
+  const accent2 = isLightBg ? mixHex(accent, '#ffffff', 0.45) : mixHex(accent, '#ffffff', 0.35);
+
+  switch (pattern) {
+    case 'mesh':
+      return {
+        image: [
+          `radial-gradient(52% 38% at 82% 8%, ${withAlpha(accent, strong)} 0%, transparent 70%)`,
+          `radial-gradient(46% 34% at 8% 34%, ${withAlpha(accent2, soft)} 0%, transparent 72%)`,
+          `radial-gradient(58% 42% at 52% 104%, ${withAlpha(accent, soft)} 0%, transparent 70%)`,
+          base,
+        ].join(', '),
+        size: 'auto', repeat: 'no-repeat',
+      };
+    case 'spotlight':
+      return {
+        image: [
+          `radial-gradient(70% 45% at 50% -8%, ${withAlpha(accent, strong)} 0%, transparent 68%)`,
+          base,
+        ].join(', '),
+        size: 'auto', repeat: 'no-repeat',
+      };
+    case 'grid':
+      return {
+        image: [
+          `linear-gradient(${line} 1px, transparent 1px)`,
+          `linear-gradient(90deg, ${line} 1px, transparent 1px)`,
+          base,
+        ].join(', '),
+        size: '34px 34px, 34px 34px, auto', repeat: 'repeat, repeat, no-repeat',
+      };
+    case 'dots':
+      return {
+        image: [
+          `radial-gradient(${withAlpha(accent, isLightBg ? 0.16 : 0.15)} 1.6px, transparent 1.7px)`,
+          base,
+        ].join(', '),
+        size: '22px 22px, auto', repeat: 'repeat, no-repeat',
+      };
+    case 'rays':
+      return {
+        image: [
+          `repeating-linear-gradient(115deg, ${withAlpha(accent, 0.11)} 0 2px, transparent 2px 22px)`,
+          base,
+        ].join(', '),
+        size: 'auto', repeat: 'repeat, no-repeat',
+      };
+    case 'none':
+      return { image: base, size: 'auto', repeat: 'no-repeat' };
+    default: /* 'aurora' — auch der Fallback für alte gespeicherte Werte */
+      return {
+        image: [
+          `radial-gradient(48% 34% at 88% 4%, ${withAlpha(accent, strong)} 0%, transparent 68%)`,
+          `radial-gradient(54% 38% at 4% 92%, ${withAlpha(accent, soft)} 0%, transparent 70%)`,
+          base,
+        ].join(', '),
+        size: 'auto', repeat: 'no-repeat',
+      };
+  }
+}
+
+/* ══ Tapstempel Icon-System ══
+   Eigene farbige Icons als SVG-Sprite: jedes Symbol ist ein <symbol> mit
+   Verläufen und Glanzlichtern, eingebunden über <use href="#tsi-…">. Die
+   Verläufe liegen einmal zentral in <defs>, deshalb kostet ein Stempel mehr
+   im Markup nur ein <use>. Gefüllt = volle Farbe, leer = ausgegraut (CSS).
+   ACHTUNG: Sprite und ID-Liste identisch in _worker.js und stempel.html halten. */
+const STAMP_ICON_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs>
+<linearGradient id="tsg-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#ef9b16"/></linearGradient>
+<linearGradient id="tsg-amber" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc861"/><stop offset="1" stop-color="#e2761b"/></linearGradient>
+<linearGradient id="tsg-red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a6b"/><stop offset="1" stop-color="#dc2f1c"/></linearGradient>
+<linearGradient id="tsg-pink" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb6d3"/><stop offset="1" stop-color="#ec4f93"/></linearGradient>
+<linearGradient id="tsg-purple" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c7a4ff"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+<linearGradient id="tsg-blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ecbff"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+<linearGradient id="tsg-teal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7ee8da"/><stop offset="1" stop-color="#0d9488"/></linearGradient>
+<linearGradient id="tsg-green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93e39b"/><stop offset="1" stop-color="#22a04b"/></linearGradient>
+<linearGradient id="tsg-kraft" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eac599"/><stop offset="1" stop-color="#bd8447"/></linearGradient>
+<linearGradient id="tsg-choc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b3773f"/><stop offset="1" stop-color="#6d3c17"/></linearGradient>
+<linearGradient id="tsg-coffee" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a4a25"/><stop offset="1" stop-color="#43220e"/></linearGradient>
+<linearGradient id="tsg-cream" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#f0dcba"/></linearGradient>
+<linearGradient id="tsg-white" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6ef"/></linearGradient>
+<linearGradient id="tsg-steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef3f9"/><stop offset="1" stop-color="#93a3b8"/></linearGradient>
+<linearGradient id="tsg-dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a6678"/><stop offset="1" stop-color="#1f2937"/></linearGradient>
+<linearGradient id="tsg-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#cfe1ee" stop-opacity=".7"/></linearGradient>
+</defs>
+
+<symbol id="tsi-circle" viewBox="0 0 48 48"><circle cx="24" cy="24" r="15" fill="currentColor"/><ellipse cx="19" cy="17.5" rx="8" ry="5.4" fill="#fff" opacity=".3"/></symbol>
+
+<symbol id="tsi-star" viewBox="0 0 48 48"><path d="M24 6.5l5.4 11 12.1 1.8-8.8 8.5 2.1 12L24 34.1 13.2 39.8l2.1-12-8.8-8.5 12.1-1.8z" fill="url(#tsg-gold)"/><path d="M24 6.5l5.4 11 12.1 1.8-8.8 8.5-2.6-13.9z" fill="#fff" opacity=".25"/></symbol>
+
+<symbol id="tsi-heart" viewBox="0 0 48 48"><path d="M24 40.6C12.8 33.3 7.2 27.1 7.2 20.6A8.8 8.8 0 0 1 24 16.1a8.8 8.8 0 0 1 16.8 4.5c0 6.5-5.6 12.7-16.8 20z" fill="url(#tsg-red)"/><ellipse cx="16.2" cy="21.4" rx="4.6" ry="3" fill="#fff" opacity=".4" transform="rotate(-28 16.2 21.4)"/></symbol>
+
+<symbol id="tsi-coffee" viewBox="0 0 48 48"><ellipse cx="22" cy="39.5" rx="15" ry="3" fill="url(#tsg-steel)"/><path d="M33.5 18.5h3a5.8 5.8 0 0 1 0 11.6h-3" fill="none" stroke="#cfd8e3" stroke-width="3.4" stroke-linecap="round"/><path d="M9 15.5h26v10.8A13 13 0 0 1 22 39.3 13 13 0 0 1 9 26.3z" fill="url(#tsg-white)"/><ellipse cx="22" cy="15.8" rx="13" ry="3.6" fill="url(#tsg-coffee)"/><path d="M14.4 21.5c-.6 5 .2 9.4 2.4 13.2" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".55"/><path d="M16.5 4.5c-1.6 2.2-1.6 4.4 0 6.6M24 3c-1.6 2.2-1.6 4.4 0 6.6" fill="none" stroke="#c3ccd8" stroke-width="2.2" stroke-linecap="round"/></symbol>
+
+<symbol id="tsi-tea" viewBox="0 0 48 48"><path d="M17 5c-1.8 2.4-1.8 4.8 0 7.2M24.5 3.5c-1.8 2.4-1.8 4.8 0 7.2M32 5c-1.8 2.4-1.8 4.8 0 7.2" fill="none" stroke="#b9c5d2" stroke-width="2.2" stroke-linecap="round"/><path d="M11.5 15h25l-2.6 21.5A6 6 0 0 1 28 42h-8A6 6 0 0 1 14.1 36.5z" fill="url(#tsg-glass)"/><path d="M14.4 21h19.2l-1.9 14.8A4 4 0 0 1 27.8 39h-7.6a4 4 0 0 1-3.9-3.2z" fill="url(#tsg-amber)"/><path d="M20 21c2.4-3.4 6-4.6 10.5-3.4-.8 3.8-3.6 6-8.4 6.2z" fill="url(#tsg-green)"/><path d="M17.4 17.5h3l-1.8 20h-2.5z" fill="#fff" opacity=".5"/></symbol>
+
+<symbol id="tsi-food" viewBox="0 0 48 48"><path d="M10 7.5v9.5a3.2 3.2 0 0 0 6.4 0V7.5" fill="none" stroke="#47536b" stroke-width="3.2" stroke-linecap="round"/><path d="M13.2 7.5v9.5M13.2 20V40" stroke="#47536b" stroke-width="3.2" stroke-linecap="round"/><path d="M36.5 7.5c3 3.4 3.6 8.2 1.4 12.2-.4.8-.9 1.4-1.4 1.8V40" fill="none" stroke="#47536b" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24.5" cy="24" r="12" fill="url(#tsg-white)"/><circle cx="24.5" cy="24" r="7.6" fill="none" stroke="#cfd8e3" stroke-width="2"/><ellipse cx="19.5" cy="18.5" rx="4.4" ry="2.8" fill="#fff" opacity=".75"/></symbol>
+
+<symbol id="tsi-pizza" viewBox="0 0 48 48"><path d="M24 5.5l15.6 28.2a3 3 0 0 1-2.6 4.5H11a3 3 0 0 1-2.6-4.5z" fill="url(#tsg-kraft)"/><path d="M24 13l12.2 22H11.8z" fill="url(#tsg-gold)"/><circle cx="20.3" cy="25" r="2.8" fill="#dc2f1c"/><circle cx="27.4" cy="30.5" r="2.8" fill="#dc2f1c"/><circle cx="24" cy="18.6" r="2.3" fill="#dc2f1c"/><path d="M24 5.5l4.5 8.2-9 0z" fill="#fff" opacity=".2"/></symbol>
+
+<symbol id="tsi-cocktail" viewBox="0 0 48 48"><path d="M23 26v12" stroke="#c3ccd8" stroke-width="2.8" stroke-linecap="round"/><path d="M15 40h16" stroke="#c3ccd8" stroke-width="3.4" stroke-linecap="round"/><path d="M6.5 10.5h33L23 27z" fill="url(#tsg-glass)"/><path d="M11.6 14.5h22.8L23 26z" fill="url(#tsg-pink)"/><circle cx="33.5" cy="9" r="3.6" fill="#dc2f1c"/><path d="M33.5 5.5c.8-3.4 2.8-5 6-5" fill="none" stroke="#22a04b" stroke-width="2" stroke-linecap="round"/></symbol>
+
+<symbol id="tsi-beer" viewBox="0 0 48 48"><path d="M31 20.5h3.6a5.6 5.6 0 0 1 0 11.2H31" fill="none" stroke="#d9c07f" stroke-width="3.4" stroke-linecap="round"/><path d="M11 16h20v18.5a6 6 0 0 1-6 6h-8a6 6 0 0 1-6-6z" fill="url(#tsg-amber)"/><path d="M11 16h20v4.5H11z" fill="#fff"/><circle cx="14.5" cy="14" r="5" fill="#fff"/><circle cx="21.5" cy="11.5" r="6" fill="#fff"/><circle cx="28.5" cy="14" r="5" fill="#fff"/><rect x="14.6" y="22" width="3.4" height="14" rx="1.7" fill="#fff" opacity=".45"/></symbol>
+
+<symbol id="tsi-bread" viewBox="0 0 48 48"><path d="M13.5 25.5c-2.4-11 .6-17.5 4.6-17.5s7 6.5 4.6 17.5z" fill="url(#tsg-gold)"/><path d="M15.2 13.5l4.6-2.2M14.6 17.5l5.6-2.6M14.4 21.5l6-2.8" stroke="#cf8f1a" stroke-width="1.6" stroke-linecap="round"/><path d="M25.5 25.5c-2.4-12 .6-19 4.8-19s7.2 7 4.8 19z" fill="url(#tsg-gold)"/><path d="M27.2 12.5l4.8-2.4M26.6 16.5l5.8-2.8M26.4 20.5l6.2-3" stroke="#cf8f1a" stroke-width="1.6" stroke-linecap="round"/><path d="M9 24h30l-2.2 16.4a3 3 0 0 1-3 2.6H14.2a3 3 0 0 1-3-2.6z" fill="url(#tsg-kraft)"/><path d="M9 28h30" stroke="#8a5f2e" stroke-width="1.8" opacity=".3"/><path d="M13.5 29.5h3.2l-1 11h-2.6z" fill="#fff" opacity=".3"/></symbol>
+
+<symbol id="tsi-cupcake" viewBox="0 0 48 48"><path d="M13.5 24.5h21l-2.6 14.2a3.2 3.2 0 0 1-3.1 2.6h-9.6a3.2 3.2 0 0 1-3.1-2.6z" fill="url(#tsg-kraft)"/><path d="M19.5 25.5l-1 15M24 25.5v15M28.5 25.5l1 15" stroke="#8a5f2e" stroke-width="1.5" opacity=".3"/><path d="M14.5 25c-3-2.6-2-7 1.8-8.2-.6-5.3 3.1-9.3 7.7-9.3s8.3 4 7.7 9.3c3.8 1.2 4.8 5.6 1.8 8.2z" fill="url(#tsg-pink)"/><circle cx="24" cy="6.5" r="3.2" fill="#dc2f1c"/><ellipse cx="18.5" cy="17" rx="3.4" ry="2.4" fill="#fff" opacity=".45"/></symbol>
+
+<symbol id="tsi-icecream" viewBox="0 0 48 48"><path d="M14.5 23.5h19l-7.9 18.2a1.8 1.8 0 0 1-3.2 0z" fill="url(#tsg-kraft)"/><path d="M17.5 23.5l5.5 15M25.5 23.5l-4.5 12" stroke="#8a5f2e" stroke-width="1.5" opacity=".35"/><circle cx="18" cy="18.5" r="6.8" fill="url(#tsg-pink)"/><circle cx="30" cy="18.5" r="6.8" fill="url(#tsg-cream)"/><circle cx="24" cy="11.5" r="6.8" fill="url(#tsg-choc)"/><ellipse cx="21" cy="8.5" rx="2.6" ry="1.8" fill="#fff" opacity=".35"/></symbol>
+
+<symbol id="tsi-scissors" viewBox="0 0 48 48"><path d="M17.5 30.5 33.5 8.5M30.5 30.5 14.5 8.5" stroke="url(#tsg-steel)" stroke-width="4.2" stroke-linecap="round"/><circle cx="14.5" cy="36" r="5.6" fill="none" stroke="url(#tsg-red)" stroke-width="3.6"/><circle cx="33.5" cy="36" r="5.6" fill="none" stroke="url(#tsg-red)" stroke-width="3.6"/><circle cx="24" cy="27" r="2.4" fill="#5a6678"/></symbol>
+
+<symbol id="tsi-nails" viewBox="0 0 48 48"><rect x="19.5" y="6" width="9" height="10.5" rx="2.4" fill="url(#tsg-dark)"/><rect x="21.5" y="15" width="5" height="5" fill="#334155"/><path d="M15.5 19.5h17v17.6a4.4 4.4 0 0 1-4.4 4.4h-8.2a4.4 4.4 0 0 1-4.4-4.4z" fill="url(#tsg-pink)"/><rect x="18.2" y="23" width="3.2" height="11" rx="1.6" fill="#fff" opacity=".45"/><path d="M37 8.5l1.6 4.2 4.2 1.6-4.2 1.6L37 20.1l-1.6-4.2-4.2-1.6 4.2-1.6z" fill="url(#tsg-gold)"/></symbol>
+
+<symbol id="tsi-flower" viewBox="0 0 48 48"><g fill="url(#tsg-pink)"><ellipse cx="24" cy="12.5" rx="6.2" ry="8.4"/><ellipse cx="24" cy="12.5" rx="6.2" ry="8.4" transform="rotate(72 24 24)"/><ellipse cx="24" cy="12.5" rx="6.2" ry="8.4" transform="rotate(144 24 24)"/><ellipse cx="24" cy="12.5" rx="6.2" ry="8.4" transform="rotate(216 24 24)"/><ellipse cx="24" cy="12.5" rx="6.2" ry="8.4" transform="rotate(288 24 24)"/></g><circle cx="24" cy="24" r="5.4" fill="url(#tsg-gold)"/><ellipse cx="22" cy="9" rx="2.2" ry="3" fill="#fff" opacity=".4"/></symbol>
+
+<symbol id="tsi-spa" viewBox="0 0 48 48"><path d="M24 40C9.5 40 4.5 33 6 21.5 20 22 25 29 24 40z" fill="url(#tsg-green)"/><path d="M24 40c14.5 0 19.5-7 18-18.5C28 22 23 29 24 40z" fill="url(#tsg-teal)"/><path d="M24 40c-4.5-8-4.5-16 0-23 4.5 7 4.5 15 0 23z" fill="url(#tsg-pink)"/><path d="M12 27c5 1.6 8.6 5.4 10.5 11" fill="none" stroke="#fff" stroke-width="1.8" opacity=".45" stroke-linecap="round"/></symbol>
+
+<symbol id="tsi-bag" viewBox="0 0 48 48"><path d="M17 18v-4.5a7 7 0 0 1 14 0V18" fill="none" stroke="#94a3b8" stroke-width="3.2" stroke-linecap="round"/><path d="M9.5 16h29l2 23.5a3.2 3.2 0 0 1-3.2 3.5H10.7a3.2 3.2 0 0 1-3.2-3.5z" fill="url(#tsg-purple)"/><path d="M12.5 19h4l-1.6 21h-3.6z" fill="#fff" opacity=".22"/></symbol>
+
+<symbol id="tsi-paw" viewBox="0 0 48 48"><ellipse cx="24" cy="32.5" rx="10" ry="8" fill="url(#tsg-choc)"/><ellipse cx="11.5" cy="22" rx="4.6" ry="5.8" fill="url(#tsg-choc)"/><ellipse cx="36.5" cy="22" rx="4.6" ry="5.8" fill="url(#tsg-choc)"/><ellipse cx="18" cy="13.5" rx="4.4" ry="5.6" fill="url(#tsg-choc)"/><ellipse cx="30" cy="13.5" rx="4.4" ry="5.6" fill="url(#tsg-choc)"/><ellipse cx="20" cy="29" rx="3.4" ry="2.4" fill="#fff" opacity=".28"/></symbol>
+
+<symbol id="tsi-dumbbell" viewBox="0 0 48 48"><rect x="16" y="21" width="16" height="6" rx="3" fill="url(#tsg-steel)"/><rect x="9" y="14.5" width="8" height="19" rx="3.4" fill="url(#tsg-dark)"/><rect x="31" y="14.5" width="8" height="19" rx="3.4" fill="url(#tsg-dark)"/><rect x="3.5" y="19" width="5.5" height="10" rx="2.6" fill="url(#tsg-steel)"/><rect x="39" y="19" width="5.5" height="10" rx="2.6" fill="url(#tsg-steel)"/><rect x="10.8" y="17" width="2.4" height="9" rx="1.2" fill="#fff" opacity=".3"/></symbol>
+
+<symbol id="tsi-ball" viewBox="0 0 48 48"><circle cx="24" cy="24" r="16.5" fill="url(#tsg-white)"/><circle cx="24" cy="24" r="16.5" fill="none" stroke="#c8d2de" stroke-width="1.6"/><path d="M24 14.5l7.2 5.2-2.7 8.5h-9l-2.7-8.5z" fill="#2b3648"/><path d="M24 7.5v7M38.5 19l-6.8 1M33 37l-4.2-5.6M15 37l4.2-5.6M9.5 19l6.8 1" stroke="#2b3648" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="17" cy="14" rx="4.5" ry="3" fill="#fff" opacity=".6"/></symbol>
+
+<symbol id="tsi-book" viewBox="0 0 48 48"><path d="M6 9.5h15.5A4.5 4.5 0 0 1 26 14v25a5 5 0 0 0-5-5H6z" fill="url(#tsg-blue)"/><path d="M42 9.5H26.5A4.5 4.5 0 0 0 22 14v25a5 5 0 0 1 5-5h15z" fill="url(#tsg-teal)"/><path d="M9.5 14H20M9.5 19H20M28 14h10.5M28 19h10.5" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".6"/><path d="M22 14a4.5 4.5 0 0 1 4.5-4.5h0A4.5 4.5 0 0 0 22 14v25z" fill="#0f172a" opacity=".25"/></symbol>
+
+<symbol id="tsi-car" viewBox="0 0 48 48"><path d="M6.5 32v-5.5l3.8-8.8A5.5 5.5 0 0 1 15.4 14h17.2a5.5 5.5 0 0 1 5.1 3.7L41.5 26.5V32a2.5 2.5 0 0 1-2.5 2.5H9a2.5 2.5 0 0 1-2.5-2.5z" fill="url(#tsg-red)"/><path d="M15.6 17.5h16.8l2.6 7.5H13z" fill="#a9dcff"/><circle cx="14.5" cy="34.5" r="4.8" fill="#2b3648"/><circle cx="33.5" cy="34.5" r="4.8" fill="#2b3648"/><circle cx="14.5" cy="34.5" r="1.8" fill="#c8d2de"/><circle cx="33.5" cy="34.5" r="1.8" fill="#c8d2de"/><rect x="6.8" y="26.5" width="5" height="3.4" rx="1.7" fill="url(#tsg-gold)"/></symbol>
+
+<symbol id="tsi-leaf" viewBox="0 0 48 48"><path d="M40 6.5c0 17.8-9.6 27.2-22 27.2A10 10 0 0 1 7.8 23.7C7.8 12.6 21.9 6.5 40 6.5z" fill="url(#tsg-green)"/><path d="M32.2 14.5 11 37.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".55"/><path d="M29 12c-6 1-10.4 3.6-13.4 7.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".35"/></symbol>
+
+<symbol id="tsi-shisha" viewBox="0 0 48 48"><path d="M30 26.5c7.6 1.8 10 6.2 7.2 13" fill="none" stroke="url(#tsg-dark)" stroke-width="3.4" stroke-linecap="round"/><ellipse cx="22.5" cy="34" rx="10" ry="9" fill="url(#tsg-purple)"/><rect x="20.5" y="10" width="4" height="17" rx="2" fill="url(#tsg-gold)"/><rect x="16.5" y="24" width="12" height="3.4" rx="1.7" fill="url(#tsg-gold)"/><path d="M17.5 3.5h10l-2 7h-6z" fill="url(#tsg-dark)"/><ellipse cx="17.5" cy="30.5" rx="3" ry="4.2" fill="#fff" opacity=".3" transform="rotate(-25 17.5 30.5)"/></symbol>
+</svg>`;
+
+const STAMP_ICON_LABELS = {
+  circle: 'Punkt', star: 'Stern', heart: 'Herz', coffee: 'Kaffee', tea: 'Tee', food: 'Restaurant',
+  pizza: 'Pizza', cocktail: 'Cocktail', beer: 'Bier', bread: 'Backware', cupcake: 'Cupcake',
+  icecream: 'Eis', scissors: 'Schere', nails: 'Nagellack', flower: 'Blüte', spa: 'Wellness',
+  bag: 'Einkaufstasche', paw: 'Pfote', dumbbell: 'Hantel', ball: 'Ball', book: 'Buch',
+  car: 'Auto', leaf: 'Blatt', shisha: 'Shisha',
+};
+
+const STAMP_ICON_IDS = Object.keys(STAMP_ICON_LABELS);
+
+/* Ein Stempel: Kachel + farbiges Icon. Gefüllt = Akzent-Kachel mit voller
+   Icon-Farbe, leer = blasse Kachel mit ausgegrautem Icon (siehe .dot-CSS). */
+function stampIconShape(icon, accent, extraClass) {
+  const id = STAMP_ICON_IDS.includes(icon) ? icon : 'circle';
+  const cls = `dot ${extraClass}`.replace(/\s+/g, ' ').trim();
+  return `<div class="${cls}"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#tsi-${id}"/></svg></div>`;
 }
 
 /* Kartennummer: aus der Kunden-ID abgeleitet, stabil und ohne Extra-Spalte in der DB */
@@ -2003,10 +2119,8 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   const toward = isLightBg ? '#000000' : '#ffffff';
   const away = isLightBg ? '#ffffff' : '#000000';
 
-  /* Verlauf + Glanz: die gewählte Hintergrundfarbe bleibt die Basis, oben links wird
-     leicht aufgehellt und mit einem Hauch Akzentfarbe getönt, unten rechts abgedunkelt. */
-  const pageTop = mixHex(mixHex(bg, away, isLightBg ? 0.45 : 0.10), accent, 0.07);
-  const pageDeep = mixHex(bg, isLightBg ? '#000000' : '#000000', isLightBg ? 0.05 : 0.30);
+  /* Seitenhintergrund: Verlauf plus gewählter Licht-/Musterstil (siehe cardBackgroundLayers). */
+  const page = cardBackgroundLayers(shop.bg_pattern, accent, bg, isLightBg);
   const cardTop = mixHex(mixHex(bg, away, isLightBg ? 0.60 : 0.16), accent, 0.09);
   const cardMid = mixHex(bg, away, isLightBg ? 0.34 : 0.07);
   const cardLow = mixHex(bg, '#000000', isLightBg ? 0.04 : 0.22);
@@ -2016,6 +2130,8 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   const panelLow = mixHex(bg, toward, isLightBg ? 0.10 : 0.03);
   const panelBorder = mixHex(bg, toward, isLightBg ? 0.16 : 0.18);
   const tileEmpty = mixHex(bg, toward, isLightBg ? 0.07 : 0.06);
+  const tileFillHi = isLightBg ? mixHex(bg, '#ffffff', 0.95) : mixHex(bg, '#ffffff', 0.20);
+  const tileFillLo = isLightBg ? mixHex(bg, '#ffffff', 0.70) : mixHex(bg, '#ffffff', 0.09);
   const tileEmptyLine = mixHex(bg, accent, 0.42);
   const iconMuted = mixHex(bg, accent, 0.55);
   const onAccent = luminanceOf(accent) > 0.62 ? '#14110f' : '#ffffff';
@@ -2036,7 +2152,6 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   const done = Math.min(customer.stamps, total);
   const remaining = Math.max(0, total - customer.stamps);
   const cols = stampColumns(total);
-  const patternCss = patternBackgroundCss(shop.branche, accent, shop.bg_pattern);
   const bannerHtml = shop.banner_key
     ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(shop.banner_key)}')"></div>` : '';
   const logoHtml = shop.logo_key
@@ -2053,9 +2168,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   body{
     margin:0; font-family:'Inter',system-ui,-apple-system,sans-serif; color:${textColor};
     background-color:${bg};
-    background-image:${patternCss === 'none' ? '' : patternCss + ','} radial-gradient(130% 80% at 18% -10%, ${pageTop} 0%, ${bg} 52%, ${pageDeep} 100%);
-    background-repeat:repeat, no-repeat;
-    background-attachment:scroll, fixed;
+    background-image:${page.image};
+    background-size:${page.size};
+    background-repeat:${page.repeat};
+    background-attachment:fixed;
     min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 20px; overflow-x:hidden;
     -webkit-font-smoothing:antialiased;
   }
@@ -2070,6 +2186,11 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .card::before{
     content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
     background:radial-gradient(115% 62% at 8% -14%, ${glossColor} 0%, transparent 62%);
+  }
+  /* Diagonaler Glanzstreifen — gibt der Karte die glasige Anmutung */
+  .card::after{
+    content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background:linear-gradient(104deg, transparent 32%, rgba(255,255,255,${isLightBg ? '0.55' : '0.07'}) 46%, transparent 58%);
   }
   .card > *{position:relative; z-index:1;}
   @keyframes cardIn{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
@@ -2102,16 +2223,20 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .stamps{display:grid; grid-template-columns:repeat(${cols},1fr); gap:10px;}
   .dot{
     aspect-ratio:1; border-radius:50%; border:1.5px solid ${tileEmptyLine}; background:${tileEmpty};
-    display:flex; align-items:center; justify-content:center;
+    display:flex; align-items:center; justify-content:center; color:${iconMuted};
     transition:background 0.2s, border-color 0.2s;
   }
-  .dot svg{width:58%; height:58%; fill:none; stroke:${iconMuted}; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;}
+  .dot svg{width:70%; height:70%; display:block;}
+  /* Leerer Stempel: dasselbe Icon, nur ausgegraut — wie ein noch nicht eingelöstes Feld */
+  .dot:not(.filled) svg{filter:grayscale(1) opacity(0.32);}
+  /* Gefüllt: helle, glänzende Kachel mit Akzentring — die Farbe kommt aus dem Icon */
   .dot.filled{
-    border-color:transparent;
-    background:linear-gradient(150deg, ${mixHex(accent, '#ffffff', 0.22)} 0%, ${accent} 58%, ${mixHex(accent, '#000000', 0.16)} 100%);
-    box-shadow:0 3px 10px -3px ${accentSoft}, inset 0 1px 0 rgba(255,255,255,0.34);
+    border-color:${withAlpha(accent, 0.85)}; color:${accent};
+    background:
+      radial-gradient(85% 65% at 30% 16%, rgba(255,255,255,${isLightBg ? '0.98' : '0.26'}) 0%, transparent 60%),
+      linear-gradient(155deg, ${tileFillHi} 0%, ${tileFillLo} 100%);
+    box-shadow:0 5px 14px -5px ${accentSoft}, inset 0 1px 0 rgba(255,255,255,${isLightBg ? '0.9' : '0.22'});
   }
-  .dot.filled svg{stroke:${onAccent};}
   .dot.newest{animation:stampDown 0.45s cubic-bezier(.34,1.56,.64,1);}
   @keyframes stampDown{ 0%{transform:scale(1.8) rotate(-15deg); opacity:0;} 60%{transform:scale(0.92) rotate(4deg); opacity:1;} 100%{transform:scale(1) rotate(0);} }
 
@@ -2139,6 +2264,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .qr-fallback #myQr svg{width:100%; height:auto; display:block;}
 </style></head>
 <body>
+  ${STAMP_ICON_SPRITE}
   <canvas id="confetti" style="position:fixed; inset:0; pointer-events:none; z-index:0;"></canvas>
   <div class="card">
     ${bannerHtml}

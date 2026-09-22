@@ -57,6 +57,8 @@ export default {
       if (method === 'POST' && stempelTapMatch) return handleStempelTapSubmit(request, env, stempelTapMatch[1], ctx);
       const staffRedeemMatch = path.match(/^\/staff-redeem\/([^/]+)$/);
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
+      const walletHeroMatch = path.match(/^\/wallet\/hero\/([^/]+)\/([^/]+)\.png$/);
+      if (method === 'GET' && walletHeroMatch) return handleWalletHeroImage(request, env, walletHeroMatch[1], walletHeroMatch[2]);
       const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
       if (method === 'GET' && googleWalletMatch) return handleGoogleWalletSave(request, env, googleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
@@ -1770,6 +1772,252 @@ async function signGoogleWalletJwt(payload, serviceAccountEmail, privateKeyPem) 
 /* Baut Class-/Object-IDs und den Belohnungstext — gemeinsam genutzt vom initialen
    "Zu Google Wallet hinzufügen" (JWT-Save) und vom späteren Live-Update (REST-Patch),
    damit beide Wege exakt denselben Text/Stand erzeugen. */
+/* ══ Hero-Bild für Google Wallet ══
+   Google rendert die Wallet-Karte aus festen Bausteinen — eigenes HTML oder CSS
+   gibt es dort nicht. Das einzige frei gestaltbare Feld ist das Hero-Bild, und
+   das muss ein PNG oder JPEG sein. Also zeichnen wir die Stempelreihe hier von
+   Hand in einen Pixelpuffer und packen sie selbst als PNG: ohne Bibliothek,
+   ohne Build-Schritt, passend zu den Farben des Ladens. */
+
+const PNG_CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function pngCrc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = PNG_CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngAdler32(bytes) {
+  let a = 1, b = 0;
+  for (let i = 0; i < bytes.length; i++) { a = (a + bytes[i]) % 65521; b = (b + a) % 65521; }
+  return ((b << 16) | a) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, pngCrc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+
+/* Minimaler Deflate mit festem Huffman-Code: gleiche Bytes hintereinander
+   werden als Längenverweis geschrieben. Zusammen mit dem Sub-Filter unten
+   schrumpft das Bild damit von gut einem Megabyte auf wenige Kilobyte —
+   ohne eine vollständige Deflate-Implementierung. */
+function bitWriter() {
+  const bytes = [];
+  let acc = 0, nbits = 0;
+  return {
+    /* Huffman-Codes stehen MSB-first in der Tabelle, der Strom will sie LSB-first */
+    huff(code, len) { for (let i = len - 1; i >= 0; i--) this.bit((code >> i) & 1); },
+    raw(value, len) { for (let i = 0; i < len; i++) this.bit((value >> i) & 1); },
+    bit(b) {
+      acc |= (b & 1) << nbits;
+      if (++nbits === 8) { bytes.push(acc); acc = 0; nbits = 0; }
+    },
+    finish() { if (nbits) bytes.push(acc); return Uint8Array.from(bytes); },
+  };
+}
+
+function fixedLiteral(w, byte) {
+  if (byte < 144) w.huff(0x30 + byte, 8);
+  else w.huff(0x190 + byte - 144, 9);
+}
+
+/* Längencodes nach RFC 1951, Tabelle 3.2.5 */
+const DEFLATE_LENGTHS = [
+  [3, 257, 0], [4, 258, 0], [5, 259, 0], [6, 260, 0], [7, 261, 0], [8, 262, 0], [9, 263, 0], [10, 264, 0],
+  [11, 265, 1], [13, 266, 1], [15, 267, 1], [17, 268, 1],
+  [19, 269, 2], [23, 270, 2], [27, 271, 2], [31, 272, 2],
+  [35, 273, 3], [43, 274, 3], [51, 275, 3], [59, 276, 3],
+  [67, 277, 4], [83, 278, 4], [99, 279, 4], [115, 280, 4],
+  [131, 281, 5], [163, 282, 5], [195, 283, 5], [227, 284, 5],
+  [258, 285, 0],
+];
+
+/* Eine Wiederholung als Längen-/Abstandspaar schreiben (Abstand immer 1 Byte) */
+function deflateRun(w, length) {
+  let entry = DEFLATE_LENGTHS[0];
+  for (const e of DEFLATE_LENGTHS) if (e[0] <= length) entry = e;
+  const symbol = entry[1];
+  /* Symbole 257–279 sind 7 Bit lang, 280–287 acht */
+  if (symbol < 280) w.huff(symbol - 256, 7);
+  else w.huff(0xc0 + symbol - 280, 8);
+  if (entry[2]) w.raw(length - entry[0], entry[2]);
+  w.huff(0, 5); /* Abstandscode 0 = ein Byte zurück */
+}
+
+function deflateRuns(raw) {
+  const w = bitWriter();
+  w.bit(1); w.raw(1, 2); /* letzter Block, feste Huffman-Codes */
+  let i = 0;
+  while (i < raw.length) {
+    const byte = raw[i];
+    let run = 1;
+    while (i + run < raw.length && raw[i + run] === byte && run < 259) run++;
+    fixedLiteral(w, byte);
+    i += run;
+    /* Der Rest der Folge als Wiederholung; unter drei Bytes lohnt kein Verweis */
+    let rest = run - 1;
+    while (rest >= 3) {
+      const take = Math.min(rest, 258);
+      deflateRun(w, take);
+      rest -= take;
+    }
+    while (rest-- > 0) fixedLiteral(w, byte);
+  }
+  w.huff(0, 7); /* Blockende */
+  return w.finish();
+}
+
+function zlibDeflate(raw) {
+  const body = deflateRuns(raw);
+  const out = new Uint8Array(2 + body.length + 4);
+  out[0] = 0x78; out[1] = 0x01;
+  out.set(body, 2);
+  new DataView(out.buffer).setUint32(2 + body.length, pngAdler32(raw));
+  return out;
+}
+
+/* rgb: Uint8Array mit width*height*3 Bytes */
+function encodePng(width, height, rgb) {
+  const stride = width * 3;
+  const raw = new Uint8Array((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * (stride + 1);
+    raw[row] = 1; /* Filter „Sub": jedes Byte als Differenz zum linken Nachbarn —
+                     weiche Verläufe werden dadurch zu langen gleichen Folgen */
+    for (let x = 0; x < stride; x++) {
+      const here = rgb[y * stride + x];
+      const left = x >= 3 ? rgb[y * stride + x - 3] : 0;
+      raw[row + 1 + x] = (here - left) & 0xff;
+    }
+  }
+  const ihdr = new Uint8Array(13);
+  const view = new DataView(ihdr.buffer);
+  view.setUint32(0, width); view.setUint32(4, height);
+  ihdr[8] = 8;  /* 8 Bit pro Kanal */
+  ihdr[9] = 2;  /* Farbtyp 2 = RGB */
+  const parts = [
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlibDeflate(raw)),
+    pngChunk('IEND', new Uint8Array(0)),
+  ];
+  const png = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let off = 0;
+  for (const part of parts) { png.set(part, off); off += part.length; }
+  return png;
+}
+
+/* Kleiner Zeichenhelfer auf einem RGB-Puffer */
+function pixelCanvas(width, height) {
+  const data = new Uint8Array(width * height * 3);
+  const rgbOf = hex => {
+    const n = parseInt(hex.replace('#', ''), 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  };
+  return {
+    data,
+    blend(x, y, color, alpha) {
+      if (alpha <= 0 || x < 0 || y < 0 || x >= width || y >= height) return;
+      const i = (y * width + x) * 3;
+      const a = Math.min(1, alpha);
+      for (let c = 0; c < 3; c++) data[i + c] = Math.round(data[i + c] * (1 - a) + color[c] * a);
+    },
+    /* Diagonaler Verlauf als Untergrund */
+    gradient(fromHex, toHex) {
+      const from = rgbOf(fromHex), to = rgbOf(toHex);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const t = Math.min(1, (x / width) * 0.45 + (y / height) * 0.55);
+          const i = (y * width + x) * 3;
+          for (let c = 0; c < 3; c++) data[i + c] = Math.round(from[c] + (to[c] - from[c]) * t);
+        }
+      }
+    },
+    /* Kreisfläche mit weichem Rand; innerR > 0 ergibt einen Ring */
+    disc(cx, cy, radius, hex, alpha, innerR) {
+      const color = rgbOf(hex);
+      const x0 = Math.max(0, Math.floor(cx - radius - 1)), x1 = Math.min(width - 1, Math.ceil(cx + radius + 1));
+      const y0 = Math.max(0, Math.floor(cy - radius - 1)), y1 = Math.min(height - 1, Math.ceil(cy + radius + 1));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+          let cover = Math.min(1, Math.max(0, radius + 0.5 - d));
+          if (innerR) cover = Math.min(cover, Math.min(1, Math.max(0, d - innerR + 0.5)));
+          this.blend(x, y, color, cover * (alpha === undefined ? 1 : alpha));
+        }
+      }
+    },
+  };
+}
+
+/* Stempelreihe im Format 1032×336 — das von Google empfohlene Hero-Maß (3:1) */
+function stampStripPng(shop, stamps, total) {
+  const W = 1032, H = 336;
+  const accent = shop.accent_color || '#6366f1';
+  const bg = shop.card_bg_color || '#14131a';
+  const isLight = luminanceOf(bg) > 0.55;
+  const away = isLight ? '#ffffff' : '#000000';
+
+  const canvas = pixelCanvas(W, H);
+  canvas.gradient(mixHex(mixHex(bg, away, isLight ? 0.55 : 0.14), accent, 0.10), mixHex(bg, '#000000', isLight ? 0.04 : 0.26));
+
+  const cols = total <= 12 ? total : Math.ceil(total / 2);
+  const rows = Math.ceil(total / cols);
+  const cell = Math.min(W / (cols + 0.8), H / (rows + 0.7));
+  const radius = cell * 0.36;
+  const offsetX = (W - cols * cell) / 2 + cell / 2;
+  const offsetY = (H - rows * cell) / 2 + cell / 2;
+
+  /* Auf dunklem Grund braucht der leere Ring etwas mehr Kontrast */
+  const emptyLine = isLight ? mixHex(bg, accent, 0.5) : mixHex(mixHex(bg, accent, 0.62), '#ffffff', 0.18);
+  const fillLight = mixHex(accent, '#ffffff', 0.22);
+  const fillDark = mixHex(accent, '#000000', 0.12);
+
+  for (let i = 0; i < total; i++) {
+    const cx = offsetX + (i % cols) * cell;
+    const cy = offsetY + Math.floor(i / cols) * cell;
+    if (i < stamps) {
+      canvas.disc(cx, cy, radius, fillDark, 1);
+      canvas.disc(cx, cy - radius * 0.12, radius * 0.94, accent, 1);
+      /* Glanz oben links, wie auf der Webkarte */
+      canvas.disc(cx - radius * 0.3, cy - radius * 0.34, radius * 0.42, fillLight, 0.55);
+    } else {
+      canvas.disc(cx, cy, radius, emptyLine, 0.9, radius - Math.max(2, radius * 0.11));
+      canvas.disc(cx, cy, radius - Math.max(2, radius * 0.11), mixHex(bg, away, isLight ? 0.35 : 0.06), 0.55);
+    }
+  }
+  return encodePng(W, H, canvas.data);
+}
+
+/* GET /wallet/hero/:slug/:stamps-:total.png — der Stand steckt im Pfad, damit
+   Google bei jedem neuen Stempel ein frisches Bild lädt statt das alte zu cachen. */
+async function handleWalletHeroImage(request, env, slug, state) {
+  const match = String(state).match(/^(\d{1,3})-(\d{1,3})$/);
+  if (!match) return new Response('Ungültig', { status: 400 });
+  const shop = await env.DB.prepare('SELECT accent_color, card_bg_color FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+
+  const total = Math.min(30, Math.max(1, parseInt(match[2], 10)));
+  const stamps = Math.min(total, Math.max(0, parseInt(match[1], 10)));
+  return new Response(stampStripPng(shop, stamps, total), {
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' },
+  });
+}
+
 function buildLoyaltyIds(env, shop, customer) {
   return {
     classId: `${env.GOOGLE_WALLET_ISSUER_ID}.${shop.slug}`,
@@ -1808,14 +2056,25 @@ function buildLoyaltyObject(env, origin, shop, customer, classId, objectId) {
     },
     textModulesData: [
       { id: 'reward_info', header: 'Deine Belohnung', body: buildRewardMessage(shop, customer) },
+      ...(customer.card_code
+        ? [{ id: 'card_code', header: 'Karten-ID', body: `${customer.card_code} — damit holst du die Karte auf ein neues Handy zurück.` }]
+        : []),
     ],
+    ...(shop.extra_link_url && shop.extra_link_label
+      ? { linksModuleData: { uris: [{ uri: normalizeUrl(shop.extra_link_url), description: shop.extra_link_label, id: 'extra_link' }] } }
+      : {}),
     barcode: {
       type: 'QR_CODE',
       value: `${origin}/staff-redeem/${customer.redeem_token}`,
-      alternateText: 'Für Personal',
+      alternateText: customer.card_code ? `Für Personal · ${customer.card_code}` : 'Für Personal',
     },
     hexBackgroundColor: shop.card_bg_color || '#14131a',
-    ...(shop.banner_key ? { heroImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } } : {}),
+    /* Die Stempelreihe als Bild — das einzige Feld, in dem Google eigene Gestaltung zulässt.
+       Der Stand steckt in der URL, damit bei jedem Stempel ein neues Bild geladen wird. */
+    heroImage: {
+      sourceUri: { uri: `${origin}/wallet/hero/${shop.slug}/${Math.min(customer.stamps, shop.reward_threshold)}-${shop.reward_threshold}.png` },
+      contentDescription: { defaultValue: { language: 'de', value: `${customer.stamps} von ${shop.reward_threshold} Stempeln gesammelt` } },
+    },
   };
 }
 

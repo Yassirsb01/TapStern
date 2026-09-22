@@ -1366,9 +1366,15 @@ async function createCustomerWithFirstStamp(env, shop) {
   const redeemToken = crypto.randomUUID();
   const cardCode = await uniqueCardCode(env);
   const id = crypto.randomUUID();
-  await env.DB.prepare(
-    `INSERT INTO stempel_customers (id, shop_id, device_token, redeem_token, card_code, stamps, last_stamp_at) VALUES (?, ?, ?, ?, ?, 1, datetime('now'))`
-  ).bind(id, shop.id, deviceToken, redeemToken, cardCode).run();
+  if (cardCode) {
+    await env.DB.prepare(
+      `INSERT INTO stempel_customers (id, shop_id, device_token, redeem_token, card_code, stamps, last_stamp_at) VALUES (?, ?, ?, ?, ?, 1, datetime('now'))`
+    ).bind(id, shop.id, deviceToken, redeemToken, cardCode).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO stempel_customers (id, shop_id, device_token, redeem_token, stamps, last_stamp_at) VALUES (?, ?, ?, ?, 1, datetime('now'))`
+    ).bind(id, shop.id, deviceToken, redeemToken).run();
+  }
   await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`)
     .bind(crypto.randomUUID(), id, shop.id).run();
   const customer = { id, shop_id: shop.id, stamps: 1, redeemed_count: 0, device_token: deviceToken, redeem_token: redeemToken, card_code: cardCode };
@@ -1438,7 +1444,7 @@ async function handleStempelTap(request, env, slug, ctx) {
 
   const customer = await customerOfDevice(env, shop, deviceTokenOf(request));
   if (!customer) {
-    return new Response(renderStempelStartPage(shop, {}), htmlHeaders());
+    return new Response(renderStempelStartPage(shop, { canRestore: await hasCardCodeColumn(env) }), htmlHeaders());
   }
 
   const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
@@ -1461,7 +1467,9 @@ async function handleStempelTapSubmit(request, env, slug, ctx) {
   }
 
   if (action === 'restore') return handleStempelRestore(request, env, shop, form, ctx);
-  if (action !== 'new') return new Response(renderStempelStartPage(shop, {}), htmlHeaders(400));
+  if (action !== 'new') {
+    return new Response(renderStempelStartPage(shop, { canRestore: await hasCardCodeColumn(env) }), htmlHeaders(400));
+  }
 
   const { customer, deviceToken } = await createCustomerWithFirstStamp(env, shop);
   return cardResponse(request, shop, customer, { isNew: true, cooldownHit: false }, deviceToken);
@@ -1470,17 +1478,25 @@ async function handleStempelTapSubmit(request, env, slug, ctx) {
 /* Karte per Karten-ID zurückholen — reiner Besitznachweis, kein Konto.
    Gegen Durchprobieren greift dieselbe Sperre wie beim Login (login_locks). */
 async function handleStempelRestore(request, env, shop, form, ctx) {
+  const canRestore = await hasCardCodeColumn(env);
+  if (!canRestore) {
+    return new Response(renderStempelStartPage(shop, {
+      error: 'Die Wiederherstellung ist gerade nicht verfügbar. Starte bitte eine neue Karte oder frag kurz beim Personal nach.',
+      canRestore: false,
+    }), htmlHeaders(503));
+  }
+
   const code = normalizeCardCode(form?.get('code'));
   const lockKey = 'cardcode:' + (request.headers.get('CF-Connecting-IP') || 'unbekannt');
 
   const gate = await checkLock(env, lockKey);
-  if (gate) return new Response(renderStempelStartPage(shop, { error: gate, showRestore: true }), htmlHeaders(429));
+  if (gate) return new Response(renderStempelStartPage(shop, { error: gate, showRestore: true, canRestore: true }), htmlHeaders(429));
 
   if (code.length !== CARD_CODE_LENGTH) {
     await noteFail(env, lockKey);
     return new Response(renderStempelStartPage(shop, {
       error: `Die Karten-ID besteht aus ${CARD_CODE_LENGTH} Zeichen. Bitte prüf deine Eingabe.`,
-      showRestore: true, code,
+      showRestore: true, canRestore: true, code,
     }), htmlHeaders(400));
   }
 
@@ -1490,7 +1506,7 @@ async function handleStempelRestore(request, env, shop, form, ctx) {
     await noteFail(env, lockKey);
     return new Response(renderStempelStartPage(shop, {
       error: 'Zu dieser Karten-ID gibt es hier keine Karte. Tipp sie nochmal ein oder starte eine neue.',
-      showRestore: true, code,
+      showRestore: true, canRestore: true, code,
     }), htmlHeaders(404));
   }
 
@@ -2006,8 +2022,33 @@ function normalizeCardCode(input) {
   return String(input || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CARD_CODE_LENGTH);
 }
 
+/* Ob die Spalte card_code schon existiert, wird einmal je Isolate geprüft.
+   Läuft die Migration noch nicht, funktionieren Karte und Stempel trotzdem —
+   nur die Wiederherstellung ruht, bis migration-kartencode.sql eingespielt ist. */
+let cardCodeColumn = null;
+let cardCodeCheckedAt = 0;
+const CARD_CODE_RECHECK_MS = 60 * 1000;
+
+async function hasCardCodeColumn(env) {
+  /* Ein positives Ergebnis gilt dauerhaft, ein negatives wird nach einer Minute
+     neu geprüft — so greift die Wiederherstellung gleich nach der Migration,
+     ohne dass der Worker neu starten muss. */
+  if (cardCodeColumn === true) return true;
+  if (cardCodeColumn === false && Date.now() - cardCodeCheckedAt < CARD_CODE_RECHECK_MS) return false;
+  try {
+    await env.DB.prepare('SELECT card_code FROM stempel_customers LIMIT 1').first();
+    cardCodeColumn = true;
+  } catch (e) {
+    console.error('Spalte card_code fehlt — bitte migration-kartencode.sql einspielen:', e.message);
+    cardCodeColumn = false;
+  }
+  cardCodeCheckedAt = Date.now();
+  return cardCodeColumn;
+}
+
 /* Eindeutig über die ganze Tabelle — bei Kollision neu würfeln und erneut prüfen */
 async function uniqueCardCode(env) {
+  if (!await hasCardCodeColumn(env)) return null;
   for (let i = 0; i < 10; i++) {
     const code = randomCardCode();
     const taken = await env.DB.prepare('SELECT 1 FROM stempel_customers WHERE card_code = ?').bind(code).first();
@@ -2020,6 +2061,7 @@ async function uniqueCardCode(env) {
 async function ensureCardCode(env, customer) {
   if (customer.card_code) return customer.card_code;
   const code = await uniqueCardCode(env);
+  if (!code) return null;
   await env.DB.prepare('UPDATE stempel_customers SET card_code = ? WHERE id = ?').bind(code, customer.id).run();
   customer.card_code = code;
   return code;
@@ -2227,7 +2269,7 @@ function stampIconShape(icon, accent, extraClass) {
 
 /* Zwischenansicht beim ersten Tap auf einem Gerät: neue Karte oder vorhandene
    per Karten-ID zurückholen. Gleiche Farb- und Verlaufslogik wie die Karte. */
-function renderStempelStartPage(shop, { error, showRestore, code }) {
+function renderStempelStartPage(shop, { error, showRestore, code, canRestore }) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLightBg = luminanceOf(bg) > 0.55;
@@ -2322,7 +2364,7 @@ function renderStempelStartPage(shop, { error, showRestore, code }) {
       <input type="hidden" name="action" value="new">
       <button class="btn-primary" type="submit">Neue Karte starten</button>
     </form>
-    <details${showRestore ? ' open' : ''}>
+    ${canRestore === false ? '' : `<details${showRestore ? ' open' : ''}>
       <summary>Ich habe schon eine Karte</summary>
       <p class="hint">Tipp die ${CARD_CODE_LENGTH}-stellige Karten-ID ein, die auf deiner Karte unter „Karte" steht.</p>
       <form method="post">
@@ -2332,7 +2374,7 @@ function renderStempelStartPage(shop, { error, showRestore, code }) {
           spellcheck="false" aria-label="Karten-ID" required>
         <button class="btn-secondary" type="submit">Karte wiederherstellen</button>
       </form>
-    </details>
+    </details>`}
   </div>
 </body></html>`;
 }
@@ -2526,13 +2568,13 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
           <span class="eyebrow">Deine Belohnung</span>
           <div class="reward-text">${escapeHtml(shop.reward_text || '')}</div>
         </div>
-        <div class="card-no">
+        ${customer.card_code ? `<div class="card-no">
           <span class="eyebrow">Karte</span>
-          <div class="card-no-value">${escapeHtml(customer.card_code || '')}</div>
-        </div>
+          <div class="card-no-value">${escapeHtml(customer.card_code)}</div>
+        </div>` : ''}
       </div>
       <div class="hint">${rewardReached ? 'Zeig diese Karte beim nächsten Besuch vor und lös deine Belohnung ein.' : `Noch ${remaining} ${remaining === 1 ? 'Stempel' : 'Stempel'} bis zur Belohnung.`}</div>
-      <div class="hint hint-sub">Neues Handy? Mit dieser Karten-ID holst du die Karte zurück — notier sie dir am besten.</div>
+      ${customer.card_code ? '<div class="hint hint-sub">Neues Handy? Mit dieser Karten-ID holst du die Karte zurück — notier sie dir am besten.</div>' : ''}
       <a class="wallet-btn" href="${origin}/wallet/google/${shop.slug}">
         <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7 3.5v8.6l-7 3.5-7-3.5V7.7l7-3.5z"/></svg>
         Zu Google Wallet hinzufügen

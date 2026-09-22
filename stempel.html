@@ -401,7 +401,7 @@
         <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Alle Gäste, die deine digitale Stempelkarte besitzen.</p>
         <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; overflow-x:auto;">
           <table>
-            <thead><tr><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
+            <thead><tr><th>Karten-ID</th><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
             <tbody id="customerRows"></tbody>
           </table>
         </div>
@@ -566,7 +566,7 @@
                   </div>
                   <div class="cp-card-no">
                     <span class="cp-eyebrow">Karte</span>
-                    <div class="cp-card-no-value">5467254</div>
+                    <div class="cp-card-no-value">A7K9QX2M</div>
                   </div>
                 </div>
                 <div class="cp-hint" id="cpHint">Noch 3 Stempel bis zur Belohnung.</div>
@@ -705,12 +705,13 @@
       const dots = Array.from({length: th}, (_, i) => `<span class="dot-stamp ${i < c.stamps ? 'on' : ''}"></span>`).join('');
       const status = c.stamps >= th ? '<strong style="color:var(--coral);">Belohnung bereit</strong>' : `${c.stamps}/${th}`;
       return `<tr>
+        <td style="font:600 12px 'DM Mono',monospace; letter-spacing:0.08em;">${c.card_code || '—'}</td>
         <td><div class="dot-row">${dots}</div></td>
         <td>${status}</td>
         <td>${new Date(c.created_at + 'Z').toLocaleDateString('de-DE')}</td>
         <td>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleDateString('de-DE') : '—'}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="4" style="color:var(--muted); padding:20px;">Noch keine Kunden verzeichnet.</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="color:var(--muted); padding:20px;">Noch keine Kunden verzeichnet.</td></tr>';
   }
 
   /* CARD & QR */

@@ -22,6 +22,7 @@ CREATE TABLE stempel_customers (
   id TEXT PRIMARY KEY,
   shop_id TEXT NOT NULL REFERENCES stempel_shops(id),
   device_token TEXT UNIQUE NOT NULL,
+  card_code TEXT UNIQUE,
   stamps INTEGER NOT NULL DEFAULT 0,
   redeemed_count INTEGER NOT NULL DEFAULT 0,
   wallet_pass_serial TEXT,
@@ -31,6 +32,7 @@ CREATE TABLE stempel_customers (
 
 CREATE INDEX idx_stempel_customers_shop ON stempel_customers(shop_id);
 CREATE INDEX idx_stempel_customers_token ON stempel_customers(device_token);
+CREATE UNIQUE INDEX idx_stempel_customers_card_code ON stempel_customers(card_code);
 
 CREATE TABLE stempel_events (
   id TEXT PRIMARY KEY,

@@ -54,6 +54,7 @@ export default {
 
       const stempelTapMatch = path.match(/^\/s\/([^/]+)$/);
       if (method === 'GET' && stempelTapMatch) return handleStempelTap(request, env, stempelTapMatch[1], ctx);
+      if (method === 'POST' && stempelTapMatch) return handleStempelTapSubmit(request, env, stempelTapMatch[1], ctx);
       const staffRedeemMatch = path.match(/^\/staff-redeem\/([^/]+)$/);
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
       const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
@@ -1337,43 +1338,52 @@ async function handleStempelCustomers(request, env) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   const { results } = await env.DB.prepare(
-    `SELECT id, stamps, redeemed_count, created_at, last_stamp_at FROM stempel_customers WHERE shop_id = ? ORDER BY last_stamp_at DESC LIMIT 200`
+    `SELECT id, card_code, stamps, redeemed_count, created_at, last_stamp_at FROM stempel_customers WHERE shop_id = ? ORDER BY last_stamp_at DESC LIMIT 200`
   ).bind(shop.id).all();
   return json({ customers: results });
 }
 
 /* Der Kern: NFC-Tap an der Laden-Karte, GET /s/:slug */
-async function grantStamp(env, request, shop, ctx) {
+/* Gerät aus dem Cookie wiedererkennen — der Cookie-Wert ist der device_token */
+function deviceTokenOf(request) {
   const cookieMatch = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_device=([^;]+)/);
-  const deviceToken = cookieMatch ? cookieMatch[1] : null;
-  let customer = deviceToken
-    ? await env.DB.prepare('SELECT * FROM stempel_customers WHERE device_token = ? AND shop_id = ?').bind(deviceToken, shop.id).first()
-    : null;
+  return cookieMatch ? cookieMatch[1] : null;
+}
 
-  const headers = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
-  let isNew = false, cooldownHit = false;
+function deviceCookie(token) {
+  return `stempel_device=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000`;
+}
 
-  if (!customer) {
-    isNew = true;
-    const newToken = crypto.randomUUID();
-    const redeemToken = crypto.randomUUID();
-    const id = crypto.randomUUID();
-    await env.DB.prepare(
-      `INSERT INTO stempel_customers (id, shop_id, device_token, redeem_token, stamps, last_stamp_at) VALUES (?, ?, ?, ?, 1, datetime('now'))`
-    ).bind(id, shop.id, newToken, redeemToken).run();
-    await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`).bind(crypto.randomUUID(), id, shop.id).run();
-    customer = { id, stamps: 1, redeemed_count: 0, redeem_token: redeemToken };
-    headers.append('Set-Cookie', `stempel_device=${newToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=31536000`);
-  } else {
-    if (!customer.redeem_token) {
-      customer.redeem_token = crypto.randomUUID();
-      await env.DB.prepare(`UPDATE stempel_customers SET redeem_token = ? WHERE id = ?`).bind(customer.redeem_token, customer.id).run();
-    }
-    const result = await applyStampLogic(env, customer, shop, null, request, ctx);
-    customer = result.customer; cooldownHit = result.cooldownHit;
+function customerOfDevice(env, shop, deviceToken) {
+  if (!deviceToken) return Promise.resolve(null);
+  return env.DB.prepare('SELECT * FROM stempel_customers WHERE device_token = ? AND shop_id = ?')
+    .bind(deviceToken, shop.id).first();
+}
+
+/* Neue Karte anlegen — inklusive erstem Stempel und eigener Karten-ID */
+async function createCustomerWithFirstStamp(env, shop) {
+  const deviceToken = crypto.randomUUID();
+  const redeemToken = crypto.randomUUID();
+  const cardCode = await uniqueCardCode(env);
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO stempel_customers (id, shop_id, device_token, redeem_token, card_code, stamps, last_stamp_at) VALUES (?, ?, ?, ?, ?, 1, datetime('now'))`
+  ).bind(id, shop.id, deviceToken, redeemToken, cardCode).run();
+  await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id) VALUES (?, ?, ?)`)
+    .bind(crypto.randomUUID(), id, shop.id).run();
+  const customer = { id, shop_id: shop.id, stamps: 1, redeemed_count: 0, device_token: deviceToken, redeem_token: redeemToken, card_code: cardCode };
+  return { customer, deviceToken };
+}
+
+/* Stempel für ein bekanntes Gerät — Cooldown und Belohnungs-Reset stecken in applyStampLogic */
+async function grantStampToDevice(env, request, shop, customer, ctx) {
+  if (!customer.redeem_token) {
+    customer.redeem_token = crypto.randomUUID();
+    await env.DB.prepare(`UPDATE stempel_customers SET redeem_token = ? WHERE id = ?`).bind(customer.redeem_token, customer.id).run();
   }
-
-  return { headers, customer, isNew, cooldownHit };
+  await ensureCardCode(env, customer);
+  const result = await applyStampLogic(env, customer, shop, null, request, ctx);
+  return { customer: result.customer, cooldownHit: result.cooldownHit };
 }
 
 /* Erhöht den Stempelstand eines bereits bekannten Kunden — genutzt vom NFC-Tap (bestehender Kunde)
@@ -1415,21 +1425,93 @@ async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
 }
 
 async function grantStampToCustomer(env, customer, shop, employeeId, request, ctx) {
+  await ensureCardCode(env, customer);
   const result = await applyStampLogic(env, customer, shop, employeeId, request, ctx);
   return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit };
 }
 
+/* GET /s/:slug — kennt das Gerät die Karte schon, gibt es direkt den Stempel.
+   Sonst erst die Auswahl: neue Karte starten oder vorhandene wiederherstellen. */
 async function handleStempelTap(request, env, slug, ctx) {
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
   if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
 
-  const { headers, customer, isNew, cooldownHit } = await grantStamp(env, request, shop, ctx);
+  const customer = await customerOfDevice(env, shop, deviceTokenOf(request));
+  if (!customer) {
+    return new Response(renderStempelStartPage(shop, {}), htmlHeaders());
+  }
 
+  const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
+  return cardResponse(request, shop, customer, { isNew: false, cooldownHit });
+}
+
+/* POST /s/:slug — Antwort auf die Auswahl aus der Startansicht */
+async function handleStempelTapSubmit(request, env, slug, ctx) {
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+
+  const form = await request.formData().catch(() => null);
+  const action = str(form?.get('action'));
+
+  /* Gerät hat inzwischen doch eine Karte (z. B. zweiter Tab) — dann normal stempeln */
+  const known = await customerOfDevice(env, shop, deviceTokenOf(request));
+  if (known) {
+    const { cooldownHit } = await grantStampToDevice(env, request, shop, known, ctx);
+    return cardResponse(request, shop, known, { isNew: false, cooldownHit });
+  }
+
+  if (action === 'restore') return handleStempelRestore(request, env, shop, form, ctx);
+  if (action !== 'new') return new Response(renderStempelStartPage(shop, {}), htmlHeaders(400));
+
+  const { customer, deviceToken } = await createCustomerWithFirstStamp(env, shop);
+  return cardResponse(request, shop, customer, { isNew: true, cooldownHit: false }, deviceToken);
+}
+
+/* Karte per Karten-ID zurückholen — reiner Besitznachweis, kein Konto.
+   Gegen Durchprobieren greift dieselbe Sperre wie beim Login (login_locks). */
+async function handleStempelRestore(request, env, shop, form, ctx) {
+  const code = normalizeCardCode(form?.get('code'));
+  const lockKey = 'cardcode:' + (request.headers.get('CF-Connecting-IP') || 'unbekannt');
+
+  const gate = await checkLock(env, lockKey);
+  if (gate) return new Response(renderStempelStartPage(shop, { error: gate, showRestore: true }), htmlHeaders(429));
+
+  if (code.length !== CARD_CODE_LENGTH) {
+    await noteFail(env, lockKey);
+    return new Response(renderStempelStartPage(shop, {
+      error: `Die Karten-ID besteht aus ${CARD_CODE_LENGTH} Zeichen. Bitte prüf deine Eingabe.`,
+      showRestore: true, code,
+    }), htmlHeaders(400));
+  }
+
+  const customer = await env.DB.prepare('SELECT * FROM stempel_customers WHERE card_code = ? AND shop_id = ?')
+    .bind(code, shop.id).first();
+  if (!customer) {
+    await noteFail(env, lockKey);
+    return new Response(renderStempelStartPage(shop, {
+      error: 'Zu dieser Karten-ID gibt es hier keine Karte. Tipp sie nochmal ein oder starte eine neue.',
+      showRestore: true, code,
+    }), htmlHeaders(404));
+  }
+
+  await clearFails(env, lockKey);
+  /* Das Gerät hängt sich an den bestehenden device_token — künftige Taps
+     landen damit wieder ganz normal auf dieser Karte. */
+  const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
+  return cardResponse(request, shop, customer, { isNew: false, cooldownHit, restored: true }, customer.device_token);
+}
+
+function htmlHeaders(status) {
+  return { status: status || 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } };
+}
+
+function cardResponse(request, shop, customer, state, setDeviceToken) {
   // TODO: sobald Apple/Google-Zertifikate als Secrets gesetzt sind, hier
   // echte Wallet-Karte erzeugen (isNew) bzw. per Push aktualisieren.
-
+  const headers = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
+  if (setDeviceToken) headers.append('Set-Cookie', deviceCookie(setDeviceToken));
   const rewardReached = customer.stamps >= shop.reward_threshold;
-  const html = renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }, new URL(request.url).origin);
+  const html = renderStempelTapPage(shop, customer, { ...state, rewardReached }, new URL(request.url).origin);
   return new Response(html, { headers });
 }
 
@@ -1898,6 +1980,51 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
+/* ══ Karten-ID ══
+   Kurzer Code, den der Kunde abtippen kann, um seine Karte auf einem neuen
+   Gerät zurückzuholen. Kein Ersatz für id/redeem_token, sondern ein reines
+   Wiedererkennungsmerkmal. Ohne 0/O und 1/I/L, damit nichts verwechselt wird. */
+const CARD_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const CARD_CODE_LENGTH = 8;
+
+function randomCardCode() {
+  const out = [];
+  /* Zufallsbytes verwerfen, die den Zeichenvorrat ungleich verteilen würden */
+  const limit = 256 - (256 % CARD_CODE_ALPHABET.length);
+  while (out.length < CARD_CODE_LENGTH) {
+    for (const b of crypto.getRandomValues(new Uint8Array(CARD_CODE_LENGTH))) {
+      if (b >= limit) continue;
+      out.push(CARD_CODE_ALPHABET[b % CARD_CODE_ALPHABET.length]);
+      if (out.length === CARD_CODE_LENGTH) break;
+    }
+  }
+  return out.join('');
+}
+
+/* Eingaben tolerant lesen: Kleinbuchstaben, Leerzeichen und Bindestriche erlaubt */
+function normalizeCardCode(input) {
+  return String(input || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CARD_CODE_LENGTH);
+}
+
+/* Eindeutig über die ganze Tabelle — bei Kollision neu würfeln und erneut prüfen */
+async function uniqueCardCode(env) {
+  for (let i = 0; i < 10; i++) {
+    const code = randomCardCode();
+    const taken = await env.DB.prepare('SELECT 1 FROM stempel_customers WHERE card_code = ?').bind(code).first();
+    if (!taken) return code;
+  }
+  throw new Error('Karten-ID konnte nicht vergeben werden');
+}
+
+/* Bestandskunden ohne Karten-ID bekommen beim nächsten Besuch eine */
+async function ensureCardCode(env, customer) {
+  if (customer.card_code) return customer.card_code;
+  const code = await uniqueCardCode(env);
+  await env.DB.prepare('UPDATE stempel_customers SET card_code = ? WHERE id = ?').bind(code, customer.id).run();
+  customer.card_code = code;
+  return code;
+}
+
 /* ══ Kartenhintergrund ══
    Statt Flächenfarbe ein mehrschichtiger Verlauf: Basis aus der Ladenfarbe,
    darüber je nach gewähltem Stil farbige Lichter, ein Raster oder ein
@@ -2098,11 +2225,116 @@ function stampIconShape(icon, accent, extraClass) {
   return `<div class="${cls}"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#tsi-${id}"/></svg></div>`;
 }
 
-/* Kartennummer: aus der Kunden-ID abgeleitet, stabil und ohne Extra-Spalte in der DB */
-function cardNumberOf(id) {
-  let h = 0;
-  for (let i = 0; i < String(id).length; i++) h = (h * 31 + String(id).charCodeAt(i)) >>> 0;
-  return String(1000000 + (h % 9000000));
+/* Zwischenansicht beim ersten Tap auf einem Gerät: neue Karte oder vorhandene
+   per Karten-ID zurückholen. Gleiche Farb- und Verlaufslogik wie die Karte. */
+function renderStempelStartPage(shop, { error, showRestore, code }) {
+  const accent = shop.accent_color || '#6366f1';
+  const bg = shop.card_bg_color || '#14131a';
+  const isLightBg = luminanceOf(bg) > 0.55;
+  const toward = isLightBg ? '#000000' : '#ffffff';
+  const away = isLightBg ? '#ffffff' : '#000000';
+  const page = cardBackgroundLayers(shop.bg_pattern, accent, bg, isLightBg);
+
+  const cardTop = mixHex(mixHex(bg, away, isLightBg ? 0.60 : 0.16), accent, 0.09);
+  const cardMid = mixHex(bg, away, isLightBg ? 0.34 : 0.07);
+  const cardLow = mixHex(bg, '#000000', isLightBg ? 0.04 : 0.22);
+  const glossColor = isLightBg ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.16)';
+  const cardBorder = isLightBg ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.09)';
+  const fieldBg = mixHex(bg, toward, isLightBg ? 0.05 : 0.10);
+  const fieldLine = mixHex(bg, accent, 0.42);
+  const onAccent = luminanceOf(accent) > 0.62 ? '#14110f' : '#ffffff';
+  const accentSoft = mixHex(accent, bg, 0.78);
+  const accentText = isLightBg ? mixHex(accent, '#000000', 0.18) : mixHex(accent, '#ffffff', 0.18);
+  const textColor = isLightBg ? '#15141a' : '#f6f3ee';
+  const mutedColor = isLightBg ? '#6b6b6b' : '#9c96a6';
+
+  const logoHtml = shop.logo_key
+    ? `<div class="logo-badge"><img src="/photo/${escapeAttr(shop.logo_key)}" alt=""></div>` : '';
+  const errorHtml = error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : '';
+
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(shop.name)} — Treuekarte</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Inter',system-ui,-apple-system,sans-serif; color:${textColor};
+    background-color:${bg}; background-image:${page.image}; background-size:${page.size};
+    background-repeat:${page.repeat}; background-attachment:fixed;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 20px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .card{
+    background:linear-gradient(158deg, ${cardTop} 0%, ${cardMid} 46%, ${cardLow} 100%);
+    border:1px solid ${cardBorder}; border-radius:24px; max-width:380px; width:100%;
+    padding:30px 24px 26px; position:relative; overflow:hidden;
+    box-shadow:0 24px 60px -20px rgba(0,0,0,${isLightBg ? '0.22' : '0.6'});
+  }
+  .card::before{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(115% 62% at 8% -14%, ${glossColor} 0%, transparent 62%);
+  }
+  .card > *{position:relative;}
+  .logo-badge{width:52px; height:52px; border-radius:14px; overflow:hidden; margin-bottom:14px; background:${fieldBg};}
+  .logo-badge img{width:100%; height:100%; object-fit:cover; display:block;}
+  .eyebrow{font-size:0.6rem; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; color:${mutedColor};}
+  h1{font-size:1.32rem; line-height:1.22; margin:6px 0 8px; font-weight:700; letter-spacing:-0.015em; overflow-wrap:anywhere;}
+  .lead{font-size:0.9rem; line-height:1.45; color:${mutedColor}; margin:0 0 22px;}
+  .error{
+    margin:0 0 18px; padding:11px 14px; border-radius:12px; font-size:0.84rem; line-height:1.4; font-weight:600;
+    background:${mixHex(bg, accent, 0.16)}; border:1px solid ${mixHex(bg, accent, 0.30)}; color:${accentText};
+  }
+  .btn-primary{
+    display:block; width:100%; padding:15px 18px; border:none; border-radius:14px; cursor:pointer;
+    background:linear-gradient(150deg, ${mixHex(accent, '#ffffff', 0.18)}, ${accent});
+    color:${onAccent}; font-size:0.95rem; font-weight:700; font-family:inherit;
+    box-shadow:0 10px 24px -12px ${accentSoft};
+  }
+  details{margin-top:14px;}
+  summary{
+    list-style:none; cursor:pointer; text-align:center; padding:13px 18px; border-radius:14px;
+    border:1px solid ${fieldLine}; color:${accentText}; font-size:0.9rem; font-weight:600;
+  }
+  summary::-webkit-details-marker{display:none;}
+  details[open] summary{margin-bottom:14px;}
+  .hint{font-size:0.8rem; line-height:1.45; color:${mutedColor}; margin:0 0 12px;}
+  input[name="code"]{
+    width:100%; padding:14px 16px; border-radius:12px; border:1px solid ${fieldLine};
+    background:${fieldBg}; color:${textColor}; font-family:inherit; font-size:1.15rem; font-weight:700;
+    letter-spacing:0.16em; text-align:center; text-transform:uppercase;
+  }
+  input[name="code"]::placeholder{color:${mutedColor}; letter-spacing:0.16em; font-weight:600;}
+  input[name="code"]:focus{outline:2px solid ${accent}; outline-offset:1px;}
+  .btn-secondary{
+    display:block; width:100%; margin-top:12px; padding:14px 18px; border-radius:12px; cursor:pointer;
+    border:1px solid ${accent}; background:transparent; color:${accentText};
+    font-size:0.9rem; font-weight:700; font-family:inherit;
+  }
+</style></head>
+<body>
+  <div class="card">
+    ${logoHtml}
+    <span class="eyebrow">Treuekarte</span>
+    <h1>${escapeHtml(shop.name)}</h1>
+    <p class="lead">Willkommen! Sammel ab jetzt Stempel — nach ${shop.reward_threshold} gibt's: ${escapeHtml(shop.reward_text || 'deine Belohnung')}.</p>
+    ${errorHtml}
+    <form method="post">
+      <input type="hidden" name="action" value="new">
+      <button class="btn-primary" type="submit">Neue Karte starten</button>
+    </form>
+    <details${showRestore ? ' open' : ''}>
+      <summary>Ich habe schon eine Karte</summary>
+      <p class="hint">Tipp die ${CARD_CODE_LENGTH}-stellige Karten-ID ein, die auf deiner Karte unter „Karte" steht.</p>
+      <form method="post">
+        <input type="hidden" name="action" value="restore">
+        <input type="text" name="code" value="${escapeAttr(code || '')}" maxlength="${CARD_CODE_LENGTH}"
+          placeholder="${'X'.repeat(CARD_CODE_LENGTH)}" autocomplete="off" autocapitalize="characters"
+          spellcheck="false" aria-label="Karten-ID" required>
+        <button class="btn-secondary" type="submit">Karte wiederherstellen</button>
+      </form>
+    </details>
+  </div>
+</body></html>`;
 }
 
 /* Spaltenzahl fürs Stempelraster — teilerfreundlich, damit keine halbe Reihe übrig bleibt */
@@ -2244,8 +2476,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   .reward-text{font-size:0.93rem; font-weight:600; line-height:1.3; margin-top:4px; overflow-wrap:anywhere;}
   .reward-col{min-width:0;}
   .card-no{text-align:right; flex:none;}
-  .card-no-value{font-size:0.86rem; font-weight:600; color:${mutedColor}; margin-top:4px; font-variant-numeric:tabular-nums;}
+  .card-no-value{font-size:0.9rem; font-weight:700; color:${textColor}; margin-top:4px; letter-spacing:0.09em; font-variant-numeric:tabular-nums;}
   .hint{font-size:0.78rem; color:${mutedColor}; margin-top:12px;}
+  .hint-sub{margin-top:6px; line-height:1.45;}
+  .hint-sub b{color:${textColor}; letter-spacing:0.08em; font-variant-numeric:tabular-nums;}
 
   .extra-link{
     display:block; text-align:center; margin-top:10px; padding:12px 22px; border-radius:12px;
@@ -2294,10 +2528,11 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
         </div>
         <div class="card-no">
           <span class="eyebrow">Karte</span>
-          <div class="card-no-value">${cardNumberOf(customer.id)}</div>
+          <div class="card-no-value">${escapeHtml(customer.card_code || '')}</div>
         </div>
       </div>
       <div class="hint">${rewardReached ? 'Zeig diese Karte beim nächsten Besuch vor und lös deine Belohnung ein.' : `Noch ${remaining} ${remaining === 1 ? 'Stempel' : 'Stempel'} bis zur Belohnung.`}</div>
+      <div class="hint hint-sub">Neues Handy? Mit dieser Karten-ID holst du die Karte zurück — notier sie dir am besten.</div>
       <a class="wallet-btn" href="${origin}/wallet/google/${shop.slug}">
         <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7 3.5v8.6l-7 3.5-7-3.5V7.7l7-3.5z"/></svg>
         Zu Google Wallet hinzufügen

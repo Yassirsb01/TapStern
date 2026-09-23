@@ -1797,7 +1797,7 @@ function buildLoyaltyObject(env, origin, shop, customer, classId, objectId) {
     id: objectId,
     classId: classId,
     state: 'ACTIVE',
-    accountId: customer.id,
+    accountId: customer.card_code || customer.id, // Google zeigt das als Mitgliedsnummer an
     accountName: shop.name,
     loyaltyPoints: {
       label: 'Stempel',
@@ -1805,11 +1805,12 @@ function buildLoyaltyObject(env, origin, shop, customer, classId, objectId) {
     },
     textModulesData: [
       { id: 'reward_info', header: 'Deine Belohnung', body: buildRewardMessage(shop, customer) },
+      ...(customer.card_code ? [{ id: 'card_code', header: `Karten-ID: ${customer.card_code}`, body: 'Mit dieser ID holst du die Karte auf einem neuen Handy zurück.' }] : []),
     ],
     barcode: {
       type: 'QR_CODE',
       value: `${origin}/staff-redeem/${customer.redeem_token}`,
-      alternateText: 'Für Personal',
+      alternateText: customer.card_code ? `Karten-ID ${customer.card_code}` : 'Für Personal',
     },
     hexBackgroundColor: shop.card_bg_color || '#14131a',
     ...(shop.banner_key ? { heroImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } } : {}),
@@ -1828,6 +1829,7 @@ async function handleGoogleWalletSave(request, env, slug) {
     ? await env.DB.prepare('SELECT * FROM stempel_customers WHERE device_token = ? AND shop_id = ?').bind(cookieMatch[1], shop.id).first()
     : null;
   if (!customer) return new Response('Keine Stempelkarte gefunden — erst antippen oder QR-Code beitreten.', { status: 404 });
+  await ensureCardCode(env, customer);
 
   const origin = new URL(request.url).origin;
   const { classId, objectId } = buildLoyaltyIds(env, shop, customer);
@@ -2034,7 +2036,7 @@ function buildApplePassJson(origin, shop, customer, authToken) {
         format: 'PKBarcodeFormatQR',
         message: `${origin}/staff-redeem/${customer.redeem_token}`,
         messageEncoding: 'iso-8859-1',
-        altText: 'Für Personal',
+        altText: customer.card_code ? `Karten-ID ${customer.card_code}` : 'Für Personal',
       }],
     } : {}),
   };

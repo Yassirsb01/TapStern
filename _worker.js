@@ -2677,16 +2677,58 @@ function berlinEndOfDay(dateStr) {
   return Math.floor((utc - hours * 3600000) / 1000);
 }
 
-async function walletRecipientCount(env, shopId) {
+/* Wer bekommt eine Nachricht als Mitteilung aufs Handy? Kunden-IDs mit Apple-Wallet-Karte
+   (aus den Geräte-Anmeldungen) und mit Google-Wallet-Karte (Googles Objektliste der
+   Laden-Klasse, hasUsers = gespeichert). Ein Kunde mit beiden Wallets zählt einmal. */
+async function appleWalletCustomerIds(env, shopId) {
   try {
-    const row = await env.DB.prepare(
-      `SELECT COUNT(DISTINCT r.serial) AS n FROM wallet_registrations r
+    const { results } = await env.DB.prepare(
+      `SELECT DISTINCT r.serial FROM wallet_registrations r
        JOIN stempel_customers c ON c.id = r.serial WHERE c.shop_id = ?`
-    ).bind(shopId).first();
-    return row?.n || 0;
+    ).bind(shopId).all();
+    return new Set((results || []).map(r => r.serial));
   } catch (e) {
-    return 0;
+    return new Set();
   }
+}
+
+/* null = unbekannt (Google Wallet nicht eingerichtet oder nicht erreichbar) */
+async function googleWalletCustomerIds(env, shop) {
+  if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) return null;
+  try {
+    const { classId } = buildLoyaltyIds(env, shop, { id: '' });
+    const prefix = `${env.GOOGLE_WALLET_ISSUER_ID}.`;
+    const accessToken = await getGoogleWalletAccessToken(env);
+    const ids = new Set();
+    let pageToken = '';
+    for (let page = 0; page < 10; page++) { // höchstens 1000 Karten abfragen
+      const url = `https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject?classId=${encodeURIComponent(classId)}&maxResults=100`
+        + (pageToken ? `&token=${encodeURIComponent(pageToken)}` : '');
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      if (res.status === 404) return ids; // noch niemand hat die Karte in Google Wallet
+      if (!res.ok) throw new Error(`loyaltyObject-Liste ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      for (const o of data.resources || []) {
+        if (o.hasUsers && o.state !== 'INACTIVE' && o.id?.startsWith(prefix)) ids.add(o.id.slice(prefix.length));
+      }
+      pageToken = data.pagination?.nextPageToken;
+      if (!pageToken) break;
+    }
+    return ids;
+  } catch (e) {
+    console.error('Google-Wallet-Karten nicht abrufbar:', e);
+    return null;
+  }
+}
+
+async function walletReach(env, shop) {
+  const [apple, google, total] = await Promise.all([
+    appleWalletCustomerIds(env, shop.id),
+    googleWalletCustomerIds(env, shop),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM stempel_customers WHERE shop_id = ?').bind(shop.id).first().then(r => r?.n || 0, () => 0),
+  ]);
+  const reached = new Set([...apple, ...(google || [])]);
+  return { wallet: reached.size, apple: apple.size, google: google ? google.size : null, customers: total };
 }
 
 async function lastMessageCreatedAt(env, shopId) {
@@ -2703,8 +2745,7 @@ async function handleStempelGetMessage(request, env) {
   const next = last + MESSAGE_INTERVAL_SEC;
   return json({
     message: await currentShopMessage(env, shop.id),
-    appleWalletCustomers: await walletRecipientCount(env, shop.id), // Kunden, nicht Geräte
-    googleWallet: !!env.GOOGLE_WALLET_ISSUER_ID,
+    reach: await walletReach(env, shop),
     nextAllowedAt: next > Date.now() / 1000 ? next : null,
     maxLength: MESSAGE_MAX_LEN,
   });

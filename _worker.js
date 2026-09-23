@@ -1964,9 +1964,11 @@ function pixelCanvas(width, height) {
   };
 }
 
-/* Stempelreihe im Format 1032×336 — das von Google empfohlene Hero-Maß (3:1) */
-function stampStripPng(shop, stamps, total) {
-  const W = 1032, H = 336;
+/* Stempelreihe als Bild. Standardmaß 1032×336 ist das von Google empfohlene
+   Hero-Format (3:1); Apple Wallet nutzt für Strip-Bilder ein ähnliches
+   Seitenverhältnis, deshalb sind Breite und Höhe einstellbar. */
+function stampStripPng(shop, stamps, total, width, height) {
+  const W = width || 1032, H = height || 336;
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLight = luminanceOf(bg) > 0.55;

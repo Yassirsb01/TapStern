@@ -15,3 +15,10 @@ CREATE TABLE IF NOT EXISTS wallet_registrations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_wallet_registrations_serial ON wallet_registrations(serial);
+
+-- Stand pro Laden: wird hochgesetzt, wenn sich Belohnung, Farben, Icon oder Logo
+-- ändern — dann holen sich alle Wallet-Karten des Ladens die neue Version.
+CREATE TABLE IF NOT EXISTS wallet_shop_versions (
+  shop_id TEXT PRIMARY KEY,
+  updated_at INTEGER NOT NULL
+);

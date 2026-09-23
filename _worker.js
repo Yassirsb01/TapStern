@@ -38,11 +38,11 @@ export default {
       if (method === 'POST' && path === '/api/stempel/verify-email') return handleStempelVerifyEmail(request, env);
       if (method === 'POST' && path === '/api/stempel/login') return handleStempelLogin(request, env);
       if (method === 'GET'  && path === '/api/stempel/me') return handleStempelMe(request, env);
-      if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env);
+      if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env, ctx);
       if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
-      if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' });
+      if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' }, ctx);
       if (method === 'POST' && path === '/api/stempel/upload-banner') return handleStempelUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'stempel-banner', resultKey: 'bannerUrl' });
-      if (method === 'POST' && path === '/api/stempel/remove-logo') return handleStempelRemoveImage(request, env, 'logo_key');
+      if (method === 'POST' && path === '/api/stempel/remove-logo') return handleStempelRemoveImage(request, env, 'logo_key', ctx);
       if (method === 'POST' && path === '/api/stempel/remove-banner') return handleStempelRemoveImage(request, env, 'banner_key');
       if (method === 'GET'  && path === '/api/stempel/employees') return handleStempelListEmployees(request, env);
       if (method === 'POST' && path === '/api/stempel/employees') return handleStempelAddEmployee(request, env);
@@ -1277,7 +1277,7 @@ async function handleStempelMe(request, env) {
   return json({ shop: safe });
 }
 
-async function handleStempelSettings(request, env) {
+async function handleStempelSettings(request, env, ctx) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   const data = await request.json();
@@ -1286,12 +1286,14 @@ async function handleStempelSettings(request, env) {
   const bgPattern = BG_PATTERN_IDS.includes(str(data.bg_pattern)) ? str(data.bg_pattern) : (shop.bg_pattern || 'aurora');
   const accentColor = /^#[0-9a-fA-F]{6}$/.test(str(data.accent_color)) ? str(data.accent_color) : shop.accent_color;
   const cardBgColor = /^#[0-9a-fA-F]{6}$/.test(str(data.card_bg_color)) ? str(data.card_bg_color) : (shop.card_bg_color || '#14131a');
+  const rewardThreshold = Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold);
+  const rewardText = str(data.reward_text) || shop.reward_text;
 
   await env.DB.prepare(
     `UPDATE stempel_shops SET reward_threshold = ?, reward_text = ?, accent_color = ?, card_bg_color = ?, extra_link_url = ?, extra_link_label = ?, min_stamp_interval_minutes = ?, stamp_icon = ?, bg_pattern = ? WHERE id = ?`
   ).bind(
-    Math.max(1, parseInt(data.reward_threshold) || shop.reward_threshold),
-    str(data.reward_text) || shop.reward_text,
+    rewardThreshold,
+    rewardText,
     accentColor,
     cardBgColor,
     str(data.extra_link_url) || null,
@@ -1302,11 +1304,16 @@ async function handleStempelSettings(request, env) {
     shop.id
   ).run();
 
+  // Nur was auch auf der Wallet-Karte steht, löst ein Update aller Karten aus
+  const walletChanged = rewardThreshold !== shop.reward_threshold || rewardText !== shop.reward_text
+    || accentColor !== shop.accent_color || cardBgColor !== shop.card_bg_color || stampIcon !== shop.stamp_icon;
+  if (walletChanged) await markShopWalletChanged(env, shop.id, ctx);
+
   return json({ success: true });
 }
 
 /* Logo/Banner-Uploads fürs Stempel-Profil — nutzt denselben PHOTOS-Bucket wie die Karten-App */
-async function handleStempelUploadImage(request, env, opts) {
+async function handleStempelUploadImage(request, env, opts, ctx) {
   let form;
   try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
 
@@ -1326,14 +1333,16 @@ async function handleStempelUploadImage(request, env, opts) {
   if (oldKey) { try { await env.PHOTOS.delete(oldKey); } catch (e) {} }
 
   await env.DB.prepare(`UPDATE stempel_shops SET ${opts.column} = ? WHERE id = ?`).bind(key, shop.id).run();
+  if (opts.column === 'logo_key') await markShopWalletChanged(env, shop.id, ctx); // Logo steht auf der Wallet-Karte
   return json({ success: true, [opts.resultKey]: `/photo/${key}` });
 }
 
-async function handleStempelRemoveImage(request, env, column) {
+async function handleStempelRemoveImage(request, env, column, ctx) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   if (shop[column]) { try { await env.PHOTOS.delete(shop[column]); } catch (e) {} }
   await env.DB.prepare(`UPDATE stempel_shops SET ${column} = NULL WHERE id = ?`).bind(shop.id).run();
+  if (column === 'logo_key') await markShopWalletChanged(env, shop.id, ctx);
   return json({ success: true });
 }
 
@@ -2438,9 +2447,11 @@ async function appleAuthOk(request, env, serial) {
   return !!m && m[1] === await appleAuthToken(env, serial);
 }
 
-/* Stand einer Karte in Sekunden — ändert sich mit jedem Stempel und jeder Einlösung */
-function applePassUpdatedAt(customer) {
-  return customer.last_stamp_at ? Math.floor(new Date(customer.last_stamp_at + 'Z').getTime() / 1000) : 0;
+/* Stand einer Karte in Sekunden — ändert sich mit jedem Stempel, jeder Einlösung
+   und jeder Laden-Änderung, die auf der Karte sichtbar ist (shop_updated_at) */
+function applePassUpdatedAt(row) {
+  const stamped = row.last_stamp_at ? Math.floor(new Date(row.last_stamp_at + 'Z').getTime() / 1000) : 0;
+  return Math.max(stamped, row.shop_updated_at || 0);
 }
 
 async function ensureWalletTable(env) {
@@ -2454,6 +2465,31 @@ async function ensureWalletTable(env) {
      )`
   ).run();
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_wallet_registrations_serial ON wallet_registrations(serial)').run();
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS wallet_shop_versions (shop_id TEXT PRIMARY KEY, updated_at INTEGER NOT NULL)'
+  ).run();
+}
+
+/* Laden hat Belohnung, Farben, Icon o. ä. geändert: Stand aller seiner Karten
+   hochsetzen und alle Geräte mit einer Karte dieses Ladens anstoßen */
+async function markShopWalletChanged(env, shopId, ctx) {
+  try {
+    await ensureWalletTable(env);
+    await env.DB.prepare(
+      `INSERT INTO wallet_shop_versions (shop_id, updated_at) VALUES (?, ?)
+       ON CONFLICT(shop_id) DO UPDATE SET updated_at = excluded.updated_at`
+    ).bind(shopId, Math.floor(Date.now() / 1000)).run();
+  } catch (e) {
+    console.error('Wallet-Stand des Ladens nicht gespeichert:', e);
+    return;
+  }
+  const push = env.DB.prepare(
+    `SELECT DISTINCT r.push_token FROM wallet_registrations r
+     JOIN stempel_customers c ON c.id = r.serial WHERE c.shop_id = ?`
+  ).bind(shopId).all()
+    .then(r => sendApplePushes(env, (r.results || []).map(x => x.push_token)))
+    .catch(e => console.error('Apple Wallet Laden-Update fehlgeschlagen:', e));
+  if (ctx) ctx.waitUntil(push); else await push;
 }
 
 async function handleAppleWalletService(request, env, sub) {
@@ -2501,9 +2537,12 @@ async function handleAppleWalletService(request, env, sub) {
     // GET — welche Karten dieses Geräts haben sich seit passesUpdatedSince geändert?
     if (p.length === 4 && method === 'GET') {
       const since = Number(new URL(request.url).searchParams.get('passesUpdatedSince')) || 0;
+      await ensureWalletTable(env);
       const rows = await env.DB.prepare(
-        `SELECT r.serial, c.last_stamp_at FROM wallet_registrations r
-         JOIN stempel_customers c ON c.id = r.serial WHERE r.device_id = ?`
+        `SELECT r.serial, c.last_stamp_at, v.updated_at AS shop_updated_at FROM wallet_registrations r
+         JOIN stempel_customers c ON c.id = r.serial
+         LEFT JOIN wallet_shop_versions v ON v.shop_id = c.shop_id
+         WHERE r.device_id = ?`
       ).bind(deviceId).all().then(r => r.results || [], () => []);
       const changed = rows.filter(r => applePassUpdatedAt(r) > since);
       if (!changed.length) return new Response(null, { status: 204 });
@@ -2523,7 +2562,9 @@ async function handleAppleWalletService(request, env, sub) {
     const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
     if (!shop) return new Response(null, { status: 404 });
 
-    const updatedAt = applePassUpdatedAt(customer);
+    await ensureWalletTable(env);
+    const version = await env.DB.prepare('SELECT updated_at FROM wallet_shop_versions WHERE shop_id = ?').bind(shop.id).first();
+    const updatedAt = applePassUpdatedAt({ ...customer, shop_updated_at: version?.updated_at });
     const since = Date.parse(request.headers.get('If-Modified-Since') || '');
     if (since && updatedAt && Math.floor(since / 1000) >= updatedAt) return new Response(null, { status: 304 });
 
@@ -2547,8 +2588,19 @@ async function pushAppleWalletUpdate(env, customer) {
   if (!env.APNS_CERT) return;
   const rows = await env.DB.prepare('SELECT DISTINCT push_token FROM wallet_registrations WHERE serial = ?')
     .bind(customer.id).all().then(r => r.results || [], () => []);
+  await sendApplePushes(env, rows.map(r => r.push_token));
+}
 
-  await Promise.all(rows.map(async ({ push_token }) => {
+/* In Gruppen zu 25 — ein Laden kann viele Karten haben */
+async function sendApplePushes(env, pushTokens) {
+  if (!env.APNS_CERT) return;
+  for (let i = 0; i < pushTokens.length; i += 25) {
+    await Promise.all(pushTokens.slice(i, i + 25).map(push_token => sendApplePush(env, push_token)));
+  }
+}
+
+async function sendApplePush(env, push_token) {
+  try {
     const res = await env.APNS_CERT.fetch(`https://api.push.apple.com/3/device/${push_token}`, {
       method: 'POST',
       headers: { 'apns-topic': APPLE_PASS_TYPE_ID, 'Content-Type': 'application/json' },
@@ -2560,7 +2612,9 @@ async function pushAppleWalletUpdate(env, customer) {
     } else if (!res.ok) {
       console.error(`APNs ${res.status}: ${await res.text()}`);
     }
-  }));
+  } catch (e) {
+    console.error('APNs nicht erreichbar:', e); // ein Gerät darf die anderen nicht aufhalten
+  }
 }
 
 async function handleStaffRedeemPage(request, env, token) {

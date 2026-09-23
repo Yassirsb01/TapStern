@@ -1980,8 +1980,8 @@ function hexToRgb(hex) {
 }
 
 /* Inhalt der Karte — gleiche Farben wie die Kartenseite (renderStempelTapPage).
-   Bei storeCard steht im Hauptfeld die Beschriftung UNTER dem Wert, in den
-   übrigen Feldern darüber — deshalb steht der Belohnungssatz im Nebenfeld. */
+   Die Stempel selbst zeigt das Bild strip.png; darunter im Nebenfeld der
+   Belohnungssatz (Beschriftung steht dort über dem Wert). */
 function buildApplePassJson(origin, shop, customer) {
   const total = shop.reward_threshold;
   const remaining = Math.max(0, total - customer.stamps);
@@ -2003,11 +2003,9 @@ function buildApplePassJson(origin, shop, customer) {
     sharingProhibited: true,
     storeCard: {
       headerFields: [
-        { key: 'card', label: 'KARTE', value: customer.card_code || '' },
+        { key: 'stamps', label: 'STEMPEL', value: `${Math.min(customer.stamps, total)}/${total}` },
       ],
-      primaryFields: [
-        { key: 'stamps', label: 'Stempel gesammelt', value: `${Math.min(customer.stamps, total)} von ${total}` },
-      ],
+      // Kein Hauptfeld: dessen Text läge über dem Stempel-Streifen (strip.png)
       secondaryFields: [
         { key: 'reward', label: remaining === 0 ? 'BELOHNUNG BEREIT' : `NOCH ${remaining} STEMPEL BIS`, value: shop.reward_text || '' },
       ],
@@ -2050,6 +2048,213 @@ async function appleWalletFiles(env, origin, shop, customer) {
     files[name] = new Uint8Array(await res.arrayBuffer());
   }
   if (shopLogo) files['logo.png'] = shopLogo;
+  Object.assign(files, await stampStripFiles(env, origin, shop, customer));
+  return files;
+}
+
+/* ── Stempel-Streifen (strip.png) ──
+   Wallet kennt kein Stempelraster — Anbieter zeichnen die Stempel deshalb als
+   Bild in den Streifen unter dem Kopf der Karte. Das Raster folgt der
+   Kartenseite (stampColumns, gefüllte Kachel mit Akzentring, leere ausgegraut).
+   Die farbigen Icons liegen vorgerendert unter /wallet/stamps/<id>.png (128 px,
+   RGBA) — erzeugt aus STAMP_ICON_SPRITE; "circle" ist dort eine schwarze Maske,
+   die hier mit der Akzentfarbe eingefärbt wird. */
+const STRIP_W = 375, STRIP_H = 144; // Punkte, Streifen einer storeCard
+
+async function streamBytes(data, transform) {
+  return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(transform)).arrayBuffer());
+}
+
+/* Nur 8-Bit-RGBA ohne Interlacing — genau so liegen die Icons im Repo */
+async function decodePng(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const idat = [];
+  let w = 0, h = 0;
+  for (let o = 8; o < bytes.length;) {
+    const len = dv.getUint32(o);
+    const type = String.fromCharCode(...bytes.subarray(o + 4, o + 8));
+    if (type === 'IHDR') {
+      w = dv.getUint32(o + 8); h = dv.getUint32(o + 12);
+      if (bytes[o + 16] !== 8 || bytes[o + 17] !== 6 || bytes[o + 20] !== 0) throw new Error('PNG-Format nicht unterstützt');
+    } else if (type === 'IDAT') idat.push(bytes.subarray(o + 8, o + 8 + len));
+    else if (type === 'IEND') break;
+    o += 12 + len;
+  }
+  const raw = await streamBytes(concatBytes(idat), new DecompressionStream('deflate'));
+  const stride = w * 4, px = new Uint8Array(stride * h);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)], src = y * (stride + 1) + 1, row = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= 4 ? px[row + x - 4] : 0, b = y > 0 ? px[row - stride + x] : 0, c = x >= 4 && y > 0 ? px[row - stride + x - 4] : 0;
+      let v = raw[src + x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      px[row + x] = v & 0xff;
+    }
+  }
+  return { w, h, px };
+}
+
+async function encodePngRgb(rgb, w, h) {
+  const raw = new Uint8Array((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) raw.set(rgb.subarray(y * w * 3, (y + 1) * w * 3), y * (w * 3 + 1) + 1);
+  const chunk = (type, data) => {
+    const body = concatBytes([new TextEncoder().encode(type), data]);
+    const out = new Uint8Array(body.length + 8), dv = new DataView(out.buffer);
+    dv.setUint32(0, data.length); out.set(body, 4); dv.setUint32(body.length + 4, crc32(body));
+    return out;
+  };
+  const ihdr = new Uint8Array(13), hv = new DataView(ihdr.buffer);
+  hv.setUint32(0, w); hv.setUint32(4, h); ihdr[8] = 8; ihdr[9] = 2; // 8 Bit, RGB
+  return concatBytes([
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', await streamBytes(raw, new CompressionStream('deflate'))),
+    chunk('IEND', new Uint8Array(0)),
+  ]);
+}
+
+function rgbOf(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/* Spaltenzahl, bei der die Kacheln im Streifen am größten werden (bei Gleichstand weniger Zeilen) */
+function stripLayout(total) {
+  const padX = 16, padY = 14, gap = 10;
+  let best = null;
+  for (let cols = 1; cols <= total; cols++) {
+    const rows = Math.ceil(total / cols);
+    const d = Math.min(58, (STRIP_W - 2 * padX - (cols - 1) * gap) / cols, (STRIP_H - 2 * padY - (rows - 1) * gap) / rows);
+    if (!best || d > best.d + 0.01) best = { cols, rows, d, gap };
+  }
+  return best;
+}
+
+/* Zeichnet den Streifen in Pixeln (Punkte × scale) und gibt RGB-Bytes zurück.
+   Kachelform und skaliertes Icon werden einmal berechnet und für jede Kachel kopiert. */
+function drawStampStrip(shop, customer, icon, scale) {
+  const bg = shop.card_bg_color || '#14131a';
+  const accent = shop.accent_color || '#6366f1';
+  const isLightBg = luminanceOf(bg) > 0.55;
+  const toward = isLightBg ? '#000000' : '#ffffff';
+  const tileEmpty = rgbOf(mixHex(bg, toward, isLightBg ? 0.07 : 0.06));
+  const fillHi = rgbOf(isLightBg ? mixHex(bg, '#ffffff', 0.95) : mixHex(bg, '#ffffff', 0.20));
+  const fillLo = rgbOf(isLightBg ? mixHex(bg, '#ffffff', 0.70) : mixHex(bg, '#ffffff', 0.09));
+  const emptyLine = rgbOf(mixHex(bg, accent, 0.42));
+  const acc = rgbOf(accent);
+  const tint = !STAMP_ICON_IDS.includes(shop.stamp_icon) || shop.stamp_icon === 'circle';
+
+  const W = Math.round(STRIP_W * scale), H = Math.round(STRIP_H * scale);
+  const img = new Uint8Array(W * H * 3);
+  const bgc = rgbOf(bg);
+  for (let i = 0; i < img.length; i += 3) { img[i] = bgc[0]; img[i + 1] = bgc[1]; img[i + 2] = bgc[2]; }
+
+  const total = shop.reward_threshold;
+  const { cols, rows, d, gap } = stripLayout(total);
+  const x0 = (STRIP_W - (cols * d + (cols - 1) * gap)) / 2;
+  const y0 = (STRIP_H - (rows * d + (rows - 1) * gap)) / 2;
+
+  // Kachelform: Deckung von Fläche und Ring, einmal für alle Kacheln
+  const size = Math.ceil(d * scale) + 2, r = d * scale / 2, c0 = r + 1, line = 1.6 * scale;
+  const cover = new Float32Array(size * size), ring = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = x + 0.5 - c0, dy = y + 0.5 - c0, dist = Math.sqrt(dx * dx + dy * dy);
+    const outer = Math.min(1, Math.max(0, r - dist + 0.5));
+    cover[y * size + x] = outer;
+    ring[y * size + x] = outer - Math.min(1, Math.max(0, r - line - dist + 0.5));
+  }
+
+  // Icon: 70 % der Kachel, einmal per Box-Filter verkleinert (Farbe + Deckung)
+  const is = Math.round(d * scale * 0.7), io = Math.round(c0 - is / 2);
+  const ic = new Float32Array(is * is * 4);
+  const f = icon.w / is, n = Math.max(1, Math.ceil(f));
+  for (let y = 0; y < is; y++) for (let x = 0; x < is; x++) {
+    let sr = 0, sg = 0, sb = 0, sa = 0;
+    for (let v = 0; v < n; v++) {
+      const sy = Math.min(icon.h - 1, Math.floor((y + (v + 0.5) / n) * f));
+      for (let u = 0; u < n; u++) {
+        const sx = Math.min(icon.w - 1, Math.floor((x + (u + 0.5) / n) * f));
+        const p = (sy * icon.w + sx) * 4, a = icon.px[p + 3] / 255;
+        sr += icon.px[p] * a; sg += icon.px[p + 1] * a; sb += icon.px[p + 2] * a; sa += a;
+      }
+    }
+    const o = (y * is + x) * 4;
+    if (sa <= 0) continue;
+    let cr = sr / sa, cg = sg / sa, cb = sb / sa;
+    if (tint) { cr = acc[0] + (255 - acc[0]) * cr / 255; cg = acc[1] + (255 - acc[1]) * cg / 255; cb = acc[2] + (255 - acc[2]) * cb / 255; }
+    ic[o] = cr; ic[o + 1] = cg; ic[o + 2] = cb; ic[o + 3] = sa / (n * n);
+  }
+
+  for (let k = 0; k < total; k++) {
+    const filled = k < customer.stamps;
+    const tx = Math.round((x0 + (k % cols) * (d + gap)) * scale) - 1;
+    const ty = Math.round((y0 + Math.floor(k / cols) * (d + gap)) * scale) - 1;
+    const rc = filled ? acc : emptyLine, ra = filled ? 0.85 : 1;
+    for (let y = 0; y < size; y++) {
+      const py = ty + y;
+      if (py < 0 || py >= H) continue;
+      const t = Math.min(1, Math.max(0, (y - 1) / (2 * r)));
+      const fr = filled ? fillHi[0] + (fillLo[0] - fillHi[0]) * t : tileEmpty[0];
+      const fg = filled ? fillHi[1] + (fillLo[1] - fillHi[1]) * t : tileEmpty[1];
+      const fb = filled ? fillHi[2] + (fillLo[2] - fillHi[2]) * t : tileEmpty[2];
+      for (let x = 0; x < size; x++) {
+        const px = tx + x;
+        if (px < 0 || px >= W) continue;
+        const q = y * size + x, i = (py * W + px) * 3;
+        let a = cover[q];
+        if (a > 0) { img[i] += (fr - img[i]) * a; img[i + 1] += (fg - img[i + 1]) * a; img[i + 2] += (fb - img[i + 2]) * a; }
+        a = ring[q] * ra;
+        if (a > 0) { img[i] += (rc[0] - img[i]) * a; img[i + 1] += (rc[1] - img[i + 1]) * a; img[i + 2] += (rc[2] - img[i + 2]) * a; }
+        const ix = x - io, iy = y - io;
+        if (ix < 0 || iy < 0 || ix >= is || iy >= is) continue;
+        const o = (iy * is + ix) * 4;
+        a = ic[o + 3];
+        if (a <= 0) continue;
+        let cr = ic[o], cg = ic[o + 1], cb = ic[o + 2];
+        if (!filled) { cr = cg = cb = 0.2126 * cr + 0.7152 * cg + 0.0722 * cb; a *= 0.32; } // leer: grau + blass wie auf der Webseite
+        img[i] += (cr - img[i]) * a; img[i + 1] += (cg - img[i + 1]) * a; img[i + 2] += (cb - img[i + 2]) * a;
+      }
+    }
+  }
+  return { rgb: img, w: W, h: H };
+}
+
+/* Streifen hängen nur vom Laden-Design und vom Stempelstand ab — alle Kunden mit
+   gleichem Stand bekommen dasselbe Bild. Deshalb liegen fertige Streifen in R2
+   und werden pro Kombination nur einmal gezeichnet. */
+const STRIP_VERSION = 1; // erhöhen, wenn sich das Aussehen ändert
+const STRIP_SCALES = [['strip.png', 1], ['strip@2x.png', 2], ['strip@3x.png', 3]];
+
+async function stampStripFiles(env, origin, shop, customer) {
+  const id = STAMP_ICON_IDS.includes(shop.stamp_icon) ? shop.stamp_icon : 'circle';
+  const stamps = Math.min(customer.stamps, shop.reward_threshold);
+  const key = 'wallet-strip/' + await sha256(JSON.stringify([STRIP_VERSION, shop.card_bg_color || '', shop.accent_color || '', id, shop.reward_threshold, stamps]));
+  const files = {};
+
+  try {
+    const cached = await Promise.all(STRIP_SCALES.map(([, s]) => env.PHOTOS.get(`${key}@${s}x.png`)));
+    if (cached.every(Boolean)) {
+      for (let j = 0; j < STRIP_SCALES.length; j++) files[STRIP_SCALES[j][0]] = new Uint8Array(await cached[j].arrayBuffer());
+      return files;
+    }
+  } catch (e) { /* Cache ist optional — dann eben neu zeichnen */ }
+
+  const res = await env.ASSETS.fetch(new Request(`${origin}/wallet/stamps/${id}.png`));
+  if (!res.ok) throw new Error(`Stempel-Icon ${id} fehlt (${res.status})`);
+  const icon = await decodePng(new Uint8Array(await res.arrayBuffer()));
+  for (const [name, scale] of STRIP_SCALES) {
+    const { rgb, w, h } = drawStampStrip(shop, { stamps }, icon, scale);
+    files[name] = await encodePngRgb(rgb, w, h);
+    try {
+      await env.PHOTOS.put(`${key}@${scale}x.png`, files[name], { httpMetadata: { contentType: 'image/png' } });
+    } catch (e) { console.error('Stempel-Streifen nicht gecacht:', e); }
+  }
   return files;
 }
 
@@ -2437,7 +2642,9 @@ function cardBackgroundLayers(pattern, accent, bg, isLightBg) {
    Verläufen und Glanzlichtern, eingebunden über <use href="#tsi-…">. Die
    Verläufe liegen einmal zentral in <defs>, deshalb kostet ein Stempel mehr
    im Markup nur ein <use>. Gefüllt = volle Farbe, leer = ausgegraut (CSS).
-   ACHTUNG: Sprite und ID-Liste identisch in _worker.js und stempel.html halten. */
+   ACHTUNG: Sprite und ID-Liste identisch in _worker.js und stempel.html halten.
+   Für Apple Wallet liegt jedes Icon zusätzlich als PNG in wallet/stamps/<id>.png
+   (128 px, RGBA; "circle" als schwarze Maske) — bei Änderungen neu rendern. */
 const STAMP_ICON_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs>
 <linearGradient id="tsg-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#ef9b16"/></linearGradient>
 <linearGradient id="tsg-amber" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc861"/><stop offset="1" stop-color="#e2761b"/></linearGradient>

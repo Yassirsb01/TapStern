@@ -59,6 +59,7 @@ export default {
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
       const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
       if (method === 'GET' && googleWalletMatch) return handleGoogleWalletSave(request, env, googleWalletMatch[1]);
+      if (path.startsWith(APPLE_WS_PREFIX)) return handleAppleWalletService(request, env, path.slice(APPLE_WS_PREFIX.length));
       const appleWalletMatch = path.match(/^\/wallet\/apple\/([^/]+)$/);
       if (method === 'GET' && appleWalletMatch) return handleAppleWalletPass(request, env, appleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
@@ -1421,6 +1422,9 @@ async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
     ctx.waitUntil(
       pushGoogleWalletUpdate(env, origin, shop, customer).catch(e => console.error('Google Wallet Update fehlgeschlagen:', e))
     );
+    ctx.waitUntil(
+      pushAppleWalletUpdate(env, customer).catch(e => console.error('Apple Wallet Update fehlgeschlagen:', e))
+    );
   }
 
   return { customer, cooldownHit };
@@ -1508,8 +1512,6 @@ function htmlHeaders(status) {
 }
 
 function cardResponse(request, shop, customer, state, setDeviceToken) {
-  // TODO: Apple-Wallet-Karten nach einem Stempel per Push aktualisieren
-  // (PassKit-Webservice + APNs). Google Wallet wird schon live aktualisiert.
   const headers = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
   if (setDeviceToken) headers.append('Set-Cookie', deviceCookie(setDeviceToken));
   const rewardReached = customer.stamps >= shop.reward_threshold;
@@ -1982,7 +1984,7 @@ function hexToRgb(hex) {
 /* Inhalt der Karte — gleiche Farben wie die Kartenseite (renderStempelTapPage).
    Die Stempel selbst zeigt das Bild strip.png; darunter im Nebenfeld der
    Belohnungssatz (Beschriftung steht dort über dem Wert). */
-function buildApplePassJson(origin, shop, customer) {
+function buildApplePassJson(origin, shop, customer, authToken) {
   const total = shop.reward_threshold;
   const remaining = Math.max(0, total - customer.stamps);
   const bg = shop.card_bg_color || '#14131a';
@@ -2001,6 +2003,8 @@ function buildApplePassJson(origin, shop, customer) {
     backgroundColor: hexToRgb(bg),
     labelColor: hexToRgb(isLightBg ? mixHex(accent, '#000000', 0.18) : mixHex(accent, '#ffffff', 0.18)),
     sharingProhibited: true,
+    webServiceURL: `${origin}/wallet/apple/ws`,
+    authenticationToken: authToken,
     storeCard: {
       headerFields: [
         { key: 'stamps', label: 'STEMPEL', value: `${Math.min(customer.stamps, total)}/${total}` },
@@ -2031,7 +2035,8 @@ function buildApplePassJson(origin, shop, customer) {
    Icon/Logo kommen aus /wallet/ (statische Dateien); hat der Laden ein PNG-Logo,
    ersetzt es das Tapstern-Logo (Wallet zeigt nur PNG zuverlässig an). */
 async function appleWalletFiles(env, origin, shop, customer) {
-  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer))) };
+  const authToken = await appleAuthToken(env, customer.id);
+  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer, authToken))) };
 
   let shopLogo = null;
   if (shop.logo_key) {
@@ -2406,6 +2411,156 @@ function zipStore(files) {
   end.setUint32(0, 0x06054b50, true); end.setUint16(8, count, true); end.setUint16(10, count, true);
   end.setUint32(12, cd.length, true); end.setUint32(16, offset, true);
   return concatBytes([...local, cd, new Uint8Array(end.buffer)]);
+}
+
+/* ── Apple Wallet: Aktualisierung ──
+   Jeder Pass trägt webServiceURL + authenticationToken. Damit meldet das iPhone
+   die Karte beim Hinzufügen automatisch hier an (Push-Token des Geräts), beim
+   Löschen wieder ab — der Kunde merkt davon nichts. Nach jedem Stempel geht ein
+   leerer Push über APNs an diese Geräte; Wallet holt sich daraufhin selbst die
+   neue Karte über GET /passes/…. Protokoll: Apple "Wallet Web Service".
+   Der Push braucht das mTLS-Binding APNS_CERT (Pass-Zertifikat + Schlüssel,
+   siehe wrangler.jsonc) — ohne Binding bleibt die manuelle Aktualisierung. */
+
+const APPLE_WS_PREFIX = '/wallet/apple/ws/v1/';
+
+/* Geheimer Token pro Karte — abgeleitet statt gespeichert (HMAC über die Karten-ID) */
+async function appleAuthToken(env, serial) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(env.APPLE_PASS_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('wallet-auth:' + serial));
+  return bytesToHex(new Uint8Array(mac)).slice(0, 40);
+}
+
+async function appleAuthOk(request, env, serial) {
+  const m = (request.headers.get('Authorization') || '').match(/^ApplePass\s+(\S+)$/);
+  return !!m && m[1] === await appleAuthToken(env, serial);
+}
+
+/* Stand einer Karte in Sekunden — ändert sich mit jedem Stempel und jeder Einlösung */
+function applePassUpdatedAt(customer) {
+  return customer.last_stamp_at ? Math.floor(new Date(customer.last_stamp_at + 'Z').getTime() / 1000) : 0;
+}
+
+async function ensureWalletTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS wallet_registrations (
+       device_id TEXT NOT NULL,
+       push_token TEXT NOT NULL,
+       serial TEXT NOT NULL,
+       created_at TEXT DEFAULT (datetime('now')),
+       PRIMARY KEY (device_id, serial)
+     )`
+  ).run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_wallet_registrations_serial ON wallet_registrations(serial)').run();
+}
+
+async function handleAppleWalletService(request, env, sub) {
+  if (!env.APPLE_PASS_CERT || !env.APPLE_PASS_KEY) return new Response(null, { status: 503 });
+  const p = sub.split('/').map(s => { try { return decodeURIComponent(s); } catch (e) { return ''; } });
+  const method = request.method;
+
+  // POST /log — Wallet meldet hier Fehler mit unserem Dienst
+  if (method === 'POST' && p[0] === 'log' && p.length === 1) {
+    const body = await readJson(request);
+    console.error('Apple Wallet Log:', JSON.stringify(body?.logs || body));
+    return new Response(null, { status: 200 });
+  }
+
+  // /devices/:deviceId/registrations/:passTypeId[/:serial]
+  if (p[0] === 'devices' && p[2] === 'registrations' && p[3] === APPLE_PASS_TYPE_ID) {
+    const deviceId = p[1];
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(deviceId)) return new Response(null, { status: 400 });
+
+    if (p.length === 5) {
+      const serial = p[4];
+      if (!(await appleAuthOk(request, env, serial))) return new Response(null, { status: 401 });
+
+      if (method === 'POST') {
+        const pushToken = str((await readJson(request))?.pushToken);
+        if (!/^[0-9a-fA-F]{16,256}$/.test(pushToken)) return new Response(null, { status: 400 });
+        const customer = await env.DB.prepare('SELECT id FROM stempel_customers WHERE id = ?').bind(serial).first();
+        if (!customer) return new Response(null, { status: 404 });
+        await ensureWalletTable(env);
+        const existing = await env.DB.prepare('SELECT 1 FROM wallet_registrations WHERE device_id = ? AND serial = ?')
+          .bind(deviceId, serial).first();
+        await env.DB.prepare(
+          `INSERT INTO wallet_registrations (device_id, push_token, serial) VALUES (?, ?, ?)
+           ON CONFLICT(device_id, serial) DO UPDATE SET push_token = excluded.push_token`
+        ).bind(deviceId, pushToken, serial).run();
+        return new Response(null, { status: existing ? 200 : 201 });
+      }
+      if (method === 'DELETE') {
+        await env.DB.prepare('DELETE FROM wallet_registrations WHERE device_id = ? AND serial = ?').bind(deviceId, serial).run()
+          .catch(() => null);
+        return new Response(null, { status: 200 });
+      }
+    }
+
+    // GET — welche Karten dieses Geräts haben sich seit passesUpdatedSince geändert?
+    if (p.length === 4 && method === 'GET') {
+      const since = Number(new URL(request.url).searchParams.get('passesUpdatedSince')) || 0;
+      const rows = await env.DB.prepare(
+        `SELECT r.serial, c.last_stamp_at FROM wallet_registrations r
+         JOIN stempel_customers c ON c.id = r.serial WHERE r.device_id = ?`
+      ).bind(deviceId).all().then(r => r.results || [], () => []);
+      const changed = rows.filter(r => applePassUpdatedAt(r) > since);
+      if (!changed.length) return new Response(null, { status: 204 });
+      return json({
+        serialNumbers: changed.map(r => r.serial),
+        lastUpdated: String(Math.max(...rows.map(applePassUpdatedAt))),
+      });
+    }
+  }
+
+  // GET /passes/:passTypeId/:serial — aktuelle Version der Karte
+  if (method === 'GET' && p[0] === 'passes' && p[1] === APPLE_PASS_TYPE_ID && p.length === 3) {
+    const serial = p[2];
+    if (!(await appleAuthOk(request, env, serial))) return new Response(null, { status: 401 });
+    const customer = await env.DB.prepare('SELECT * FROM stempel_customers WHERE id = ?').bind(serial).first();
+    if (!customer) return new Response(null, { status: 404 });
+    const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
+    if (!shop) return new Response(null, { status: 404 });
+
+    const updatedAt = applePassUpdatedAt(customer);
+    const since = Date.parse(request.headers.get('If-Modified-Since') || '');
+    if (since && updatedAt && Math.floor(since / 1000) >= updatedAt) return new Response(null, { status: 304 });
+
+    const files = await appleWalletFiles(env, new URL(request.url).origin, shop, customer);
+    const pkpass = await buildPkpass(files, env.APPLE_PASS_CERT, env.APPLE_PASS_KEY);
+    return new Response(pkpass, {
+      headers: {
+        'Content-Type': 'application/vnd.apple.pkpass',
+        'Last-Modified': new Date((updatedAt || Math.floor(Date.now() / 1000)) * 1000).toUTCString(),
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  return new Response(null, { status: 404 });
+}
+
+/* Leerer Push an alle Geräte mit dieser Karte — Wallet lädt die Karte dann selbst neu.
+   APNs verlangt dafür das Pass-Zertifikat als Client-Zertifikat (mTLS-Binding APNS_CERT). */
+async function pushAppleWalletUpdate(env, customer) {
+  if (!env.APNS_CERT) return;
+  const rows = await env.DB.prepare('SELECT DISTINCT push_token FROM wallet_registrations WHERE serial = ?')
+    .bind(customer.id).all().then(r => r.results || [], () => []);
+
+  await Promise.all(rows.map(async ({ push_token }) => {
+    const res = await env.APNS_CERT.fetch(`https://api.push.apple.com/3/device/${push_token}`, {
+      method: 'POST',
+      headers: { 'apns-topic': APPLE_PASS_TYPE_ID, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (res.status === 410) {
+      // Gerät hat die Karte nicht mehr — Anmeldung aufräumen
+      await env.DB.prepare('DELETE FROM wallet_registrations WHERE push_token = ?').bind(push_token).run();
+    } else if (!res.ok) {
+      console.error(`APNs ${res.status}: ${await res.text()}`);
+    }
+  }));
 }
 
 async function handleStaffRedeemPage(request, env, token) {

@@ -13,6 +13,12 @@
       "database_id": "37e3b774-7a17-4630-9d7a-1a41bdc7dd78"
     }
   ],
+  // Apple-Wallet-Push: Pass-Zertifikat als Client-Zertifikat für APNs.
+  // Einmalig hochladen und die ausgegebene ID hier eintragen, dann die Zeilen einkommentieren:
+  //   npx wrangler mtls-certificate upload --cert tapstern-pass-cert.pem --key tapstern-pass-key.pem --name tapstern-pass
+  // "mtls_certificates": [
+  //   { "binding": "APNS_CERT", "certificate_id": "<ID aus dem Upload>" }
+  // ],
   "r2_buckets": [
     {
       "binding": "PHOTOS",

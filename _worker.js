@@ -59,6 +59,8 @@ export default {
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
       const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
       if (method === 'GET' && googleWalletMatch) return handleGoogleWalletSave(request, env, googleWalletMatch[1]);
+      const appleWalletMatch = path.match(/^\/wallet\/apple\/([^/]+)$/);
+      if (method === 'GET' && appleWalletMatch) return handleAppleWalletPass(request, env, appleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
 
       /* ── Business Hub ── */
@@ -1506,12 +1508,12 @@ function htmlHeaders(status) {
 }
 
 function cardResponse(request, shop, customer, state, setDeviceToken) {
-  // TODO: sobald Apple/Google-Zertifikate als Secrets gesetzt sind, hier
-  // echte Wallet-Karte erzeugen (isNew) bzw. per Push aktualisieren.
+  // TODO: Apple-Wallet-Karten nach einem Stempel per Push aktualisieren
+  // (PassKit-Webservice + APNs). Google Wallet wird schon live aktualisiert.
   const headers = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
   if (setDeviceToken) headers.append('Set-Cookie', deviceCookie(setDeviceToken));
   const rewardReached = customer.stamps >= shop.reward_threshold;
-  const html = renderStempelTapPage(shop, customer, { ...state, rewardReached }, new URL(request.url).origin);
+  const html = renderStempelTapPage(shop, customer, { ...state, rewardReached, platform: device(request) }, new URL(request.url).origin);
   return new Response(html, { headers });
 }
 
@@ -1902,6 +1904,303 @@ async function pushGoogleWalletUpdate(env, origin, shop, customer) {
       throw new Error(`Google Wallet Object-PATCH ${objectRes.status}: ${await objectRes.text()}`);
     }
   }
+}
+
+/* ── Apple Wallet ──
+   Braucht zwei Secrets (wrangler secret put):
+   APPLE_PASS_CERT — Pass-Type-ID-Zertifikat als PEM ("BEGIN CERTIFICATE")
+   APPLE_PASS_KEY  — der zugehörige private Schlüssel als PEM (PKCS#8, "BEGIN PRIVATE KEY")
+   Das Apple-WWDR-G4-Zwischenzertifikat ist öffentlich und steht direkt im Code.
+   Der Pass wird komplett hier gebaut: pass.json + Bilder, manifest.json (SHA-1),
+   signature (PKCS#7 detached, SHA-256) und ZIP — ohne externe Bibliotheken. */
+
+const APPLE_PASS_TYPE_ID = 'pass.de.tapstern.stempelkarte';
+const APPLE_TEAM_ID = 'P37HGXF6Y3';
+const APPLE_PASS_IMAGES = ['icon.png', 'icon@2x.png', 'icon@3x.png', 'logo.png', 'logo@2x.png', 'logo@3x.png'];
+
+// Apple Worldwide Developer Relations CA - G4, gültig bis 10.12.2030
+// SHA-256: EA:47:57:88:55:38:DD:8C:B5:9F:F4:55:6F:67:60:87:D8:3C:85:E7:09:02:C1:22:E4:2C:08:08:B5:BC:E1:4C
+const APPLE_WWDR_G4_PEM = `-----BEGIN CERTIFICATE-----
+MIIEVTCCAz2gAwIBAgIUE9x3lVJx5T3GMujM/+Uh88zFztIwDQYJKoZIhvcNAQEL
+BQAwYjELMAkGA1UEBhMCVVMxEzARBgNVBAoTCkFwcGxlIEluYy4xJjAkBgNVBAsT
+HUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MRYwFAYDVQQDEw1BcHBsZSBS
+b290IENBMB4XDTIwMTIxNjE5MzYwNFoXDTMwMTIxMDAwMDAwMFowdTFEMEIGA1UE
+Aww7QXBwbGUgV29ybGR3aWRlIERldmVsb3BlciBSZWxhdGlvbnMgQ2VydGlmaWNh
+dGlvbiBBdXRob3JpdHkxCzAJBgNVBAsMAkc0MRMwEQYDVQQKDApBcHBsZSBJbmMu
+MQswCQYDVQQGEwJVUzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANAf
+eKp6JzKwRl/nF3bYoJ0OKY6tPTKlxGs3yeRBkWq3eXFdDDQEYHX3rkOPR8SGHgjo
+v9Y5Ui8eZ/xx8YJtPH4GUnadLLzVQ+mxtLxAOnhRXVGhJeG+bJGdayFZGEHVD41t
+QSo5SiHgkJ9OE0/QjJoyuNdqkh4laqQyziIZhQVg3AJK8lrrd3kCfcCXVGySjnYB
+5kaP5eYq+6KwrRitbTOFOCOL6oqW7Z+uZk+jDEAnbZXQYojZQykn/e2kv1MukBVl
+PNkuYmQzHWxq3Y4hqqRfFcYw7V/mjDaSlLfcOQIA+2SM1AyB8j/VNJeHdSbCb64D
+YyEMe9QbsWLFApy9/a8CAwEAAaOB7zCB7DASBgNVHRMBAf8ECDAGAQH/AgEAMB8G
+A1UdIwQYMBaAFCvQaUeUdgn+9GuNLkCm90dNfwheMEQGCCsGAQUFBwEBBDgwNjA0
+BggrBgEFBQcwAYYoaHR0cDovL29jc3AuYXBwbGUuY29tL29jc3AwMy1hcHBsZXJv
+b3RjYTAuBgNVHR8EJzAlMCOgIaAfhh1odHRwOi8vY3JsLmFwcGxlLmNvbS9yb290
+LmNybDAdBgNVHQ4EFgQUW9n6HeeaGgujmXYiUIY+kchbd6gwDgYDVR0PAQH/BAQD
+AgEGMBAGCiqGSIb3Y2QGAgEEAgUAMA0GCSqGSIb3DQEBCwUAA4IBAQA/Vj2e5bbD
+eeZFIGi9v3OLLBKeAuOugCKMBB7DUshwgKj7zqew1UJEggOCTwb8O0kU+9h0UoWv
+p50h5wESA5/NQFjQAde/MoMrU1goPO6cn1R2PWQnxn6NHThNLa6B5rmluJyJlPef
+x4elUWY0GzlxOSTjh2fvpbFoe4zuPfeutnvi0v/fYcZqdUmVIkSoBPyUuAsuORFJ
+EtHlgepZAE9bPFo22noicwkJac3AfOriJP6YRLj477JxPxpd1F1+M02cHSS+APCQ
+A1iZQT0xWmJArzmoUUOSqwSonMJNsUvSq3xKX+udO7xPiEAGE/+QF4oIRynoYpgp
+pU8RBWk6z/Kf
+-----END CERTIFICATE-----`;
+
+/* GET /wallet/apple/:slug — liefert die Stempelkarte des Geräts als .pkpass */
+async function handleAppleWalletPass(request, env, slug) {
+  const text = (msg, status) => new Response(msg, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  if (!env.APPLE_PASS_CERT || !env.APPLE_PASS_KEY) return text('Apple Wallet ist noch nicht eingerichtet.', 500);
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return text('Laden nicht gefunden', 404);
+
+  const customer = await customerOfDevice(env, shop, deviceTokenOf(request));
+  if (!customer) return text('Keine Stempelkarte gefunden — erst antippen oder QR-Code beitreten.', 404);
+  await ensureCardCode(env, customer);
+
+  try {
+    const origin = new URL(request.url).origin;
+    const files = await appleWalletFiles(env, origin, shop, customer);
+    const pkpass = await buildPkpass(files, env.APPLE_PASS_CERT, env.APPLE_PASS_KEY);
+    return new Response(pkpass, {
+      headers: {
+        'Content-Type': 'application/vnd.apple.pkpass',
+        'Content-Disposition': `attachment; filename="${shop.slug}.pkpass"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  } catch (e) {
+    return text('Apple Wallet Karte konnte nicht erstellt werden: ' + e.message, 500);
+  }
+}
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return `rgb(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff})`;
+}
+
+/* Inhalt der Karte — gleiche Farben wie die Kartenseite (renderStempelTapPage).
+   Bei storeCard steht im Hauptfeld die Beschriftung UNTER dem Wert, in den
+   übrigen Feldern darüber — deshalb steht der Belohnungssatz im Nebenfeld. */
+function buildApplePassJson(origin, shop, customer) {
+  const total = shop.reward_threshold;
+  const remaining = Math.max(0, total - customer.stamps);
+  const bg = shop.card_bg_color || '#14131a';
+  const accent = shop.accent_color || '#6366f1';
+  const isLightBg = luminanceOf(bg) > 0.55;
+
+  return {
+    formatVersion: 1,
+    passTypeIdentifier: APPLE_PASS_TYPE_ID,
+    teamIdentifier: APPLE_TEAM_ID,
+    serialNumber: customer.id,
+    organizationName: shop.name,
+    description: `Stempelkarte ${shop.name}`,
+    logoText: shop.name,
+    foregroundColor: hexToRgb(isLightBg ? '#15141a' : '#f6f3ee'),
+    backgroundColor: hexToRgb(bg),
+    labelColor: hexToRgb(isLightBg ? mixHex(accent, '#000000', 0.18) : mixHex(accent, '#ffffff', 0.18)),
+    sharingProhibited: true,
+    storeCard: {
+      headerFields: [
+        { key: 'card', label: 'KARTE', value: customer.card_code || '' },
+      ],
+      primaryFields: [
+        { key: 'stamps', label: 'Stempel gesammelt', value: `${Math.min(customer.stamps, total)} von ${total}` },
+      ],
+      secondaryFields: [
+        { key: 'reward', label: remaining === 0 ? 'BELOHNUNG BEREIT' : `NOCH ${remaining} STEMPEL BIS`, value: shop.reward_text || '' },
+      ],
+      backFields: [
+        { key: 'cardcode', label: 'Karten-ID', value: `${customer.card_code || ''}\nMit dieser ID holst du die Karte auf einem neuen Handy zurück.` },
+        { key: 'redeemed', label: 'Eingelöste Belohnungen', value: String(customer.redeemed_count || 0) },
+        { key: 'asof', label: 'Stand', value: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) },
+        { key: 'web', label: 'Treueprogramm von', value: 'https://tapstern.de' },
+      ],
+    },
+    ...(customer.redeem_token ? {
+      barcodes: [{
+        format: 'PKBarcodeFormatQR',
+        message: `${origin}/staff-redeem/${customer.redeem_token}`,
+        messageEncoding: 'iso-8859-1',
+        altText: 'Für Personal',
+      }],
+    } : {}),
+  };
+}
+
+/* Alle Dateien des Passes außer manifest.json und signature.
+   Icon/Logo kommen aus /wallet/ (statische Dateien); hat der Laden ein PNG-Logo,
+   ersetzt es das Tapstern-Logo (Wallet zeigt nur PNG zuverlässig an). */
+async function appleWalletFiles(env, origin, shop, customer) {
+  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer))) };
+
+  let shopLogo = null;
+  if (shop.logo_key) {
+    const obj = await env.PHOTOS.get(shop.logo_key);
+    const bytes = obj ? new Uint8Array(await obj.arrayBuffer()) : null;
+    const isPng = bytes && bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+    if (isPng) shopLogo = bytes;
+  }
+
+  for (const name of APPLE_PASS_IMAGES) {
+    if (shopLogo && name.startsWith('logo')) continue;
+    const res = await env.ASSETS.fetch(new Request(`${origin}/wallet/${name}`));
+    if (!res.ok) throw new Error(`Bild ${name} fehlt (${res.status})`);
+    files[name] = new Uint8Array(await res.arrayBuffer());
+  }
+  if (shopLogo) files['logo.png'] = shopLogo;
+  return files;
+}
+
+async function buildPkpass(files, certPem, keyPem) {
+  const manifest = {};
+  for (const [name, data] of Object.entries(files)) {
+    manifest[name] = bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-1', data)));
+  }
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+  const signature = await signPkcs7Detached(manifestBytes, certPem, keyPem);
+  return zipStore({ ...files, 'manifest.json': manifestBytes, 'signature': signature });
+}
+
+function pemToDer(pem) {
+  const b64 = String(pem).replace(/\\n/g, '').replace(/-----(BEGIN|END)[^-]+-----/g, '').replace(/\s/g, '');
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+/* ── Minimaler DER-Baukasten für die PKCS#7-Signatur ── */
+function concatBytes(parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+function der(tag, ...parts) {
+  const body = concatBytes(parts);
+  let len = [body.length];
+  if (body.length >= 0x80) {
+    len = [];
+    for (let n = body.length; n > 0; n = Math.floor(n / 256)) len.unshift(n & 0xff);
+    len.unshift(0x80 | len.length);
+  }
+  return concatBytes([new Uint8Array([tag, ...len]), body]);
+}
+function derOid(oid) {
+  const p = oid.split('.').map(Number);
+  const out = [40 * p[0] + p[1]];
+  for (const v of p.slice(2)) {
+    const b = [v & 0x7f];
+    for (let x = v >>> 7; x > 0; x >>>= 7) b.unshift((x & 0x7f) | 0x80);
+    out.push(...b);
+  }
+  return der(0x06, new Uint8Array(out));
+}
+function derElement(buf, off) {
+  let len = buf[off + 1], p = off + 2;
+  if (len & 0x80) {
+    const n = len & 0x7f;
+    len = 0;
+    for (let i = 0; i < n; i++) len = len * 256 + buf[p++];
+  }
+  return { tag: buf[off], off, start: p, end: p + len };
+}
+function derChildren(buf, el) {
+  const out = [];
+  for (let o = el.start; o < el.end;) { const e = derElement(buf, o); out.push(e); o = e.end; }
+  return out;
+}
+function compareBytes(a, b) {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
+}
+function utcTime(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getUTCFullYear() % 100)}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+}
+
+/* CMS SignedData ohne eingebetteten Inhalt, signiert mit RSA/SHA-256.
+   Enthält Signer-Zertifikat + WWDR G4, damit Wallet die Kette bis zur Apple Root CA prüfen kann. */
+async function signPkcs7Detached(content, certPem, keyPem) {
+  const cert = pemToDer(certPem);
+  const wwdr = pemToDer(APPLE_WWDR_G4_PEM);
+  const tbs = derChildren(cert, derChildren(cert, derElement(cert, 0))[0]);
+  const i = tbs[0].tag === 0xa0 ? 1 : 0; // [0] version ist optional
+  const serial = cert.slice(tbs[i].off, tbs[i].end);
+  const issuer = cert.slice(tbs[i + 2].off, tbs[i + 2].end);
+
+  const sha256Alg = der(0x30, derOid('2.16.840.1.101.3.4.2.1'), der(0x05));
+  const rsaAlg = der(0x30, derOid('1.2.840.113549.1.1.1'), der(0x05));
+  const dataOid = derOid('1.2.840.113549.1.7.1');
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', content));
+  const te = new TextEncoder();
+
+  const attr = (oid, value) => der(0x30, derOid(oid), der(0x31, value));
+  const attrs = concatBytes([
+    attr('1.2.840.113549.1.9.3', dataOid),                               // contentType
+    attr('1.2.840.113549.1.9.5', der(0x17, te.encode(utcTime(new Date())))), // signingTime
+    attr('1.2.840.113549.1.9.4', der(0x04, digest)),                     // messageDigest
+  ].sort(compareBytes)); // DER: SET OF sortiert
+
+  const key = await crypto.subtle.importKey(
+    'pkcs8', pemToDer(keyPem), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']
+  );
+  // Signiert werden die Attribute als SET (0x31), eingebettet dann als [0] IMPLICIT (0xa0)
+  const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, der(0x31, attrs)));
+
+  const one = der(0x02, new Uint8Array([1]));
+  const signerInfo = der(0x30, one, der(0x30, issuer, serial), sha256Alg, der(0xa0, attrs), rsaAlg, der(0x04, sig));
+  const signedData = der(0x30, one, der(0x31, sha256Alg), der(0x30, dataOid), der(0xa0, cert, wwdr), der(0x31, signerInfo));
+  return der(0x30, derOid('1.2.840.113549.1.7.2'), der(0xa0, signedData));
+}
+
+/* ── ZIP ohne Kompression (Methode 0 "stored") — reicht für die paar KB eines Passes ── */
+let crcTable = null;
+function crc32(bytes) {
+  if (!crcTable) {
+    crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function zipStore(files) {
+  const te = new TextEncoder();
+  const local = [], central = [];
+  let offset = 0;
+  const DOS_DATE = (1 << 5) | 1; // 01.01.1980
+
+  for (const [name, data] of Object.entries(files)) {
+    const nameBytes = te.encode(name);
+    const crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true);
+    lh.setUint16(12, DOS_DATE, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, nameBytes.length, true);
+    local.push(new Uint8Array(lh.buffer), nameBytes, data);
+
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(14, DOS_DATE, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+    ch.setUint16(28, nameBytes.length, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameBytes);
+
+    offset += 30 + nameBytes.length + data.length;
+  }
+
+  const cd = concatBytes(central);
+  const count = Object.keys(files).length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, count, true); end.setUint16(10, count, true);
+  end.setUint32(12, cd.length, true); end.setUint32(16, offset, true);
+  return concatBytes([...local, cd, new Uint8Array(end.buffer)]);
 }
 
 async function handleStaffRedeemPage(request, env, token) {
@@ -2344,7 +2643,7 @@ function stampColumns(total) {
   return 5;
 }
 
-function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached }, origin) {
+function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached, platform }, origin) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLightBg = luminanceOf(bg) > 0.55;
@@ -2388,6 +2687,17 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(shop.banner_key)}')"></div>` : '';
   const logoHtml = shop.logo_key
     ? `<div class="logo-badge"><img src="/photo/${escapeAttr(shop.logo_key)}" alt=""></div>` : '';
+  /* iPhone bekommt Apple Wallet, Android Google Wallet, alle anderen beide */
+  const walletHtml = [
+    platform !== 'Android' ? `<a class="wallet-btn wallet-apple" href="${origin}/wallet/apple/${shop.slug}">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5zm3-1a1 1 0 0 0-1 1v3h12V5a1 1 0 0 0-1-1H7zm11 6H6v2h12v-2zm0 4H6v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5z"/></svg>
+        Zu Apple Wallet hinzufügen
+      </a>` : '',
+    platform !== 'iPhone' ? `<a class="wallet-btn" href="${origin}/wallet/google/${shop.slug}">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7 3.5v8.6l-7 3.5-7-3.5V7.7l7-3.5z"/></svg>
+        Zu Google Wallet hinzufügen
+      </a>` : '',
+  ].join('');
   const linkHtml = (shop.extra_link_url && shop.extra_link_label)
     ? `<a class="extra-link" href="${escapeAttr(normalizeUrl(shop.extra_link_url))}" target="_blank" rel="noopener">${escapeHtml(shop.extra_link_label)}</a>` : '';
 
@@ -2492,6 +2802,8 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     color:${onAccent}; text-decoration:none; font-size:0.88rem; font-weight:700;
     box-shadow:0 10px 24px -12px ${accentSoft};
   }
+  .wallet-btn + .wallet-btn{margin-top:10px;}
+  .wallet-apple{background:#000; color:#fff; box-shadow:0 10px 24px -12px rgba(0,0,0,0.6);}
   .qr-fallback{margin-top:14px; font-size:0.78rem; color:${mutedColor}; text-align:center;}
   .qr-fallback summary{cursor:pointer; color:${accentText};}
   .qr-fallback #myQr{background:#fff; padding:10px; border-radius:12px;}
@@ -2533,10 +2845,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
       </div>
       <div class="hint">${rewardReached ? 'Zeig diese Karte beim nächsten Besuch vor und lös deine Belohnung ein.' : `Noch ${remaining} ${remaining === 1 ? 'Stempel' : 'Stempel'} bis zur Belohnung.`}</div>
       <div class="hint hint-sub">Neues Handy? Mit dieser Karten-ID holst du die Karte zurück — notier sie dir am besten.</div>
-      <a class="wallet-btn" href="${origin}/wallet/google/${shop.slug}">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7 3.5v8.6l-7 3.5-7-3.5V7.7l7-3.5z"/></svg>
-        Zu Google Wallet hinzufügen
-      </a>
+      ${walletHtml}
       <details class="qr-fallback">
         <summary>Kein NFC? Zeig das dem Personal</summary>
         <div id="myQr" style="margin:14px auto 0; width:150px;">${generateQrSvg(origin + '/staff-redeem/' + (customer.redeem_token || ''))}</div>

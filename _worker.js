@@ -44,6 +44,9 @@ export default {
       if (method === 'POST' && path === '/api/stempel/upload-banner') return handleStempelUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'stempel-banner', resultKey: 'bannerUrl' });
       if (method === 'POST' && path === '/api/stempel/remove-logo') return handleStempelRemoveImage(request, env, 'logo_key', ctx);
       if (method === 'POST' && path === '/api/stempel/remove-banner') return handleStempelRemoveImage(request, env, 'banner_key');
+      if (method === 'GET'    && path === '/api/stempel/message') return handleStempelGetMessage(request, env);
+      if (method === 'POST'   && path === '/api/stempel/message') return handleStempelSendMessage(request, env, ctx);
+      if (method === 'DELETE' && path === '/api/stempel/message') return handleStempelEndMessage(request, env, ctx);
       if (method === 'GET'  && path === '/api/stempel/employees') return handleStempelListEmployees(request, env);
       if (method === 'POST' && path === '/api/stempel/employees') return handleStempelAddEmployee(request, env);
       const stempelEmpMatch = path.match(/^\/api\/stempel\/employees\/([^/]+)$/);
@@ -1457,7 +1460,7 @@ async function handleStempelTap(request, env, slug, ctx) {
   }
 
   const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
-  return cardResponse(request, shop, customer, { isNew: false, cooldownHit });
+  return cardResponse(request, env, shop, customer, { isNew: false, cooldownHit });
 }
 
 /* POST /s/:slug — Antwort auf die Auswahl aus der Startansicht */
@@ -1472,14 +1475,14 @@ async function handleStempelTapSubmit(request, env, slug, ctx) {
   const known = await customerOfDevice(env, shop, deviceTokenOf(request));
   if (known) {
     const { cooldownHit } = await grantStampToDevice(env, request, shop, known, ctx);
-    return cardResponse(request, shop, known, { isNew: false, cooldownHit });
+    return cardResponse(request, env, shop, known, { isNew: false, cooldownHit });
   }
 
   if (action === 'restore') return handleStempelRestore(request, env, shop, form, ctx);
   if (action !== 'new') return new Response(renderStempelStartPage(shop, {}), htmlHeaders(400));
 
   const { customer, deviceToken } = await createCustomerWithFirstStamp(env, shop);
-  return cardResponse(request, shop, customer, { isNew: true, cooldownHit: false }, deviceToken);
+  return cardResponse(request, env, shop, customer, { isNew: true, cooldownHit: false }, deviceToken);
 }
 
 /* Karte per Karten-ID zurückholen — reiner Besitznachweis, kein Konto.
@@ -1513,18 +1516,19 @@ async function handleStempelRestore(request, env, shop, form, ctx) {
   /* Das Gerät hängt sich an den bestehenden device_token — künftige Taps
      landen damit wieder ganz normal auf dieser Karte. */
   const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
-  return cardResponse(request, shop, customer, { isNew: false, cooldownHit, restored: true }, customer.device_token);
+  return cardResponse(request, env, shop, customer, { isNew: false, cooldownHit, restored: true }, customer.device_token);
 }
 
 function htmlHeaders(status) {
   return { status: status || 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } };
 }
 
-function cardResponse(request, shop, customer, state, setDeviceToken) {
+async function cardResponse(request, env, shop, customer, state, setDeviceToken) {
   const headers = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
   if (setDeviceToken) headers.append('Set-Cookie', deviceCookie(setDeviceToken));
   const rewardReached = customer.stamps >= shop.reward_threshold;
-  const html = renderStempelTapPage(shop, customer, { ...state, rewardReached, platform: device(request) }, new URL(request.url).origin);
+  const news = await currentShopMessage(env, shop.id);
+  const html = renderStempelTapPage(shop, customer, { ...state, rewardReached, platform: device(request), news }, new URL(request.url).origin);
   return new Response(html, { headers });
 }
 
@@ -1995,7 +1999,7 @@ function hexToRgb(hex) {
 /* Inhalt der Karte — gleiche Farben wie die Kartenseite (renderStempelTapPage).
    Die Stempel selbst zeigt das Bild strip.png; darunter im Nebenfeld der
    Belohnungssatz (Beschriftung steht dort über dem Wert). */
-function buildApplePassJson(origin, shop, customer, authToken) {
+function buildApplePassJson(origin, shop, customer, authToken, message) {
   const total = shop.reward_threshold;
   const remaining = Math.max(0, total - customer.stamps);
   const bg = shop.card_bg_color || '#14131a';
@@ -2025,6 +2029,13 @@ function buildApplePassJson(origin, shop, customer, authToken) {
         { key: 'reward', label: remaining === 0 ? 'BELOHNUNG BEREIT' : `NOCH ${remaining} STEMPEL BIS`, value: shop.reward_text || '' },
       ],
       backFields: [
+        // Immer vorhanden, damit iOS eine Änderung erkennt. changeMessage nur bei aktiver
+        // Nachricht: dann wird der neue Text zur Mitteilung — das Beenden bleibt still.
+        {
+          key: 'news', label: `Neuigkeiten von ${shop.name}`,
+          value: message ? message.text : 'Aktuell keine Neuigkeiten.',
+          ...(message ? { changeMessage: '%@' } : {}),
+        },
         { key: 'cardcode', label: 'Karten-ID', value: `${customer.card_code || ''}\nMit dieser ID holst du die Karte auf einem neuen Handy zurück.` },
         { key: 'redeemed', label: 'Eingelöste Belohnungen', value: String(customer.redeemed_count || 0) },
         { key: 'asof', label: 'Stand', value: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) },
@@ -2047,7 +2058,8 @@ function buildApplePassJson(origin, shop, customer, authToken) {
    ersetzt es das Tapstern-Logo (Wallet zeigt nur PNG zuverlässig an). */
 async function appleWalletFiles(env, origin, shop, customer) {
   const authToken = await appleAuthToken(env, customer.id);
-  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer, authToken))) };
+  const message = await currentShopMessage(env, shop.id);
+  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer, authToken, message))) };
 
   let shopLogo = null;
   if (shop.logo_key) {
@@ -2619,6 +2631,169 @@ async function sendApplePush(env, push_token) {
   }
 }
 
+/* ── Nachrichten an Kunden ──
+   Der Laden schreibt im Dashboard eine kurze Nachricht (z. B. neues Getränk am
+   Wochenende). Apple Wallet: Feld "news" mit changeMessage — ändert sich der Text,
+   zeigt das iPhone ihn als Mitteilung auf dem Sperrbildschirm (ausgelöst über den
+   normalen Karten-Push). Google Wallet: Nachricht an der Klasse (TEXT_AND_NOTIFY).
+   Kartenseite im Browser zeigt die Nachricht ebenfalls.
+   Höchstens eine Nachricht pro Laden und 24 Stunden — gegen Spam. */
+const MESSAGE_MAX_LEN = 200;
+const MESSAGE_INTERVAL_SEC = 24 * 3600;
+
+async function ensureMessagesTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS stempel_messages (
+       id TEXT PRIMARY KEY,
+       shop_id TEXT NOT NULL,
+       text TEXT NOT NULL,
+       created_at INTEGER NOT NULL,
+       expires_at INTEGER,
+       ended_at INTEGER
+     )`
+  ).run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_stempel_messages_shop ON stempel_messages(shop_id, created_at)').run();
+}
+
+/* Aktuelle Nachricht eines Ladens oder null (auch wenn die Tabelle noch fehlt) */
+async function currentShopMessage(env, shopId) {
+  try {
+    return await env.DB.prepare(
+      `SELECT * FROM stempel_messages WHERE shop_id = ? AND ended_at IS NULL
+       AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT 1`
+    ).bind(shopId, Math.floor(Date.now() / 1000)).first();
+  } catch (e) {
+    return null;
+  }
+}
+
+/* "2026-09-27" → Sonntag 23:59:59 in Berlin, als Unix-Sekunden */
+function berlinEndOfDay(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const utc = Date.UTC(y, m - 1, d, 23, 59, 59);
+  const tz = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Berlin', timeZoneName: 'shortOffset' })
+    .formatToParts(new Date(utc)).find(p => p.type === 'timeZoneName')?.value || 'GMT+1';
+  const hours = parseInt((tz.match(/GMT([+-]\d+)/) || [0, '1'])[1], 10);
+  return Math.floor((utc - hours * 3600000) / 1000);
+}
+
+async function walletRecipientCount(env, shopId) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT COUNT(DISTINCT r.serial) AS n FROM wallet_registrations r
+       JOIN stempel_customers c ON c.id = r.serial WHERE c.shop_id = ?`
+    ).bind(shopId).first();
+    return row?.n || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function lastMessageCreatedAt(env, shopId) {
+  const row = await env.DB.prepare('SELECT MAX(created_at) AS t FROM stempel_messages WHERE shop_id = ?').bind(shopId).first();
+  return row?.t || 0;
+}
+
+/* GET /api/stempel/message — aktuelle Nachricht, Empfänger, wann die nächste möglich ist */
+async function handleStempelGetMessage(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  await ensureMessagesTable(env);
+  const last = await lastMessageCreatedAt(env, shop.id);
+  const next = last + MESSAGE_INTERVAL_SEC;
+  return json({
+    message: await currentShopMessage(env, shop.id),
+    appleWalletCustomers: await walletRecipientCount(env, shop.id), // Kunden, nicht Geräte
+    googleWallet: !!env.GOOGLE_WALLET_ISSUER_ID,
+    nextAllowedAt: next > Date.now() / 1000 ? next : null,
+    maxLength: MESSAGE_MAX_LEN,
+  });
+}
+
+/* POST /api/stempel/message — Nachricht senden */
+async function handleStempelSendMessage(request, env, ctx) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const data = await readJson(request);
+  const text = str(data?.text).replace(/\s+/g, ' ');
+  if (text.length < 3) return json({ error: 'Bitte schreib eine Nachricht.' }, 400);
+  if (text.length > MESSAGE_MAX_LEN) return json({ error: `Maximal ${MESSAGE_MAX_LEN} Zeichen.` }, 400);
+
+  let expiresAt = null;
+  const until = str(data?.until);
+  if (until) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) return json({ error: 'Ungültiges Datum' }, 400);
+    expiresAt = berlinEndOfDay(until);
+    if (expiresAt <= Date.now() / 1000) return json({ error: 'Das Enddatum liegt in der Vergangenheit.' }, 400);
+  }
+
+  await ensureMessagesTable(env);
+  const now = Math.floor(Date.now() / 1000);
+  const last = await lastMessageCreatedAt(env, shop.id);
+  if (last && now - last < MESSAGE_INTERVAL_SEC) {
+    const next = new Date((last + MESSAGE_INTERVAL_SEC) * 1000)
+      .toLocaleString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return json({ error: `Du kannst eine Nachricht pro Tag senden. Die nächste geht ab ${next} Uhr.` }, 429);
+  }
+
+  const message = { id: crypto.randomUUID(), shop_id: shop.id, text, created_at: now, expires_at: expiresAt, ended_at: null };
+  await env.DB.prepare('INSERT INTO stempel_messages (id, shop_id, text, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(message.id, shop.id, text, now, expiresAt).run();
+
+  // Apple: Karten neu laden lassen — das neue news-Feld löst die Mitteilung aus
+  await markShopWalletChanged(env, shop.id, ctx);
+  const google = pushGoogleWalletMessage(env, shop, message).catch(e => console.error('Google Wallet Nachricht fehlgeschlagen:', e));
+  if (ctx) ctx.waitUntil(google); else await google;
+
+  return json({ success: true, message });
+}
+
+/* DELETE /api/stempel/message — Nachricht vorzeitig beenden (ohne neue Mitteilung) */
+async function handleStempelEndMessage(request, env, ctx) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const message = await currentShopMessage(env, shop.id);
+  if (!message) return json({ success: true });
+  await env.DB.prepare('UPDATE stempel_messages SET ended_at = ? WHERE id = ?').bind(Math.floor(Date.now() / 1000), message.id).run();
+  await markShopWalletChanged(env, shop.id, ctx);
+  const google = clearGoogleWalletMessages(env, shop).catch(e => console.error('Google Wallet Nachricht nicht entfernt:', e));
+  if (ctx) ctx.waitUntil(google); else await google;
+  return json({ success: true });
+}
+
+async function pushGoogleWalletMessage(env, shop, message) {
+  if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) return;
+  const classId = `${env.GOOGLE_WALLET_ISSUER_ID}.${shop.slug}`;
+  const accessToken = await getGoogleWalletAccessToken(env);
+  const res = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}/addMessage`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        id: 'msg-' + message.id,
+        header: shop.name,
+        body: message.text,
+        messageType: 'TEXT_AND_NOTIFY',
+        ...(message.expires_at ? { displayInterval: { end: { date: new Date(message.expires_at * 1000).toISOString() } } } : {}),
+      },
+    }),
+  });
+  // 404: noch niemand hat die Karte dieses Ladens in Google Wallet — nichts zu tun
+  if (!res.ok && res.status !== 404) throw new Error(`addMessage ${res.status}: ${await res.text()}`);
+}
+
+async function clearGoogleWalletMessages(env, shop) {
+  if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) return;
+  const classId = `${env.GOOGLE_WALLET_ISSUER_ID}.${shop.slug}`;
+  const accessToken = await getGoogleWalletAccessToken(env);
+  const res = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [] }),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Class-PATCH ${res.status}: ${await res.text()}`);
+}
+
 async function handleStaffRedeemPage(request, env, token) {
   const customer = await env.DB.prepare('SELECT * FROM stempel_customers WHERE redeem_token = ?').bind(token).first();
   if (!customer) return new Response('Karte nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
@@ -3061,7 +3236,7 @@ function stampColumns(total) {
   return 5;
 }
 
-function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached, platform }, origin) {
+function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached, platform, news }, origin) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLightBg = luminanceOf(bg) > 0.55;
@@ -3176,6 +3351,11 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
     font-weight:600; font-size:0.82rem; line-height:1.35;
   }
 
+  .news{
+    margin:0 0 14px; padding:12px 14px; border-radius:14px;
+    background:${mixHex(bg, accent, 0.10)}; border:1px solid ${mixHex(bg, accent, 0.26)};
+  }
+  .news p{margin:4px 0 0; font-size:0.88rem; line-height:1.45; overflow-wrap:anywhere;}
   .stamps-panel{
     background:linear-gradient(170deg, ${panelTop} 0%, ${panelLow} 100%);
     border:1px solid ${panelBorder}; border-radius:18px; padding:16px 15px;
@@ -3244,6 +3424,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
         </div>
       </div>
       <div class="msg">${escapeHtml(message)}</div>
+      ${news ? `<div class="news"><span class="eyebrow">Neuigkeit</span><p>${escapeHtml(news.text)}</p></div>` : ''}
       <div class="stamps-panel">
         <div class="stamps">
           ${Array.from({ length: total }, (_, i) =>

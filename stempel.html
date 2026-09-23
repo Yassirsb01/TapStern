@@ -187,6 +187,30 @@
   .plan-price{font:700 24px "Roboto Slab"; margin:12px 0 16px;}
   .plan-price small{font-size:12px; font-family:"DM Sans"; color:var(--muted); font-weight:400;}
 
+  /* Nachricht an Kunden */
+  .msg-grid{display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start;}
+  .msg-panel{background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;}
+  .field textarea{
+    border:1px solid #d5d0c9; border-radius:8px; padding:12px; background:#fffefa; font-size:14px; color:var(--ink);
+    outline-color:var(--coral); font-family:inherit; width:100%; resize:vertical; min-height:96px; line-height:1.45;
+  }
+  .msg-count{font-size:11px; color:var(--muted); text-align:right;}
+  .msg-current{background:#fdece8; border:1px solid #f6c9bf; border-radius:10px; padding:14px 16px; margin-bottom:18px;}
+  .msg-current b{display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--coral); margin-bottom:6px;}
+  .msg-current p{margin:0 0 10px; font-size:14px; line-height:1.45; overflow-wrap:anywhere;}
+  .msg-note{font-size:12px; color:var(--muted); line-height:1.5; margin:14px 0 0;}
+  .lock-screen{
+    border-radius:26px; padding:22px 14px 26px; min-height:260px;
+    background:linear-gradient(160deg, #3b3552 0%, #1c1a26 60%, #121118 100%);
+  }
+  .lock-time{color:#fff; text-align:center; font:600 44px/1 "DM Sans", system-ui; margin:6px 0 4px;}
+  .lock-date{color:rgba(255,255,255,0.75); text-align:center; font-size:12px; margin-bottom:22px;}
+  .notif{background:rgba(245,242,238,0.92); border-radius:16px; padding:10px 12px; display:grid; grid-template-columns:34px 1fr; gap:10px; align-items:start;}
+  .notif-icon{width:34px; height:34px; border-radius:8px; background:#000; color:#fff; display:grid; place-items:center; font:700 12px "DM Sans";}
+  .notif-head{display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:#15141a;}
+  .notif-head span{font-weight:400; color:#6b6b6b;}
+  .notif-text{font-size:12.5px; color:#15141a; line-height:1.35; margin-top:2px; overflow-wrap:anywhere;}
+
   /* 📱 MOBILE ANPASSUNGEN */
   @media (max-width:900px){
     .dash-layout{padding:12px 14px; margin:16px auto 60px;}
@@ -211,6 +235,7 @@
     .metrics{grid-template-columns:1fr;}
     .plan-grid{grid-template-columns:1fr;}
     .time-filter{width:100%; justify-content:space-between;}
+    .msg-grid{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -340,6 +365,7 @@
         <a data-go="employees">👥 Mitarbeiter</a>
         <a data-go="billing">💳 Abo &amp; Karten</a>
         <a data-go="settings">◌ Stempelkarte gestalten</a>
+        <a data-go="messages">✉ Nachricht an Kunden</a>
       </nav>
       <div class="aside-footer">
         <button class="btn btn-ghost" id="logout" style="width:100%; font-size:12px; padding:8px;">Abmelden</button>
@@ -446,6 +472,57 @@
         
         <div id="planPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; margin-bottom:20px;"></div>
         <div id="cardPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;"></div>
+      </div>
+
+      <!-- SEITE 7: NACHRICHT AN KUNDEN -->
+      <div id="p-messages" class="hide">
+        <h3>Nachricht an deine Kunden</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Neues Getränk, Aktion am Wochenende? Kunden mit deiner Karte in Apple oder Google Wallet bekommen die Nachricht als Mitteilung aufs Handy. Auf der Kartenseite erscheint sie ebenfalls.</p>
+
+        <div class="msg-grid">
+          <div class="msg-panel">
+            <div id="msgCurrent" class="msg-current hide">
+              <b>Aktuelle Nachricht</b>
+              <p id="msgCurrentText"></p>
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <span id="msgCurrentUntil" style="font-size:12px; color:var(--muted);"></span>
+                <button class="btn btn-ghost" id="endMsg" style="font-size:12px; padding:6px 14px;">Nachricht beenden</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="msg-text">Deine Nachricht</label>
+              <textarea id="msg-text" maxlength="200" placeholder="z. B. Am Wochenende gibt's unseren neuen Iced Matcha Latte – komm vorbei und hol dir einen Stempel!"></textarea>
+              <div class="msg-count" id="msgCount">0 / 200</div>
+            </div>
+            <div class="field">
+              <label for="msg-until">Anzeigen bis (optional)</label>
+              <input type="date" id="msg-until">
+            </div>
+
+            <p id="msgRecipients" style="font-size:13px; margin:0 0 14px;"></p>
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+              <button class="btn btn-coral" id="sendMsg">Nachricht senden</button>
+              <span id="msgStatus" style="font-size:13px; color:var(--coral); font-weight:600;"></span>
+            </div>
+            <p class="msg-note">Du kannst eine Nachricht pro Tag senden, damit deine Kunden nicht genervt sind. Wer die Karte nur im Browser nutzt, sieht die Nachricht beim nächsten Öffnen der Kartenseite. Kunden können Mitteilungen für deine Karte in Wallet jederzeit abschalten.</p>
+          </div>
+
+          <div>
+            <p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:0 0 10px;">So sieht's auf dem Handy aus</p>
+            <div class="lock-screen">
+              <div class="lock-time" id="lockTime">9:41</div>
+              <div class="lock-date" id="lockDate"></div>
+              <div class="notif">
+                <div class="notif-icon" id="notifIcon">TS</div>
+                <div>
+                  <div class="notif-head"><b id="notifName">Dein Laden</b><span>jetzt</span></div>
+                  <div class="notif-text" id="notifText">Deine Nachricht erscheint hier.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- SEITE 6: STEMPELKARTE GESTALTEN -->
@@ -625,7 +702,7 @@
       document.querySelectorAll('aside a').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
       const target = b.dataset.go;
-      ['home', 'customers', 'card', 'employees', 'billing', 'settings'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
+      ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
       
       toggleMobileAside(false); // Auf Mobile nach Klick schließen!
 
@@ -634,6 +711,7 @@
       if (target === 'employees') loadEmployees();
       if (target === 'billing') loadBilling();
       if (target === 'settings') loadSettingsForm();
+      if (target === 'messages') loadMessages();
     };
   });
 
@@ -1217,6 +1295,72 @@
       $('saveMsg').textContent = '✓ Erfolgreich gespeichert!';
       setTimeout(() => $('saveMsg').textContent = '', 2500);
     } catch(e){ $('saveMsg').textContent = e.message; }
+  };
+
+  /* NACHRICHT AN KUNDEN */
+  function renderMsgPreview() {
+    const text = $('msg-text').value.trim();
+    $('msgCount').textContent = $('msg-text').value.length + ' / 200';
+    $('notifText').textContent = text || 'Deine Nachricht erscheint hier.';
+    $('notifName').textContent = shop.name || 'Dein Laden';
+    $('notifIcon').textContent = (shop.name || 'TS').slice(0, 2).toUpperCase();
+    const now = new Date();
+    $('lockTime').textContent = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    $('lockDate').textContent = now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  $('msg-text').oninput = renderMsgPreview;
+
+  async function loadMessages() {
+    renderMsgPreview();
+    const today = new Date();
+    $('msg-until').min = today.toISOString().slice(0, 10);
+    $('msgStatus').textContent = '';
+    try {
+      const r = await api('/api/stempel/message');
+      const m = r.message;
+      $('msgCurrent').classList.toggle('hide', !m);
+      if (m) {
+        $('msgCurrentText').textContent = m.text;
+        $('msgCurrentUntil').textContent = m.expires_at
+          ? 'Sichtbar bis ' + new Date(m.expires_at * 1000).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+          : 'Sichtbar bis du sie beendest oder eine neue sendest';
+      }
+      const n = r.appleWalletCustomers;
+      $('msgRecipients').textContent = (n === 1 ? '1 Kunde hat' : n + ' Kunden haben') + ' deine Karte in Apple Wallet'
+        + (r.googleWallet ? ' — dazu kommen alle mit Google Wallet.' : '.');
+      $('sendMsg').disabled = !!r.nextAllowedAt;
+      $('sendMsg').style.opacity = r.nextAllowedAt ? '0.5' : '';
+      if (r.nextAllowedAt) {
+        $('msgStatus').textContent = 'Nächste Nachricht ab ' + new Date(r.nextAllowedAt * 1000)
+          .toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+      }
+    } catch (e) { $('msgStatus').textContent = e.message; }
+  }
+
+  $('sendMsg').onclick = async () => {
+    const text = $('msg-text').value.trim();
+    if (text.length < 3) { $('msgStatus').textContent = 'Bitte schreib eine Nachricht.'; return; }
+    if (!confirm('Nachricht jetzt an alle Kunden senden?\n\n„' + text + '“')) return;
+    $('sendMsg').disabled = true;
+    $('msgStatus').textContent = 'Wird gesendet …';
+    try {
+      await api('/api/stempel/message', { method: 'POST', body: JSON.stringify({ text, until: $('msg-until').value }) });
+      $('msg-text').value = ''; $('msg-until').value = '';
+      await loadMessages();
+      $('msgStatus').textContent = '✓ Gesendet!';
+    } catch (e) {
+      $('msgStatus').textContent = e.message;
+      $('sendMsg').disabled = false;
+    }
+  };
+
+  $('endMsg').onclick = async () => {
+    if (!confirm('Nachricht beenden? Sie verschwindet von der Karte, ohne neue Mitteilung.')) return;
+    try {
+      await api('/api/stempel/message', { method: 'DELETE' });
+      await loadMessages();
+      $('msgStatus').textContent = '✓ Nachricht beendet';
+    } catch (e) { $('msgStatus').textContent = e.message; }
   };
 
   /* AUTO-LOGIN CHECK */

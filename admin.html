@@ -42,10 +42,24 @@
         <p class="sub" id="totp-sub">Gib den 6-stelligen Code aus deiner Authenticator-App ein.</p>
         <div class="field" id="totp-code-field"><label class="lbl" for="t-code">Code</label><input class="input code-input" id="t-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"></div>
         <div class="field hide" id="totp-rec-field"><label class="lbl" for="t-rec">Wiederherstellungscode</label><input class="input mono" id="t-rec" placeholder="XXXXX-XXXXX" autocomplete="off"></div>
+        <label class="check"><input type="checkbox" id="t-trust"> Diesem Gerät 30 Tage vertrauen (nur eigenes Gerät)</label>
         <button class="btn btn-primary btn-block" type="submit">Anmelden</button>
         <div class="err" id="t-err" role="alert"></div>
-        <p class="hint"><button type="button" class="link-btn" id="t-toggle">Handy nicht zur Hand? Wiederherstellungscode verwenden</button></p>
+        <p class="hint"><button type="button" class="link-btn" id="t-toggle">Wiederherstellungscode verwenden</button></p>
+        <p class="hint"><button type="button" class="link-btn" id="t-mail">Handy verloren? Code per E-Mail anfordern</button></p>
         <p class="hint"><button type="button" class="link-btn" data-action="restart">← Zurück zur Anmeldung</button></p>
+      </form>
+
+      <!-- Schritt 2 (Notfall): Wiederherstellung per E-Mail -->
+      <form id="f-mailrec" class="hide" autocomplete="off">
+        <h2>Per E-Mail wiederherstellen</h2>
+        <p class="sub">Dein Passwort ist bestätigt. Wir schicken einen 8-stelligen Code an deine Admin-E-Mail. Danach richtest du die Zwei-Faktor-Anmeldung auf deinem neuen Handy ein — das alte Handy und alle Wiederherstellungscodes werden ungültig.</p>
+        <button class="btn btn-ghost btn-block" type="button" id="mr-send">Code an meine E-Mail senden</button>
+        <p class="hint" id="mr-sent"></p>
+        <div class="field"><label class="lbl" for="mr-code">Code aus der E-Mail</label><input class="input code-input" id="mr-code" inputmode="numeric" maxlength="9" autocomplete="one-time-code"></div>
+        <button class="btn btn-primary btn-block" type="submit">Bestätigen</button>
+        <div class="err" id="mr-err" role="alert"></div>
+        <p class="hint"><button type="button" class="link-btn" id="mr-back">← Zurück zum 2FA-Code</button></p>
       </form>
 
       <!-- Schritt 2b: 2FA einrichten -->
@@ -57,6 +71,7 @@
           <div><label class="lbl">Oder manuell eingeben</label><div class="secret" id="s-secret"></div></div>
         </div>
         <div class="field"><label class="lbl" for="s-code">Code aus der App</label><input class="input code-input" id="s-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>
+        <label class="check"><input type="checkbox" id="s-trust"> Diesem Gerät 30 Tage vertrauen (nur eigenes Gerät)</label>
         <button class="btn btn-primary btn-block" type="submit">Aktivieren</button>
         <div class="err" id="s-err" role="alert"></div>
       </form>

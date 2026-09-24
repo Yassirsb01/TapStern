@@ -4394,6 +4394,13 @@ async function ensureAdminTables(env) {
        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, admin_id TEXT, admin_email TEXT,
        action TEXT NOT NULL, target TEXT, details TEXT, ip TEXT)`,
     `CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit(created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS admin_trusted_devices (
+       token_hash TEXT PRIMARY KEY, admin_id TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER,
+       expires_at INTEGER NOT NULL, ip TEXT, user_agent TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_admin_trusted_admin ON admin_trusted_devices(admin_id)`,
+    `CREATE TABLE IF NOT EXISTS admin_email_codes (
+       admin_id TEXT PRIMARY KEY, code_hash TEXT, expires_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
+       window_start INTEGER NOT NULL DEFAULT 0, sent_count INTEGER NOT NULL DEFAULT 0, breakglass_used_at INTEGER)`,
     `CREATE TABLE IF NOT EXISTS platform_modules (
        key TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, color TEXT, icon TEXT,
        enabled INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0, updated_at INTEGER)`,
@@ -4449,6 +4456,44 @@ function adminJson(obj, status = 200, cookie) {
 
 function adminCookie(token, maxAge) {
   return `${ADMIN_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
+}
+
+/* ── Vertraute Geräte ──
+   Nach erfolgreicher 2FA kann ein Gerät 30 Tage vertraut werden: dort reicht dann
+   E-Mail + Passwort. Das Gerät bekommt ein eigenes Zufalls-Token (nur als Hash in der
+   Datenbank), gebunden an genau dieses Admin-Konto. Heikle Aktionen verlangen weiterhin
+   einen frischen 2FA-Code. Passwortwechsel, 2FA-Umzug und Zurücksetzen widerrufen alle. */
+const ADMIN_TRUST_COOKIE = '__Host-ts_trust';
+const ADMIN_TRUST_DAYS = 30;
+function trustCookie(token, maxAge) {
+  return `${ADMIN_TRUST_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
+}
+async function createTrustedDevice(env, request, adminId) {
+  const token = randomToken(), now = nowSec();
+  await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE expires_at <= ?').bind(now).run();
+  await env.DB.prepare('INSERT INTO admin_trusted_devices (token_hash, admin_id, created_at, last_used_at, expires_at, ip, user_agent) VALUES (?,?,?,?,?,?,?)')
+    .bind(await sha256(token), adminId, now, now, now + ADMIN_TRUST_DAYS * 86400, clientIp(request), str(request.headers.get('User-Agent')).slice(0, 200)).run();
+  return trustCookie(token, ADMIN_TRUST_DAYS * 86400);
+}
+async function trustedDeviceFor(env, request, adminId) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)__Host-ts_trust=([a-f0-9]{64})/);
+  if (!m) return null;
+  const hash = await sha256(m[1]);
+  const row = await env.DB.prepare('SELECT * FROM admin_trusted_devices WHERE token_hash = ? AND admin_id = ? AND expires_at > ?').bind(hash, adminId, nowSec()).first();
+  if (!row) return null;
+  await env.DB.prepare('UPDATE admin_trusted_devices SET last_used_at = ?, ip = ? WHERE token_hash = ?').bind(nowSec(), clientIp(request), hash).run();
+  return row;
+}
+/* 2FA komplett zurücksetzen: Geheimnis, Codes, vertraute Geräte und andere Sitzungen weg */
+async function wipeSecondFactor(env, adminId, keepTokenHash) {
+  await env.DB.prepare(`UPDATE admin_users SET totp_secret = NULL, totp_pending = NULL, totp_last_counter = 0, recovery_codes = NULL WHERE id = ?`).bind(adminId).run();
+  await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(adminId).run();
+  await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND token_hash != ?').bind(adminId, keepTokenHash || '').run();
+}
+function adminSecurityMail(env, request, admin, what) {
+  return sendMail(env, admin.email, 'Tapstern Admin: Sicherheitshinweis', what,
+    `Zeitpunkt: ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} · IP: ${clientIp(request)}. Warst du das nicht, melde dich sofort an, ändere dein Passwort und prüfe das Protokoll.`,
+    'Zum Admin', new URL(request.url).origin + '/admin');
 }
 
 async function audit(env, request, admin, action, target, details) {
@@ -4680,10 +4725,33 @@ async function handleAdminLogin(request, env) {
   }
 
   await clearFails(env, ipKey); await clearFails(env, mailKey);
+
+  // Notausgang, wenn Handy UND Wiederherstellungscodes weg sind: in Cloudflare ADMIN_RESET_EMAIL
+  // setzen → beim nächsten Login mit Passwort wird 2FA neu eingerichtet. Einmal pro 7 Tage.
+  if (admin.totp_secret && str(env.ADMIN_RESET_EMAIL).toLowerCase().split(',').map(e => e.trim()).includes(email)) {
+    const row = await env.DB.prepare('SELECT breakglass_used_at FROM admin_email_codes WHERE admin_id = ?').bind(admin.id).first();
+    if (!row?.breakglass_used_at || nowSec() - row.breakglass_used_at > 7 * 86400) {
+      await wipeSecondFactor(env, admin.id);
+      await env.DB.prepare(`INSERT INTO admin_email_codes (admin_id, breakglass_used_at) VALUES (?, ?)
+                            ON CONFLICT(admin_id) DO UPDATE SET breakglass_used_at = excluded.breakglass_used_at`).bind(admin.id, nowSec()).run();
+      await audit(env, request, admin, 'sicherheit.2fa_notfall_zurueckgesetzt', null, { via: 'ADMIN_RESET_EMAIL' });
+      await adminSecurityMail(env, request, admin, 'Deine Zwei-Faktor-Anmeldung wurde über den Cloudflare-Notzugang zurückgesetzt.');
+      admin.totp_secret = null;
+    }
+  }
+
+  // Vertrautes Gerät: Passwort reicht, 2FA wurde hier schon bestätigt
+  if (admin.totp_secret && await trustedDeviceFor(env, request, admin.id)) {
+    const cookie = await newAdminSession(env, request, admin.id, 'full');
+    await env.DB.prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?').bind(nowSec(), admin.id).run();
+    await audit(env, request, admin, 'login.erfolgreich_vertrautes_geraet');
+    return adminJson({ stage: 'full', mustChangePassword: !!admin.must_change_password }, 200, cookie);
+  }
+
   const stage = admin.totp_secret ? 'totp' : 'setup';
   const cookie = await newAdminSession(env, request, admin.id, stage);
   await audit(env, request, admin, 'login.passwort_ok', null, { next: stage });
-  return adminJson({ stage, mustChangePassword: !!admin.must_change_password }, 200, cookie);
+  return adminJson({ stage, mustChangePassword: !!admin.must_change_password, emailRecovery: !!env.BREVO_KEY }, 200, cookie);
 }
 
 /* 2FA-Code (oder Wiederherstellungscode) nach dem Passwort */
@@ -4724,7 +4792,12 @@ async function handleAdminLoginTotp(request, env) {
   await env.DB.prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?').bind(nowSec(), admin.id).run();
   await audit(env, request, admin, usedRecovery ? 'login.erfolgreich_mit_wiederherstellungscode' : 'login.erfolgreich');
   const left = usedRecovery ? JSON.parse((await env.DB.prepare('SELECT recovery_codes FROM admin_users WHERE id = ?').bind(admin.id).first()).recovery_codes || '[]').length : null;
-  return adminJson({ stage: 'full', recoveryCodesLeft: left }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_SESSION_HOURS * 3600));
+  const res = adminJson({ stage: 'full', recoveryCodesLeft: left }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_SESSION_HOURS * 3600));
+  if (data?.trustDevice === true) {
+    res.headers.append('Set-Cookie', await createTrustedDevice(env, request, admin.id));
+    await audit(env, request, admin, 'sicherheit.geraet_vertraut');
+  }
+  return res;
 }
 
 /* Nach dem Stufenwechsel ein neues Token ausgeben (gegen Session-Fixation) */
@@ -4766,7 +4839,12 @@ async function handleAdminTotpEnable(request, env) {
     .bind(counter, await hashRecoveryCodes(codes), nowSec(), admin.id).run();
   await upgradeSession(env, tokenHash, 'full');
   await audit(env, request, admin, 'sicherheit.2fa_aktiviert');
-  return adminJson({ stage: 'full', recoveryCodes: codes }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_SESSION_HOURS * 3600));
+  const res = adminJson({ stage: 'full', recoveryCodes: codes }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_SESSION_HOURS * 3600));
+  if (data?.trustDevice === true) {
+    res.headers.append('Set-Cookie', await createTrustedDevice(env, request, admin.id));
+    await audit(env, request, admin, 'sicherheit.geraet_vertraut');
+  }
+  return res;
 }
 
 async function handleAdminLogout(request, env) {
@@ -4815,7 +4893,9 @@ async function handleAdminChangePassword(request, env) {
     .bind(await hashPassword(next), nowSec(), admin.id).run();
   // Alle anderen Sitzungen beenden — wer das alte Passwort kannte, fliegt raus
   await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND token_hash != ?').bind(admin.id, tokenHash).run();
+  await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(admin.id).run();
   await audit(env, request, admin, 'sicherheit.passwort_geaendert');
+  await adminSecurityMail(env, request, admin, 'Dein Admin-Passwort wurde geändert.');
   return adminJson({ success: true });
 }
 
@@ -4837,7 +4917,13 @@ async function handleAdminSessions(request, env) {
     `SELECT token_hash, stage, created_at, last_seen, expires_at, ip, user_agent FROM admin_sessions
      WHERE admin_id = ? AND expires_at > ? ORDER BY last_seen DESC`
   ).bind(ctx.admin.id, nowSec()).all();
+  const trusted = (await env.DB.prepare('SELECT token_hash, created_at, last_used_at, expires_at, ip, user_agent FROM admin_trusted_devices WHERE admin_id = ? AND expires_at > ? ORDER BY last_used_at DESC')
+    .bind(ctx.admin.id, nowSec()).all()).results || [];
+  const cur = (request.headers.get('cookie') || '').match(/(?:^|;\s*)__Host-ts_trust=([a-f0-9]{64})/);
+  const curHash = cur ? await sha256(cur[1]) : '';
   return adminJson({
+    trustedDevices: trusted.map(t => ({ id: t.token_hash.slice(0, 16), current: t.token_hash === curHash, createdAt: t.created_at,
+      lastUsed: t.last_used_at, expiresAt: t.expires_at, ip: t.ip, userAgent: t.user_agent })),
     sessions: (results || []).map(s => ({
       id: s.token_hash.slice(0, 16), current: s.token_hash === ctx.tokenHash, stage: s.stage,
       createdAt: s.created_at, lastSeen: s.last_seen, ip: s.ip, userAgent: s.user_agent,
@@ -4860,6 +4946,91 @@ async function handleAdminRevokeSessions(request, env) {
     await audit(env, request, ctx.admin, 'sicherheit.sitzung_beendet', id);
   }
   return adminJson({ success: true });
+}
+
+async function handleAdminRevokeTrusted(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (data?.all) {
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(ctx.admin.id).run();
+    await audit(env, request, ctx.admin, 'sicherheit.alle_geraete_entfernt');
+  } else {
+    const id = str(data?.id);
+    if (!/^[a-f0-9]{16}$/.test(id)) return adminJson({ error: 'Ungültiges Gerät' }, 400);
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ? AND substr(token_hash, 1, 16) = ?').bind(ctx.admin.id, id).run();
+    await audit(env, request, ctx.admin, 'sicherheit.geraet_entfernt', id);
+  }
+  return adminJson({ success: true });
+}
+
+/* 2FA auf neues Handy umziehen: Passwort + (alter Code ODER Wiederherstellungscode) */
+async function handleAdminTotpMove(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const { admin, tokenHash } = ctx;
+  const data = await readJson(request);
+  const gate = await checkLock(env, 'admin-move:' + admin.id);
+  if (gate) return adminJson({ error: gate }, 429);
+  let ok = await verifyPassword(String(data?.password || ''), admin.password_hash);
+  if (ok) {
+    if (data?.recoveryCode) {
+      const hash = await sha256(str(data.recoveryCode).replace(/-/g, '').toUpperCase());
+      ok = JSON.parse(admin.recovery_codes || '[]').some(h => timingSafeEqual(h, hash));
+    } else ok = await requireFreshTotp(env, admin, data?.code);
+  }
+  if (!ok) { await noteFail(env, 'admin-move:' + admin.id); return adminJson({ error: 'Passwort oder Code ist falsch' }, 400); }
+  await wipeSecondFactor(env, admin.id, tokenHash);
+  await upgradeSession(env, tokenHash, 'setup');
+  await audit(env, request, admin, 'sicherheit.2fa_umzug_gestartet');
+  await adminSecurityMail(env, request, admin, 'Deine Zwei-Faktor-Anmeldung wird auf ein neues Gerät umgezogen.');
+  return adminJson({ stage: 'setup' }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_PENDING_MINUTES * 60));
+}
+
+/* Handy verloren: nach richtigem Passwort einen Code an die Admin-E-Mail schicken.
+   Passwort + Zugriff aufs Postfach zusammen erlauben, 2FA neu einzurichten. */
+async function handleAdminEmailRecoveryStart(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session } = ctx;
+  if (session.stage !== 'totp') return adminJson({ error: 'Erst mit Passwort anmelden' }, 400);
+  if (!env.BREVO_KEY) return adminJson({ error: 'E-Mail-Versand ist nicht eingerichtet — bitte Wiederherstellungscode verwenden' }, 503);
+  const now = nowSec();
+  const row = await env.DB.prepare('SELECT * FROM admin_email_codes WHERE admin_id = ?').bind(admin.id).first();
+  const inWindow = row && now - (row.window_start || 0) < 3600;
+  if (inWindow && row.sent_count >= 3) return adminJson({ error: 'Es wurden schon 3 Codes verschickt — bitte in einer Stunde erneut versuchen' }, 429);
+  const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 100000000).padStart(8, '0');
+  await env.DB.prepare(`INSERT INTO admin_email_codes (admin_id, code_hash, expires_at, attempts, window_start, sent_count) VALUES (?,?,?,0,?,1)
+                        ON CONFLICT(admin_id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
+                        window_start = ?, sent_count = ?`)
+    .bind(admin.id, await sha256(code), now + 900, now, inWindow ? row.window_start : now, inWindow ? row.sent_count + 1 : 1).run();
+  await sendMail(env, admin.email, 'Tapstern Admin: Code zum Wiederherstellen', 'Dein Wiederherstellungs-Code',
+    `Code: ${code.slice(0, 4)} ${code.slice(4)} — gültig 15 Minuten. Damit richtest du die Zwei-Faktor-Anmeldung auf einem neuen Handy ein. Hast du das nicht angefordert, kennt jemand dein Passwort: ändere es sofort.`);
+  await audit(env, request, admin, 'sicherheit.email_code_angefordert');
+  return adminJson({ success: true, sentTo: admin.email.replace(/^(.{2}).*(@.*)$/, '$1•••$2') });
+}
+
+async function handleAdminEmailRecoveryVerify(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session, tokenHash } = ctx;
+  if (session.stage !== 'totp') return adminJson({ error: 'Erst mit Passwort anmelden' }, 400);
+  const data = await readJson(request);
+  const row = await env.DB.prepare('SELECT * FROM admin_email_codes WHERE admin_id = ?').bind(admin.id).first();
+  if (!row?.code_hash || row.expires_at <= nowSec()) return adminJson({ error: 'Code abgelaufen — bitte neu anfordern' }, 400);
+  const given = str(data?.code).replace(/\D/g, '');
+  if (!timingSafeEqual(await sha256(given), row.code_hash)) {
+    const attempts = (row.attempts || 0) + 1;
+    await env.DB.prepare(`UPDATE admin_email_codes SET attempts = ?${attempts >= 5 ? ', code_hash = NULL' : ''} WHERE admin_id = ?`).bind(attempts, admin.id).run();
+    await audit(env, request, admin, 'login.email_code_falsch');
+    return adminJson({ error: attempts >= 5 ? 'Zu viele Versuche — bitte neuen Code anfordern' : 'Code ist falsch' }, 400);
+  }
+  await env.DB.prepare('UPDATE admin_email_codes SET code_hash = NULL, attempts = 0 WHERE admin_id = ?').bind(admin.id).run();
+  await wipeSecondFactor(env, admin.id, tokenHash);
+  await upgradeSession(env, tokenHash, 'setup');
+  await audit(env, request, admin, 'sicherheit.2fa_per_email_zurueckgesetzt');
+  await adminSecurityMail(env, request, admin, 'Deine Zwei-Faktor-Anmeldung wurde per E-Mail-Code zurückgesetzt.');
+  return adminJson({ stage: 'setup' }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_PENDING_MINUTES * 60));
 }
 
 /* ── Team (nur Inhaber) ── */
@@ -4911,18 +5082,24 @@ async function handleAdminTeamUpdate(request, env, id) {
     await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run(); // neue Rechte ab nächster Anmeldung
   } else if (action === 'disable' || action === 'enable') {
     await env.DB.prepare('UPDATE admin_users SET disabled = ? WHERE id = ?').bind(action === 'disable' ? 1 : 0, id).run();
-    if (action === 'disable') await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
+    if (action === 'disable') {
+      await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
+      await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(id).run();
+    }
   } else if (action === 'reset') {
     // 2FA und Passwort zurücksetzen: neues Einmal-Passwort, 2FA wird beim nächsten Login neu eingerichtet
     const tempPassword = base32Encode(crypto.getRandomValues(new Uint8Array(12))).slice(0, 16).replace(/(.{4})(?!$)/g, '$1-');
     await env.DB.prepare(`UPDATE admin_users SET password_hash = ?, must_change_password = 1, totp_secret = NULL, totp_pending = NULL,
       totp_last_counter = 0, recovery_codes = NULL WHERE id = ?`).bind(await hashPassword(tempPassword), id).run();
     await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(id).run();
     await audit(env, request, ctx.admin, 'team.zugang_zurueckgesetzt', target.email);
     return adminJson({ success: true, tempPassword });
   } else if (action === 'delete') {
     await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
     await env.DB.prepare('DELETE FROM admin_users WHERE id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_email_codes WHERE admin_id = ?').bind(id).run();
   } else return adminJson({ error: 'Unbekannte Aktion' }, 400);
 
   await audit(env, request, ctx.admin, 'team.' + action, target.email, action === 'role' ? { role: data.role } : null);
@@ -5115,6 +5292,8 @@ async function securityChecklist(env, admin) {
     { key: 'encryption', ok: !!env.ADMIN_ENCRYPTION_KEY, label: '2FA-Geheimnisse verschlüsselt (ADMIN_ENCRYPTION_KEY)' },
     { key: 'cf_access', ok: !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD), label: 'Cloudflare Access vor dem Admin (optional)' },
     { key: 'bootstrap', ok: !(env.ADMIN_BOOTSTRAP_PASSWORD || env.STEMPEL_ADMIN_PASSWORD), label: 'Start-Passwort aus Cloudflare entfernt' },
+    { key: 'email_recovery', ok: !!env.BREVO_KEY, label: 'Wiederherstellung per E-Mail möglich (BREVO_KEY)' },
+    ...(env.ADMIN_RESET_EMAIL ? [{ key: 'reset_email', ok: false, label: 'Notzugang ADMIN_RESET_EMAIL noch gesetzt — nach Gebrauch löschen' }] : []),
   ];
 }
 
@@ -5281,6 +5460,10 @@ async function routeAdminApi(request, env, sub, method) {
   if (R('POST', 'recovery-codes')) return handleAdminRecoveryCodes(request, env);
   if (R('GET', 'sessions')) return handleAdminSessions(request, env);
   if (R('POST', 'sessions/revoke')) return handleAdminRevokeSessions(request, env);
+  if (R('POST', 'trusted-devices/revoke')) return handleAdminRevokeTrusted(request, env);
+  if (R('POST', '2fa/move')) return handleAdminTotpMove(request, env);
+  if (R('POST', 'recovery/email')) return handleAdminEmailRecoveryStart(request, env);
+  if (R('POST', 'recovery/email/verify')) return handleAdminEmailRecoveryVerify(request, env);
   if (R('GET', 'team')) return handleAdminTeam(request, env);
   if (R('POST', 'team')) return handleAdminTeamCreate(request, env);
   if (method === 'POST' && seg[0] === 'team' && seg.length === 2) return handleAdminTeamUpdate(request, env, seg[1]);

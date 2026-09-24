@@ -105,7 +105,9 @@
     state.me = null;
     $('app').classList.add('hide');
     $('auth').classList.remove('hide');
-    ['f-login', 'f-totp', 'f-setup', 'f-recovery'].forEach(id => $(id).classList.add('hide'));
+    ['f-login', 'f-totp', 'f-mailrec', 'f-setup', 'f-recovery'].forEach(id => $(id).classList.add('hide'));
+    if (step === 'full') return enterApp();
+    if (step === 'mailrec') { $('f-mailrec').classList.remove('hide'); $('mr-err').textContent = ''; $('mr-sent').textContent = ''; $('mr-code').value = ''; $('mr-send').focus(); }
     if (step === 'login') { $('f-login').classList.remove('hide'); $('l-pw').value = ''; $('l-email').focus(); }
     if (step === 'totp') { $('f-totp').classList.remove('hide'); $('t-code').value = ''; $('t-code').focus(); }
     if (step === 'setup') startSetup();
@@ -128,7 +130,7 @@
     useRecovery = !useRecovery;
     $('totp-code-field').classList.toggle('hide', useRecovery);
     $('totp-rec-field').classList.toggle('hide', !useRecovery);
-    $('t-toggle').textContent = useRecovery ? 'Doch mit Code aus der App anmelden' : 'Handy nicht zur Hand? Wiederherstellungscode verwenden';
+    $('t-toggle').textContent = useRecovery ? 'Doch mit Code aus der App anmelden' : 'Wiederherstellungscode verwenden';
     (useRecovery ? $('t-rec') : $('t-code')).focus();
   };
   $('t-code').oninput = () => { if (/^\d{6}$/.test($('t-code').value)) $('f-totp').requestSubmit(); };
@@ -137,6 +139,7 @@
     $('t-err').textContent = '';
     try {
       const body = useRecovery ? { recoveryCode: $('t-rec').value.trim() } : { code: $('t-code').value.trim() };
+      body.trustDevice = $('t-trust').checked;
       const d = await api('login/totp', { method: 'POST', body, auth: true });
       if (d.recoveryCodesLeft != null) toast(`Wiederherstellungscode verbraucht — noch ${d.recoveryCodesLeft} übrig`, d.recoveryCodesLeft < 3);
       await enterApp();
@@ -147,6 +150,34 @@
     }
   };
   document.querySelectorAll('[data-action="restart"]').forEach(b => b.onclick = () => showAuth('login'));
+
+  /* Handy verloren: Passwort ist bestätigt, jetzt Code per E-Mail */
+  $('t-mail').onclick = () => showAuth('mailrec');
+  $('mr-back').onclick = () => showAuth('totp');
+  $('mr-send').onclick = async () => {
+    $('mr-err').textContent = '';
+    try {
+      const d = await api('recovery/email', { method: 'POST', auth: true });
+      $('mr-sent').textContent = `Code gesendet an ${d.sentTo} — gültig 15 Minuten. Auch im Spam-Ordner nachsehen.`;
+      $('mr-send').textContent = 'Neuen Code senden';
+      $('mr-code').focus();
+    } catch (err) {
+      $('mr-err').textContent = err.message;
+      if (err.status === 401) setTimeout(() => showAuth('login'), 1400);
+    }
+  };
+  $('f-mailrec').onsubmit = async e => {
+    e.preventDefault();
+    $('mr-err').textContent = '';
+    try {
+      await api('recovery/email/verify', { method: 'POST', body: { code: $('mr-code').value.trim() }, auth: true });
+      toast('Bestätigt — jetzt die Authenticator-App auf dem neuen Handy einrichten');
+      showAuth('setup');
+    } catch (err) {
+      $('mr-err').textContent = err.message;
+      if (err.status === 401) setTimeout(() => showAuth('login'), 1400);
+    }
+  };
 
   async function startSetup() {
     $('f-setup').classList.remove('hide');
@@ -162,7 +193,7 @@
     e.preventDefault();
     $('s-err').textContent = '';
     try {
-      const d = await api('2fa/enable', { method: 'POST', body: { code: $('s-code').value.trim() }, auth: true });
+      const d = await api('2fa/enable', { method: 'POST', body: { code: $('s-code').value.trim(), trustDevice: $('s-trust').checked }, auth: true });
       showAuth('recovery', d.recoveryCodes);
     } catch (err) { $('s-err').textContent = err.message; }
   };
@@ -565,7 +596,7 @@
 
   /* ══ Sicherheit ══ */
   async function viewSecurity(view) {
-    const [{ sessions }, me] = await Promise.all([api('sessions'), api('me')]);
+    const [{ sessions, trustedDevices }, me] = await Promise.all([api('sessions'), api('me')]);
     const a = me.admin;
     view.innerHTML = `
       <div class="grid g-2">
@@ -575,7 +606,7 @@
             <li><span class="st ${me.recoveryCodesLeft >= 3 ? 'ok' : 'no'}">${me.recoveryCodesLeft >= 3 ? '✓' : '!'}</span><span>${esc(me.recoveryCodesLeft)} Wiederherstellungscodes übrig</span></li>
             <li><span class="st ${me.mustChangePassword ? 'no' : 'ok'}">${me.mustChangePassword ? '!' : '✓'}</span><span>${me.mustChangePassword ? 'Einmal-Passwort — bitte jetzt ändern' : 'Eigenes Passwort gesetzt'}</span></li>
           </ul>
-          <div class="toolbar spaced"><button class="btn btn-ghost" id="sec-codes">Neue Wiederherstellungscodes</button></div>
+          <div class="toolbar spaced"><button class="btn btn-ghost" id="sec-codes">Neue Wiederherstellungscodes</button><button class="btn btn-ghost" id="sec-move">2FA auf neues Handy umziehen</button></div>
         </div>
         <div class="card"><h3>Passwort ändern</h3><p class="card-sub">Mindestens 12 Zeichen. Danach werden alle anderen Sitzungen beendet.</p>
           <div class="field"><label class="lbl" for="pw-cur">Aktuelles Passwort</label><input class="input" id="pw-cur" type="password" autocomplete="current-password"></div>
@@ -591,6 +622,14 @@
           <td data-l="IP" class="mono">${esc(s.ip)}</td><td data-l="Angemeldet">${fmtDate(s.createdAt)}</td><td data-l="Zuletzt aktiv">${ago(s.lastSeen)}</td>
           <td data-l="">${s.current ? '' : `<button class="btn btn-ghost btn-sm" data-ses="${esc(s.id)}">Beenden</button>`}</td></tr>`).join('')}</tbody></table></div>
       </div>
+      <div class="card spaced"><div class="card-head"><div><h3>Vertraute Geräte</h3><p class="card-sub">Hier reichen E-Mail und Passwort — die 2FA wurde auf dem Gerät schon bestätigt. Gilt 30 Tage. Heikle Aktionen fragen trotzdem nach dem Code. Passwort ändern entfernt alle.</p></div>
+        <button class="btn btn-danger btn-sm" id="trust-all" ${trustedDevices.length ? '' : 'disabled'}>Alle entfernen</button></div>
+        ${trustedDevices.length ? `<div class="table-wrap"><table class="table responsive"><thead><tr><th>Gerät</th><th>IP</th><th>Zuletzt benutzt</th><th>Gültig bis</th><th></th></tr></thead><tbody>
+        ${trustedDevices.map(t => `<tr><td data-l="Gerät"><div class="cell-main">${esc(deviceName(t.userAgent))}</div>${t.current ? '<span class="pill p-ok">Dieses Gerät</span>' : ''}</td>
+          <td data-l="IP" class="mono">${esc(t.ip)}</td><td data-l="Zuletzt benutzt">${ago(t.lastUsed)}</td><td data-l="Gültig bis">${fmtDate(t.expiresAt)}</td>
+          <td data-l=""><button class="btn btn-ghost btn-sm" data-trust="${esc(t.id)}">Entfernen</button></td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="faint">Keine vertrauten Geräte. Beim Anmelden kannst du „Diesem Gerät 30 Tage vertrauen“ ankreuzen.</p>'}
+      </div>
       <div class="card spaced"><h3>Datensicherung</h3>
         <p class="card-sub">Lädt alle Daten aller Module als JSON-Datei herunter — ohne Passwörter, Zugangstokens und 2FA-Geheimnisse. Zusätzlich sichert Cloudflare die Datenbank automatisch (D1 Time Travel, 30 Tage zurück).</p>
         ${a.role === 'viewer' ? '<p class="faint">Nur für Admins und Inhaber.</p>' : '<button class="btn btn-primary" id="sec-export">Backup herunterladen</button>'}
@@ -603,6 +642,25 @@
         showSecretOnce('Neue Wiederherstellungscodes', 'Jetzt sicher speichern — sie werden nur einmal angezeigt.', d.recoveryCodes.join('\n'));
       } catch (err) { toast(err.message, true); }
     };
+    $('sec-move').onclick = () => {
+      const box = openOverlay(`<h3>2FA auf neues Handy umziehen</h3>
+        <p>Danach scannst du einen neuen QR-Code mit dem neuen Handy. Das alte Handy, alle Wiederherstellungscodes und vertrauten Geräte werden ungültig, andere Sitzungen abgemeldet.</p>
+        <label class="lbl" for="mv-pw">Passwort</label><input class="input" id="mv-pw" type="password" autocomplete="current-password">
+        <label class="lbl spaced" for="mv-code">Code vom alten Handy <span class="faint">oder</span> Wiederherstellungscode</label>
+        <input class="input mono" id="mv-code" autocomplete="off" placeholder="123456 oder XXXXX-XXXXX">
+        <div class="actions"><button class="btn btn-ghost" data-action="close">Abbrechen</button><button class="btn btn-primary" id="mv-ok">Weiter</button></div>`, 'modal');
+      box.querySelector('#mv-ok').onclick = async () => {
+        const c = box.querySelector('#mv-code').value.trim();
+        const body = { password: box.querySelector('#mv-pw').value, ...(/^\d{6}$/.test(c) ? { code: c } : { recoveryCode: c }) };
+        try { await api('2fa/move', { method: 'POST', body }); closeOverlay(); toast('Jetzt das neue Handy einrichten'); showAuth('setup'); }
+        catch (err) { toast(err.message, true); }
+      };
+    };
+    $('trust-all').onclick = async () => {
+      if (!(await confirmBox('Alle vertrauten Geräte entfernen?', 'Auf allen Geräten wird beim nächsten Login wieder der 2FA-Code verlangt.', 'Entfernen', true))) return;
+      await api('trusted-devices/revoke', { method: 'POST', body: { all: true } }); toast('Vertraute Geräte entfernt'); route();
+    };
+    view.querySelectorAll('[data-trust]').forEach(b => b.onclick = async () => { await api('trusted-devices/revoke', { method: 'POST', body: { id: b.dataset.trust } }); toast('Gerät entfernt'); route(); });
     $('pw-save').onclick = async () => {
       if ($('pw-new').value !== $('pw-new2').value) return toast('Die neuen Passwörter stimmen nicht überein', true);
       const r = await askCode('Passwort ändern', 'Zur Sicherheit mit deinem 2FA-Code bestätigen.');
@@ -651,6 +709,11 @@
     'visitenkarten.publish': 'Visitenkarte online', 'visitenkarten.unpublish': 'Visitenkarte offline',
     'tapstempel.zugang_unlock': 'Laden freigeschaltet', 'tapstempel.zugang_lock': 'Laden gesperrt', 'tapstempel.zugang_auto': 'Laden automatisch',
     'tapstempel.zugang_extend': 'Test verlängert', 'tapstempel.zugang_note': 'Notiz zum Laden',
+    'login.erfolgreich_vertrautes_geraet': 'Angemeldet (vertrautes Gerät)', 'sicherheit.geraet_vertraut': 'Gerät als vertraut gespeichert',
+    'sicherheit.geraet_entfernt': 'Vertrautes Gerät entfernt', 'sicherheit.alle_geraete_entfernt': 'Alle vertrauten Geräte entfernt',
+    'sicherheit.2fa_umzug_gestartet': '⚠️ 2FA-Umzug auf neues Handy', 'sicherheit.email_code_angefordert': '⚠️ Wiederherstellungs-Code per E-Mail angefordert',
+    'login.email_code_falsch': '⚠️ Falscher E-Mail-Code', 'sicherheit.2fa_per_email_zurueckgesetzt': '⚠️ 2FA per E-Mail zurückgesetzt',
+    'sicherheit.2fa_notfall_zurueckgesetzt': '⚠️ 2FA über Cloudflare-Notzugang zurückgesetzt',
   };
   const auditLabel = a => AUDIT[a] || a;
 
@@ -658,8 +721,8 @@
     const { entries } = await api('audit?limit=500');
     let onlyWarn = false;
     const render = () => {
-      const list = onlyWarn ? entries.filter(e => /fehlgeschlagen|falsch|gesperrt/.test(e.action)) : entries;
-      view.innerHTML = `<div class="toolbar"><div class="chips"><button class="chip ${onlyWarn ? '' : 'on'}" data-w="0">Alle <b>${entries.length}</b></button><button class="chip ${onlyWarn ? 'on' : ''}" data-w="1">Warnungen <b>${entries.filter(e => /fehlgeschlagen|falsch|gesperrt/.test(e.action)).length}</b></button></div></div>
+      const list = onlyWarn ? entries.filter(e => /fehlgeschlagen|falsch|gesperrt|zurueckgesetzt|umzug|email_code/.test(e.action)) : entries;
+      view.innerHTML = `<div class="toolbar"><div class="chips"><button class="chip ${onlyWarn ? '' : 'on'}" data-w="0">Alle <b>${entries.length}</b></button><button class="chip ${onlyWarn ? 'on' : ''}" data-w="1">Warnungen <b>${entries.filter(e => /fehlgeschlagen|falsch|gesperrt|zurueckgesetzt|umzug|email_code/.test(e.action)).length}</b></button></div></div>
         <div class="card"><div class="table-wrap"><table class="table responsive"><thead><tr><th>Zeit</th><th>Aktion</th><th>Wer</th><th>IP</th></tr></thead><tbody>
         ${list.map(e => `<tr><td data-l="Zeit" class="cell-sub">${fmtDate(e.created_at)}</td>
           <td data-l="Aktion"><div class="cell-main">${esc(auditLabel(e.action))}</div>${e.target ? `<div class="cell-sub">${esc(e.target)}</div>` : ''}${e.details ? `<div class="cell-sub mono">${esc(e.details)}</div>` : ''}</td>

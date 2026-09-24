@@ -60,6 +60,8 @@ export default {
       if (method === 'POST' && stempelTapMatch) return handleStempelTapSubmit(request, env, stempelTapMatch[1], ctx);
       const staffRedeemMatch = path.match(/^\/staff-redeem\/([^/]+)$/);
       if (method === 'GET' && staffRedeemMatch) return handleStaffRedeemPage(request, env, staffRedeemMatch[1]);
+      const stripImageMatch = path.match(/^\/wallet\/strip\/([^/]+)\/(\d+)-([0-9a-z]+)\.png$/);
+      if (method === 'GET' && stripImageMatch) return handleStampStripImage(request, env, stripImageMatch[1], stripImageMatch[2], stripImageMatch[3]);
       const googleWalletMatch = path.match(/^\/wallet\/google\/([^/]+)$/);
       if (method === 'GET' && googleWalletMatch) return handleGoogleWalletSave(request, env, googleWalletMatch[1]);
       if (path.startsWith(APPLE_WS_PREFIX)) return handleAppleWalletService(request, env, path.slice(APPLE_WS_PREFIX.length));
@@ -1817,7 +1819,13 @@ function buildLoyaltyObject(env, origin, shop, customer, classId, objectId) {
       alternateText: customer.card_code ? `Karten-ID ${customer.card_code}` : 'Für Personal',
     },
     hexBackgroundColor: shop.card_bg_color || '#14131a',
-    ...(shop.banner_key ? { heroImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } } : {}),
+    // Stempel wie in Apple Wallet als Bild quer über die Karte
+    heroImage: {
+      sourceUri: { uri: googleStripUrl(origin, shop, customer.stamps) },
+      contentDescription: { defaultValue: { language: 'de', value: `${Math.min(customer.stamps, shop.reward_threshold)} von ${shop.reward_threshold} Stempeln` } },
+    },
+    // Banner des Ladens rutscht in die Detailansicht
+    imageModulesData: shop.banner_key ? [{ id: 'banner', mainImage: { sourceUri: { uri: `${origin}/photo/${shop.banner_key}` } } }] : [],
   };
 }
 
@@ -2153,12 +2161,12 @@ function rgbOf(hex) {
 }
 
 /* Spaltenzahl, bei der die Kacheln im Streifen am größten werden (bei Gleichstand weniger Zeilen) */
-function stripLayout(total) {
+function stripLayout(total, ptW = STRIP_W, ptH = STRIP_H) {
   const padX = 16, padY = 14, gap = 10;
   let best = null;
   for (let cols = 1; cols <= total; cols++) {
     const rows = Math.ceil(total / cols);
-    const d = Math.min(58, (STRIP_W - 2 * padX - (cols - 1) * gap) / cols, (STRIP_H - 2 * padY - (rows - 1) * gap) / rows);
+    const d = Math.min(58, (ptW - 2 * padX - (cols - 1) * gap) / cols, (ptH - 2 * padY - (rows - 1) * gap) / rows);
     if (!best || d > best.d + 0.01) best = { cols, rows, d, gap };
   }
   return best;
@@ -2166,7 +2174,7 @@ function stripLayout(total) {
 
 /* Zeichnet den Streifen in Pixeln (Punkte × scale) und gibt RGB-Bytes zurück.
    Kachelform und skaliertes Icon werden einmal berechnet und für jede Kachel kopiert. */
-function drawStampStrip(shop, customer, icon, scale) {
+function drawStampStrip(shop, customer, icon, scale, ptW = STRIP_W, ptH = STRIP_H) {
   const bg = shop.card_bg_color || '#14131a';
   const accent = shop.accent_color || '#6366f1';
   const isLightBg = luminanceOf(bg) > 0.55;
@@ -2178,15 +2186,15 @@ function drawStampStrip(shop, customer, icon, scale) {
   const acc = rgbOf(accent);
   const tint = !STAMP_ICON_IDS.includes(shop.stamp_icon) || shop.stamp_icon === 'circle';
 
-  const W = Math.round(STRIP_W * scale), H = Math.round(STRIP_H * scale);
+  const W = Math.round(ptW * scale), H = Math.round(ptH * scale);
   const img = new Uint8Array(W * H * 3);
   const bgc = rgbOf(bg);
   for (let i = 0; i < img.length; i += 3) { img[i] = bgc[0]; img[i + 1] = bgc[1]; img[i + 2] = bgc[2]; }
 
   const total = shop.reward_threshold;
-  const { cols, rows, d, gap } = stripLayout(total);
-  const x0 = (STRIP_W - (cols * d + (cols - 1) * gap)) / 2;
-  const y0 = (STRIP_H - (rows * d + (rows - 1) * gap)) / 2;
+  const { cols, rows, d, gap } = stripLayout(total, ptW, ptH);
+  const x0 = (ptW - (cols * d + (cols - 1) * gap)) / 2;
+  const y0 = (ptH - (rows * d + (rows - 1) * gap)) / 2;
 
   // Kachelform: Deckung von Fläche und Ring, einmal für alle Kacheln
   const size = Math.ceil(d * scale) + 2, r = d * scale / 2, c0 = r + 1, line = 1.6 * scale;
@@ -2259,8 +2267,18 @@ function drawStampStrip(shop, customer, icon, scale) {
 const STRIP_VERSION = 1; // erhöhen, wenn sich das Aussehen ändert
 const STRIP_SCALES = [['strip.png', 1], ['strip@2x.png', 2], ['strip@3x.png', 3]];
 
+function stampIconId(shop) {
+  return STAMP_ICON_IDS.includes(shop.stamp_icon) ? shop.stamp_icon : 'circle';
+}
+
+async function loadStampIcon(env, origin, id) {
+  const res = await env.ASSETS.fetch(new Request(`${origin}/wallet/stamps/${id}.png`));
+  if (!res.ok) throw new Error(`Stempel-Icon ${id} fehlt (${res.status})`);
+  return decodePng(new Uint8Array(await res.arrayBuffer()));
+}
+
 async function stampStripFiles(env, origin, shop, customer) {
-  const id = STAMP_ICON_IDS.includes(shop.stamp_icon) ? shop.stamp_icon : 'circle';
+  const id = stampIconId(shop);
   const stamps = Math.min(customer.stamps, shop.reward_threshold);
   const key = 'wallet-strip/' + await sha256(JSON.stringify([STRIP_VERSION, shop.card_bg_color || '', shop.accent_color || '', id, shop.reward_threshold, stamps]));
   const files = {};
@@ -2273,9 +2291,7 @@ async function stampStripFiles(env, origin, shop, customer) {
     }
   } catch (e) { /* Cache ist optional — dann eben neu zeichnen */ }
 
-  const res = await env.ASSETS.fetch(new Request(`${origin}/wallet/stamps/${id}.png`));
-  if (!res.ok) throw new Error(`Stempel-Icon ${id} fehlt (${res.status})`);
-  const icon = await decodePng(new Uint8Array(await res.arrayBuffer()));
+  const icon = await loadStampIcon(env, origin, id);
   for (const [name, scale] of STRIP_SCALES) {
     const { rgb, w, h } = drawStampStrip(shop, { stamps }, icon, scale);
     files[name] = await encodePngRgb(rgb, w, h);
@@ -2284,6 +2300,55 @@ async function stampStripFiles(env, origin, shop, customer) {
     } catch (e) { console.error('Stempel-Streifen nicht gecacht:', e); }
   }
   return files;
+}
+
+
+/* ── Stempel-Bild für Google Wallet ──
+   Google zeigt quer über die Karte ein "Hero Image" (empfohlen 1032 × 336 px) und
+   lädt es selbst über eine URL. Stempelstand und Design stecken in der URL, damit
+   Google nach jedem Stempel bzw. jeder Design-Änderung das neue Bild holt. */
+const GOOGLE_STRIP_PT_H = 122, GOOGLE_STRIP_W = 1032; // 375 × 122 Punkte → 1032 × 336 px
+
+/* Kurzer, synchroner Fingerabdruck des Designs (FNV-1a) für die Bild-URL */
+function stripDesignHash(shop) {
+  const text = JSON.stringify([STRIP_VERSION, shop.card_bg_color || '', shop.accent_color || '', stampIconId(shop), shop.reward_threshold]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+}
+
+function googleStripUrl(origin, shop, stamps) {
+  return `${origin}/wallet/strip/${shop.slug}/${Math.min(stamps, shop.reward_threshold)}-${stripDesignHash(shop)}.png`;
+}
+
+/* GET /wallet/strip/:slug/:stamps-:hash.png */
+async function handleStampStripImage(request, env, slug, stampsParam, hash) {
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
+  if (!shop) return new Response('Nicht gefunden', { status: 404 });
+  const stamps = Math.max(0, Math.min(parseInt(stampsParam, 10) || 0, shop.reward_threshold));
+  const current = hash === stripDesignHash(shop); // alte URL: aktuelles Design liefern, aber nicht dauerhaft cachen
+  const key = 'wallet-strip/google-' + await sha256(JSON.stringify([STRIP_VERSION, shop.card_bg_color || '', shop.accent_color || '', stampIconId(shop), shop.reward_threshold, stamps]));
+
+  let png = null;
+  try {
+    const cached = await env.PHOTOS.get(key);
+    if (cached) png = new Uint8Array(await cached.arrayBuffer());
+  } catch (e) { /* Cache ist optional */ }
+
+  if (!png) {
+    const icon = await loadStampIcon(env, new URL(request.url).origin, stampIconId(shop));
+    const { rgb, w, h } = drawStampStrip(shop, { stamps }, icon, GOOGLE_STRIP_W / STRIP_W, STRIP_W, GOOGLE_STRIP_PT_H);
+    png = await encodePngRgb(rgb, w, h);
+    try {
+      await env.PHOTOS.put(key, png, { httpMetadata: { contentType: 'image/png' } });
+    } catch (e) { console.error('Google-Stempelbild nicht gecacht:', e); }
+  }
+  return new Response(png, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': current ? 'public, max-age=31536000, immutable' : 'no-store',
+    },
+  });
 }
 
 async function buildPkpass(files, certPem, keyPem) {

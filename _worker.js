@@ -1312,7 +1312,10 @@ async function handleStempelSettings(request, env, ctx) {
   // Nur was auch auf der Wallet-Karte steht, löst ein Update aller Karten aus
   const walletChanged = rewardThreshold !== shop.reward_threshold || rewardText !== shop.reward_text
     || accentColor !== shop.accent_color || cardBgColor !== shop.card_bg_color || stampIcon !== shop.stamp_icon;
-  if (walletChanged) await markShopWalletChanged(env, shop.id, ctx);
+  if (walletChanged) {
+    await markShopWalletChanged(env, shop.id, ctx);
+    syncGoogleWalletShop(env, request, shop.id, ctx);
+  }
 
   return json({ success: true });
 }
@@ -1338,7 +1341,10 @@ async function handleStempelUploadImage(request, env, opts, ctx) {
   if (oldKey) { try { await env.PHOTOS.delete(oldKey); } catch (e) {} }
 
   await env.DB.prepare(`UPDATE stempel_shops SET ${opts.column} = ? WHERE id = ?`).bind(key, shop.id).run();
-  if (opts.column === 'logo_key') await markShopWalletChanged(env, shop.id, ctx); // Logo steht auf der Wallet-Karte
+  if (opts.column === 'logo_key') { // Logo steht auf der Wallet-Karte
+    await markShopWalletChanged(env, shop.id, ctx);
+    syncGoogleWalletShop(env, request, shop.id, ctx);
+  }
   return json({ success: true, [opts.resultKey]: `/photo/${key}` });
 }
 
@@ -1347,7 +1353,10 @@ async function handleStempelRemoveImage(request, env, column, ctx) {
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   if (shop[column]) { try { await env.PHOTOS.delete(shop[column]); } catch (e) {} }
   await env.DB.prepare(`UPDATE stempel_shops SET ${column} = NULL WHERE id = ?`).bind(shop.id).run();
-  if (column === 'logo_key') await markShopWalletChanged(env, shop.id, ctx);
+  if (column === 'logo_key') {
+    await markShopWalletChanged(env, shop.id, ctx);
+    syncGoogleWalletShop(env, request, shop.id, ctx);
+  }
   return json({ success: true });
 }
 
@@ -2898,6 +2907,53 @@ async function clearGoogleWalletMessages(env, shop) {
     body: JSON.stringify({ messages: [] }),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Class-PATCH ${res.status}: ${await res.text()}`);
+}
+
+/* ── Google Wallet: Laden-Änderungen ──
+   Bei Google stehen Farben und Logo an der Klasse (einmal pro Laden), Belohnungstext,
+   Stempelstand und Stempel-Bild aber an jeder einzelnen Karte. Ändert der Laden etwas
+   davon, werden Klasse und jede gespeicherte Google-Karte des Ladens aktualisiert —
+   wie bei Apple sofort statt erst beim nächsten Stempel des Kunden. */
+function syncGoogleWalletShop(env, request, shopId, ctx) {
+  const job = pushGoogleWalletShopUpdate(env, new URL(request.url).origin, shopId)
+    .catch(e => console.error('Google Wallet Laden-Update fehlgeschlagen:', e));
+  if (ctx) ctx.waitUntil(job);
+  return job;
+}
+
+async function pushGoogleWalletShopUpdate(env, origin, shopId) {
+  if (!env.GOOGLE_WALLET_ISSUER_ID || !env.GOOGLE_WALLET_SERVICE_ACCOUNT || !env.GOOGLE_WALLET_PRIVATE_KEY) return;
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(shopId).first(); // Stand nach dem Speichern
+  if (!shop) return;
+
+  const { classId } = buildLoyaltyIds(env, shop, { id: '' });
+  const accessToken = await getGoogleWalletAccessToken(env);
+  const patch = (kind, id, body) => fetch(`https://walletobjects.googleapis.com/walletobjects/v1/${kind}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const classRes = await patch('loyaltyClass', classId, buildLoyaltyClass(env, origin, shop, classId));
+  if (classRes.status === 404) return; // noch niemand hat eine Karte dieses Ladens in Google Wallet
+  if (!classRes.ok) console.error(`Google Wallet Class-PATCH ${classRes.status}: ${await classRes.text()}`);
+
+  const saved = await googleWalletCustomerIds(env, shop);
+  if (!saved || !saved.size) return;
+  const { results } = await env.DB.prepare('SELECT * FROM stempel_customers WHERE shop_id = ?').bind(shop.id).all();
+  const customers = (results || []).filter(c => saved.has(c.id) && c.redeem_token);
+
+  for (let i = 0; i < customers.length; i += 10) {
+    await Promise.all(customers.slice(i, i + 10).map(async customer => {
+      const { objectId } = buildLoyaltyIds(env, shop, customer);
+      try {
+        const res = await patch('loyaltyObject', objectId, buildLoyaltyObject(env, origin, shop, customer, classId, objectId));
+        if (!res.ok && res.status !== 404) console.error(`Google Wallet Object-PATCH ${res.status}: ${await res.text()}`);
+      } catch (e) {
+        console.error('Google Wallet Object-PATCH fehlgeschlagen:', e); // eine Karte darf die anderen nicht aufhalten
+      }
+    }));
+  }
 }
 
 async function handleStaffRedeemPage(request, env, token) {

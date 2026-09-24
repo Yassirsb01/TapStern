@@ -69,7 +69,9 @@ export default {
       if (method === 'GET' && appleWalletMatch) return handleAppleWalletPass(request, env, appleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
 
-      /* ── Tapstempel-Admin (im Dashboard) ── */
+      /* ── Tapstempel-Admin (stempel-admin.html) ── */
+      if (method === 'POST' && path === '/api/stempel/admin/login') return handleStempelAdminLogin(request, env);
+      if (method === 'POST' && path === '/api/stempel/admin/logout') return handleStempelAdminLogout(request, env);
       if (method === 'GET'  && path === '/api/stempel/admin/shops') return handleAdminStempelShops(request, env);
       const adminAccessMatch = path.match(/^\/api\/stempel\/admin\/shops\/([^/]+)\/access$/);
       if (method === 'POST' && adminAccessMatch) return handleAdminStempelAccess(request, env, adminAccessMatch[1]);
@@ -1187,8 +1189,8 @@ async function currentShop(env, request) {
    Nach der E-Mail-Bestätigung hat ein Laden 24 Stunden alles offen zum Testen und
    Gestalten. Danach bleibt ohne aktives Abo nur „Abo & Karten“ im Dashboard; Kartenlink,
    Stempeln, Personal-Scan und „Zu Wallet hinzufügen“ sind pausiert. Im Admin-Bereich
-   des Dashboards (nur für Konten aus STEMPEL_ADMIN_EMAILS) kann ein Laden unabhängig
-   davon freigeschaltet, gesperrt oder sein Test verlängert werden. Eigene Tabelle stempel_shop_access, damit stempel_shops
+   (stempel-admin.html, eigener Login, getrennt von Laden-Konten und Hub-Admin) kann ein
+   Laden unabhängig davon freigeschaltet, gesperrt oder sein Test verlängert werden. Eigene Tabelle stempel_shop_access, damit stempel_shops
    unverändert bleibt; Läden von vor dieser Regel bekommen ihre 24 Stunden ab dem
    ersten Aufruf danach. */
 const TRIAL_HOURS = 24;
@@ -1231,24 +1233,67 @@ function accessStateOf(shop, row, now = Math.floor(Date.now() / 1000)) {
   return { state: 'expired', active: false, trialEndsAt };
 }
 
-/* Tapstempel-Admins: E-Mails der eigenen Konten, kommagetrennt, als Cloudflare-Variable
-   STEMPEL_ADMIN_EMAILS. Bewusst getrennt vom Business-Hub-Admin. */
-function isStempelAdmin(env, shop) {
-  const admins = str(env.STEMPEL_ADMIN_EMAILS).toLowerCase().split(',').map(e => e.trim()).filter(Boolean);
-  return !!shop && admins.includes(str(shop.email).toLowerCase());
+async function shopAccess(env, shop) {
+  return accessStateOf(shop, await shopAccessRow(env, shop.id));
+}
+
+/* ── Tapstempel-Admin: eigener Login, getrennt von Laden-Konten und vom Hub-Admin ──
+   Zugangsdaten als Cloudflare-Secrets: STEMPEL_ADMIN_EMAILS (eine oder mehrere E-Mails,
+   kommagetrennt) und STEMPEL_ADMIN_PASSWORD. Sitzungen in stempel_admin_sessions,
+   Fehlversuche über login_locks gebremst wie beim normalen Login. */
+const STEMPEL_ADMIN_SESSION_HOURS = 12;
+
+function stempelAdminCookie(token, maxAge) {
+  return `stempel_admin_session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
+}
+
+async function ensureAdminSessionTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS stempel_admin_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at INTEGER NOT NULL)'
+  ).run();
 }
 
 async function requireStempelAdmin(env, request) {
-  const shop = await currentShop(env, request);
-  if (!shop) return { denied: json({ error: 'Nicht angemeldet' }, 401) };
-  if (!isStempelAdmin(env, shop)) return { denied: json({ error: 'Kein Zugriff' }, 403) };
-  return { shop };
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_admin_session=([^;]+)/);
+  if (!m) return { denied: json({ error: 'Nicht angemeldet' }, 401) };
+  const row = await env.DB.prepare('SELECT email FROM stempel_admin_sessions WHERE token_hash = ? AND expires_at > ?')
+    .bind(await sha256(m[1]), Math.floor(Date.now() / 1000)).first().catch(() => null);
+  if (!row) return { denied: json({ error: 'Nicht angemeldet' }, 401) };
+  return { admin: row };
 }
 
-async function shopAccess(env, shop) {
-  const row = await shopAccessRow(env, shop.id);
-  if (isStempelAdmin(env, shop)) return { state: 'unlocked', active: true, trialEndsAt: row.trial_ends_at }; // Admin sperrt sich nie aus
-  return accessStateOf(shop, row);
+/* POST /api/stempel/admin/login — { email, password } */
+async function handleStempelAdminLogin(request, env) {
+  const admins = str(env.STEMPEL_ADMIN_EMAILS).toLowerCase().split(',').map(e => e.trim()).filter(Boolean);
+  if (!admins.length || !env.STEMPEL_ADMIN_PASSWORD) return json({ error: 'Admin-Zugang ist noch nicht eingerichtet' }, 500);
+
+  const lockKey = 'stempeladmin:' + (request.headers.get('CF-Connecting-IP') || 'unbekannt');
+  const gate = await checkLock(env, lockKey);
+  if (gate) return json({ error: gate }, 429);
+
+  const data = await readJson(request);
+  const email = str(data?.email).toLowerCase();
+  // Passwort über Hashes vergleichen: gleiche Länge, konstante Laufzeit
+  const pwOk = timingSafeEqual(await sha256(str(data?.password)), await sha256(env.STEMPEL_ADMIN_PASSWORD));
+  if (!admins.includes(email) || !pwOk) {
+    await noteFail(env, lockKey);
+    return json({ error: 'E-Mail oder Passwort falsch' }, 401);
+  }
+  await clearFails(env, lockKey);
+
+  await ensureAdminSessionTable(env);
+  const token = randomToken();
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare('DELETE FROM stempel_admin_sessions WHERE expires_at <= ?').bind(now).run();
+  await env.DB.prepare('INSERT INTO stempel_admin_sessions (token_hash, email, expires_at) VALUES (?, ?, ?)')
+    .bind(await sha256(token), email, now + STEMPEL_ADMIN_SESSION_HOURS * 3600).run();
+  return json({ success: true, email }, 200, stempelAdminCookie(token, STEMPEL_ADMIN_SESSION_HOURS * 3600));
+}
+
+async function handleStempelAdminLogout(request, env) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_admin_session=([^;]+)/);
+  if (m) await env.DB.prepare('DELETE FROM stempel_admin_sessions WHERE token_hash = ?').bind(await sha256(m[1])).run().catch(() => {});
+  return json({ success: true }, 200, stempelAdminCookie('', 0));
 }
 
 /* Für Dashboard-Endpunkte, die nur mit aktivem Test oder Abo gehen */
@@ -1271,7 +1316,6 @@ async function requireActiveShop(env, request) {
 async function publicShop(env, shop) {
   const { password_hash, session_token_hash, verify_code_hash, ...safe } = shop;
   safe.access = await shopAccess(env, shop);
-  safe.isAdmin = isStempelAdmin(env, shop);
   return safe;
 }
 
@@ -1293,7 +1337,7 @@ function inactiveShopResponse(shop, asJson) {
     { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-/* ── Admin: Läden verwalten (im Dashboard, nur für STEMPEL_ADMIN_EMAILS) ── */
+/* ── Admin: Läden verwalten (stempel-admin.html) ── */
 async function handleAdminStempelShops(request, env) {
   const { denied } = await requireStempelAdmin(env, request);
   if (denied) return denied;
@@ -1306,11 +1350,7 @@ async function handleAdminStempelShops(request, env) {
      ORDER BY s.created_at DESC`
   ).all();
   const now = Math.floor(Date.now() / 1000);
-  return json({ shops: (results || []).map(r => ({
-    ...r,
-    isAdmin: isStempelAdmin(env, r),
-    access: isStempelAdmin(env, r) ? { state: 'unlocked', active: true, trialEndsAt: r.trial_ends_at } : accessStateOf(r, r.trial_ends_at ? r : null, now),
-  })) });
+  return json({ shops: (results || []).map(r => ({ ...r, access: accessStateOf(r, r.trial_ends_at ? r : null, now) })) });
 }
 
 /* POST /api/stempel/admin/shops/:id/access — { action: unlock | lock | auto | extend, days?, note? } */

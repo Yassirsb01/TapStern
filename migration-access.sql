@@ -13,3 +13,10 @@ CREATE TABLE IF NOT EXISTS stempel_shop_access (
   note TEXT,
   updated_at INTEGER
 );
+
+-- Sitzungen des Tapstempel-Admins (stempel-admin.html), getrennt von Laden-Konten und Hub-Admin
+CREATE TABLE IF NOT EXISTS stempel_admin_sessions (
+  token_hash TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);

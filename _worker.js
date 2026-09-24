@@ -5,11 +5,38 @@
  */
 export default {
   async fetch(request, env, ctx) {
+    return withBaseHeaders(await routeRequest(request, env, ctx));
+  }
+};
+
+/* Grund-Schutz für jede Antwort (falls die Route nichts Strengeres setzt) */
+function withBaseHeaders(res) {
+  if (!res || res.status === 101) return res;
+  const out = new Response(res.body, res);
+  const set = (k, v) => { if (!out.headers.has(k)) out.headers.set(k, v); };
+  set('X-Content-Type-Options', 'nosniff');
+  set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  set('Strict-Transport-Security', 'max-age=31536000');
+  if ((out.headers.get('Content-Type') || '').includes('text/html')) set('X-Frame-Options', 'SAMEORIGIN');
+  return out;
+}
+
+async function routeRequest(request, env, ctx) {
+  {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
 
     try {
+      /* ── Tapstern Admin ── */
+      if (path === '/admin' || path === '/admin/') return method === 'GET' ? serveAdminAsset(request, env, 'admin') : new Response(null, { status: 405 });
+      if (path === '/admin.html') return Response.redirect(url.origin + '/admin', 301);
+      if (method === 'GET' && (path === '/admin.css' || path === '/admin.js')) return serveAdminAsset(request, env, path.slice(1));
+      if (path === '/stempel-admin.html' || path === '/stempel-admin') return Response.redirect(url.origin + '/admin', 301);
+      if (path.startsWith('/api/admin/')) return routeAdminApi(request, env, path.slice('/api/admin/'.length), method);
+      if (method === 'GET' && path === '/api/platform/modules') return handlePublicModules(request, env);
+      if (method === 'POST' && path === '/api/shop-order') return handleShopOrder(request, env);
+
       if (method === 'POST' && path === '/api/signup') return handleSignup(request, env, ctx);
       if (method === 'POST' && path === '/api/signin') return handleSignin(request, env);
       if (method === 'POST' && path === '/api/signout') return handleSignout(request, env);
@@ -69,12 +96,6 @@ export default {
       if (method === 'GET' && appleWalletMatch) return handleAppleWalletPass(request, env, appleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
 
-      /* ── Tapstempel-Admin (stempel-admin.html) ── */
-      if (method === 'POST' && path === '/api/stempel/admin/login') return handleStempelAdminLogin(request, env);
-      if (method === 'POST' && path === '/api/stempel/admin/logout') return handleStempelAdminLogout(request, env);
-      if (method === 'GET'  && path === '/api/stempel/admin/shops') return handleAdminStempelShops(request, env);
-      const adminAccessMatch = path.match(/^\/api\/stempel\/admin\/shops\/([^/]+)\/access$/);
-      if (method === 'POST' && adminAccessMatch) return handleAdminStempelAccess(request, env, adminAccessMatch[1]);
 
       /* ── Business Hub ── */
       if (method === 'POST' && path === '/api/hub/submit') return handleHubSubmit(request, env);
@@ -114,10 +135,11 @@ export default {
       // Alles andere: statische Dateien (index.html, visitenkarten.html, …)
       return env.ASSETS.fetch(request);
     } catch (err) {
-      return json({ error: 'Serverfehler: ' + err.message }, 500);
+      console.error('Serverfehler', request.method, new URL(request.url).pathname, err);
+      return json({ error: 'Serverfehler — bitte später erneut versuchen' }, 500); // keine internen Details nach außen
     }
   }
-};
+}
 
 const SESSION_DAYS = 30;
 const VERIFY_HOURS = 24;
@@ -495,58 +517,6 @@ async function handleTrack(request, env) {
 // theoretisch den Preis im Netzwerk-Request manipulieren, bevor er zu Stripe
 // geht. Für mehr Sicherheit später: Preise serverseitig anhand einer festen
 // Produktliste nachrechnen statt dem Client zu vertrauen.
-async function handleCreateCheckout(request, env) {
-  if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet (STRIPE_SECRET_KEY fehlt)' }, 500);
-
-  const data = await readJson(request);
-  if (!data || !Array.isArray(data.items) || !data.items.length) {
-    return json({ error: 'Ungültige Anfrage' }, 400);
-  }
-
-  const origin = new URL(request.url).origin;
-  const params = new URLSearchParams();
-  params.set('mode', 'payment');
-  params.set('success_url', origin + (data.successPath || '/bestellen.html?zahlung=erfolg'));
-  params.set('cancel_url', origin + (data.cancelPath || '/bestellen.html?zahlung=abgebrochen'));
-  if (data.customerEmail) params.set('customer_email', str(data.customerEmail));
-
-  data.items.slice(0, 10).forEach((item, i) => {
-    const name = str(item.name).slice(0, 200) || 'Tapstern-Bestellung';
-    const unitAmount = Math.round(Number(item.unitAmount));
-    const quantity = Math.max(1, Math.round(Number(item.quantity) || 1));
-    if (!(unitAmount > 0)) return;
-    params.set(`line_items[${i}][price_data][currency]`, 'eur');
-    params.set(`line_items[${i}][price_data][product_data][name]`, name);
-    params.set(`line_items[${i}][price_data][unit_amount]`, String(unitAmount));
-    params.set(`line_items[${i}][quantity]`, String(quantity));
-  });
-
-  if (data.metadata && typeof data.metadata === 'object') {
-    let n = 0;
-    for (const [key, value] of Object.entries(data.metadata)) {
-      if (n >= 20) break;
-      params.set(`metadata[${str(key).slice(0, 40)}]`, str(value).slice(0, 490));
-      n++;
-    }
-  }
-
-  try {
-    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params.toString()
-    });
-    const session = await res.json();
-    if (!res.ok) return json({ error: session.error?.message || 'Stripe-Fehler' }, 502);
-    return json({ url: session.url });
-  } catch (e) {
-    return json({ error: 'Zahlung konnte nicht gestartet werden: ' + e.message }, 500);
-  }
-}
-
 /* ───────────────────────────── /api/card ──────────────────────────── */
 // Karte der laufenden Sitzung laden (für den Auto-Login im Editor)
 async function handleCard(request, env) {
@@ -1188,9 +1158,9 @@ async function currentShop(env, request) {
 /* ══ Zugang: 24-Stunden-Test, Abo, Admin-Entscheidung ══
    Nach der E-Mail-Bestätigung hat ein Laden 24 Stunden alles offen zum Testen und
    Gestalten. Danach bleibt ohne aktives Abo nur „Abo & Karten“ im Dashboard; Kartenlink,
-   Stempeln, Personal-Scan und „Zu Wallet hinzufügen“ sind pausiert. Im Admin-Bereich
-   (stempel-admin.html, eigener Login, getrennt von Laden-Konten und Hub-Admin) kann ein
-   Laden unabhängig davon freigeschaltet, gesperrt oder sein Test verlängert werden. Eigene Tabelle stempel_shop_access, damit stempel_shops
+   Stempeln, Personal-Scan und „Zu Wallet hinzufügen“ sind pausiert. Im Tapstern Admin
+   (/admin) kann ein Laden unabhängig davon freigeschaltet, gesperrt oder sein Test
+   verlängert werden. Eigene Tabelle stempel_shop_access, damit stempel_shops
    unverändert bleibt; Läden von vor dieser Regel bekommen ihre 24 Stunden ab dem
    ersten Aufruf danach. */
 const TRIAL_HOURS = 24;
@@ -1237,65 +1207,6 @@ async function shopAccess(env, shop) {
   return accessStateOf(shop, await shopAccessRow(env, shop.id));
 }
 
-/* ── Tapstempel-Admin: eigener Login, getrennt von Laden-Konten und vom Hub-Admin ──
-   Zugangsdaten als Cloudflare-Secrets: STEMPEL_ADMIN_EMAILS (eine oder mehrere E-Mails,
-   kommagetrennt) und STEMPEL_ADMIN_PASSWORD. Sitzungen in stempel_admin_sessions,
-   Fehlversuche über login_locks gebremst wie beim normalen Login. */
-const STEMPEL_ADMIN_SESSION_HOURS = 12;
-
-function stempelAdminCookie(token, maxAge) {
-  return `stempel_admin_session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
-}
-
-async function ensureAdminSessionTable(env) {
-  await env.DB.prepare(
-    'CREATE TABLE IF NOT EXISTS stempel_admin_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at INTEGER NOT NULL)'
-  ).run();
-}
-
-async function requireStempelAdmin(env, request) {
-  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_admin_session=([^;]+)/);
-  if (!m) return { denied: json({ error: 'Nicht angemeldet' }, 401) };
-  const row = await env.DB.prepare('SELECT email FROM stempel_admin_sessions WHERE token_hash = ? AND expires_at > ?')
-    .bind(await sha256(m[1]), Math.floor(Date.now() / 1000)).first().catch(() => null);
-  if (!row) return { denied: json({ error: 'Nicht angemeldet' }, 401) };
-  return { admin: row };
-}
-
-/* POST /api/stempel/admin/login — { email, password } */
-async function handleStempelAdminLogin(request, env) {
-  const admins = str(env.STEMPEL_ADMIN_EMAILS).toLowerCase().split(',').map(e => e.trim()).filter(Boolean);
-  if (!admins.length || !env.STEMPEL_ADMIN_PASSWORD) return json({ error: 'Admin-Zugang ist noch nicht eingerichtet' }, 500);
-
-  const lockKey = 'stempeladmin:' + (request.headers.get('CF-Connecting-IP') || 'unbekannt');
-  const gate = await checkLock(env, lockKey);
-  if (gate) return json({ error: gate }, 429);
-
-  const data = await readJson(request);
-  const email = str(data?.email).toLowerCase();
-  // Passwort über Hashes vergleichen: gleiche Länge, konstante Laufzeit
-  const pwOk = timingSafeEqual(await sha256(str(data?.password)), await sha256(env.STEMPEL_ADMIN_PASSWORD));
-  if (!admins.includes(email) || !pwOk) {
-    await noteFail(env, lockKey);
-    return json({ error: 'E-Mail oder Passwort falsch' }, 401);
-  }
-  await clearFails(env, lockKey);
-
-  await ensureAdminSessionTable(env);
-  const token = randomToken();
-  const now = Math.floor(Date.now() / 1000);
-  await env.DB.prepare('DELETE FROM stempel_admin_sessions WHERE expires_at <= ?').bind(now).run();
-  await env.DB.prepare('INSERT INTO stempel_admin_sessions (token_hash, email, expires_at) VALUES (?, ?, ?)')
-    .bind(await sha256(token), email, now + STEMPEL_ADMIN_SESSION_HOURS * 3600).run();
-  return json({ success: true, email }, 200, stempelAdminCookie(token, STEMPEL_ADMIN_SESSION_HOURS * 3600));
-}
-
-async function handleStempelAdminLogout(request, env) {
-  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_admin_session=([^;]+)/);
-  if (m) await env.DB.prepare('DELETE FROM stempel_admin_sessions WHERE token_hash = ?').bind(await sha256(m[1])).run().catch(() => {});
-  return json({ success: true }, 200, stempelAdminCookie('', 0));
-}
-
 /* Für Dashboard-Endpunkte, die nur mit aktivem Test oder Abo gehen */
 async function requireActiveShop(env, request) {
   const shop = await currentShop(env, request);
@@ -1335,49 +1246,6 @@ function inactiveShopResponse(shop, asJson) {
 </style></head>
 <body><div class="box"><h1>${escapeHtml(shop.name)}</h1><p>${escapeHtml(msg)}</p></div></body></html>`,
     { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-}
-
-/* ── Admin: Läden verwalten (stempel-admin.html) ── */
-async function handleAdminStempelShops(request, env) {
-  const { denied } = await requireStempelAdmin(env, request);
-  if (denied) return denied;
-  await ensureAccessTable(env);
-  const { results } = await env.DB.prepare(
-    `SELECT s.id, s.slug, s.name, s.email, s.first_name, s.last_name, s.phone, s.branche, s.plan, s.billing_interval,
-            s.subscription_status, s.verified, s.created_at, a.trial_ends_at, a.override, a.note,
-            (SELECT COUNT(*) FROM stempel_customers c WHERE c.shop_id = s.id) AS customers
-     FROM stempel_shops s LEFT JOIN stempel_shop_access a ON a.shop_id = s.id
-     ORDER BY s.created_at DESC`
-  ).all();
-  const now = Math.floor(Date.now() / 1000);
-  return json({ shops: (results || []).map(r => ({ ...r, access: accessStateOf(r, r.trial_ends_at ? r : null, now) })) });
-}
-
-/* POST /api/stempel/admin/shops/:id/access — { action: unlock | lock | auto | extend, days?, note? } */
-async function handleAdminStempelAccess(request, env, shopId) {
-  const { denied } = await requireStempelAdmin(env, request);
-  if (denied) return denied;
-  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(shopId).first();
-  if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
-  const data = await readJson(request);
-  const action = str(data?.action);
-  const row = await shopAccessRow(env, shop.id);
-  const now = Math.floor(Date.now() / 1000);
-  let { trial_ends_at: trialEndsAt, override } = row;
-
-  if (action === 'unlock') override = 'unlocked';
-  else if (action === 'lock') override = 'locked';
-  else if (action === 'auto') override = null;
-  else if (action === 'extend') {
-    const days = Math.max(1, Math.min(365, parseInt(data?.days) || 1));
-    trialEndsAt = Math.max(now, trialEndsAt) + days * 86400;
-    if (override === 'locked') override = null; // wer verlängert, will den Laden wieder offen haben
-  } else return json({ error: 'Unbekannte Aktion' }, 400);
-
-  const note = data?.note !== undefined ? (str(data.note).slice(0, 500) || null) : row.note;
-  await env.DB.prepare('UPDATE stempel_shop_access SET trial_ends_at = ?, override = ?, note = ?, updated_at = ? WHERE shop_id = ?')
-    .bind(trialEndsAt, override, note, now, shop.id).run();
-  return json({ success: true, access: accessStateOf(shop, { trial_ends_at: trialEndsAt, override }, now) });
 }
 
 async function handleStempelSignup(request, env) {
@@ -1437,9 +1305,15 @@ async function handleStempelVerifyEmail(request, env) {
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE email = ?').bind(email).first();
   if (!shop) return json({ error: 'Kein Konto mit dieser E-Mail gefunden' }, 404);
   if (shop.verified) return json({ error: 'Konto ist bereits bestätigt' }, 400);
-  if (!shop.verify_code_hash || (await sha256(code)) !== shop.verify_code_hash) {
+  // 6-stelliger Code: ohne Bremse in Minuten durchprobierbar
+  const verifyKey = 'stempel-verify:' + email;
+  const gate = await checkLock(env, verifyKey);
+  if (gate) return json({ error: gate }, 429);
+  if (!shop.verify_code_hash || !timingSafeEqual(await sha256(code), shop.verify_code_hash)) {
+    await noteFail(env, verifyKey);
     return json({ error: 'Code ist falsch oder abgelaufen' }, 401);
   }
+  await clearFails(env, verifyKey);
 
   const token = randomToken();
   await env.DB.prepare('UPDATE stempel_shops SET verified = 1, verify_code_hash = NULL, session_token_hash = ? WHERE id = ?')
@@ -1470,10 +1344,14 @@ async function handleStempelLogin(request, env) {
   const email = str(data.email).toLowerCase();
   const password = str(data.password);
 
+  const lockKeys = ['stempel-login:' + email, 'stempel-login-ip:' + clientIp(request)];
+  for (const k of lockKeys) { const gate = await checkLock(env, k); if (gate) return json({ error: gate }, 429); }
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE email = ?').bind(email).first();
-  if (!shop || !(await verifyPassword(password, shop.password_hash))) {
+  if (!shop || !(await verifyPassword(password, shop?.password_hash))) {
+    for (const k of lockKeys) await noteFail(env, k);
     return json({ error: 'E-Mail oder Passwort falsch' }, 401);
   }
+  for (const k of lockKeys) await clearFails(env, k);
   if (!shop.verified) return json({ error: 'Bitte bestätige zuerst deine E-Mail-Adresse' }, 403);
 
   const token = randomToken();
@@ -1899,25 +1777,39 @@ async function handleStempelCheckoutCard(request, env) {
    Webhooks einen Endpunkt auf /webhook/stripe-stempel anlegen, Signing Secret kopieren. */
 async function verifyStripeSignature(rawBody, sigHeader, secret) {
   if (!sigHeader) return false;
-  const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
-  const signedPayload = parts.t + '.' + rawBody;
+  const pairs = sigHeader.split(',').map(p => p.split('='));
+  const t = (pairs.find(([k]) => k === 't') || [])[1];
+  const sigs = pairs.filter(([k]) => k === 'v1').map(([, v]) => v);
+  if (!t || !sigs.length || Math.abs(Date.now() / 1000 - Number(t)) > 300) return false; // gegen wiederholte alte Aufrufe
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(t + '.' + rawBody));
   const expected = [...new Uint8Array(sigBuf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  return expected === parts.v1;
+  return sigs.some(v => timingSafeEqual(v, expected));
 }
 
 async function handleStempelStripeWebhook(request, env) {
   const rawBody = await request.text();
-  if (env.STEMPEL_STRIPE_WEBHOOK_SECRET) {
-    const ok = await verifyStripeSignature(rawBody, request.headers.get('stripe-signature'), env.STEMPEL_STRIPE_WEBHOOK_SECRET);
-    if (!ok) return new Response('Ungültige Signatur', { status: 400 });
+  // Ohne Secret keine Verarbeitung: sonst könnte jeder ein Abo oder eine Zahlung vortäuschen
+  if (!env.STEMPEL_STRIPE_WEBHOOK_SECRET) {
+    console.error('STEMPEL_STRIPE_WEBHOOK_SECRET fehlt — Webhook abgelehnt');
+    return new Response('Webhook nicht eingerichtet', { status: 500 });
   }
+  const ok = await verifyStripeSignature(rawBody, request.headers.get('stripe-signature'), env.STEMPEL_STRIPE_WEBHOOK_SECRET);
+  if (!ok) return new Response('Ungültige Signatur', { status: 400 });
   let event;
   try { event = JSON.parse(rawBody); } catch (e) { return new Response('Ungültiger Body', { status: 400 }); }
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    const paid = session.payment_status === 'paid' || session.payment_status === 'no_payment_required';
+    if (session.mode === 'payment' && session.metadata?.shop_order_id && paid) {
+      await ensureAdminTables(env);
+      await env.DB.prepare(`UPDATE shop_orders SET payment_status = 'bezahlt', paid_at = ?, stripe_session_id = ? WHERE id = ?`)
+        .bind(nowSec(), session.id, session.metadata.shop_order_id).run();
+    }
+    if (session.mode === 'payment' && session.metadata?.hub_page_id && paid) {
+      await env.DB.prepare(`UPDATE hub_pages SET paid = 1, updated_at = datetime('now') WHERE id = ?`).bind(session.metadata.hub_page_id).run();
+    }
     if (session.mode === 'subscription' && session.metadata?.shop_id) {
       await env.DB.prepare(
         `UPDATE stempel_shops SET subscription_status = 'active', plan = ?, billing_interval = ?, stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?`
@@ -3235,10 +3127,16 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
   if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
   if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop, true);
 
+  // 4–6-stellige PIN: pro Karte und pro IP bremsen, sonst sind Stempel erratbar
+  const pinKeys = ['staffpin:' + token, 'staffpin-ip:' + clientIp(request)];
+  for (const k of pinKeys) { const gate = await checkLock(env, k); if (gate) return json({ error: gate }, 429); }
   const pinHash = await sha256(pin);
   const employee = await env.DB.prepare('SELECT * FROM stempel_employees WHERE shop_id = ? AND pin_hash = ?')
     .bind(shop.id, pinHash).first();
-  if (!employee) return json({ error: 'PIN falsch' }, 401);
+  if (!employee) {
+    for (const k of pinKeys) await noteFail(env, k);
+    return json({ error: 'PIN falsch' }, 401);
+  }
 
   const { customer: updated, isNew, cooldownHit } = await grantStampToCustomer(env, customer, shop, employee.id, request, ctx);
   const rewardReached = updated.stamps >= shop.reward_threshold;
@@ -3863,18 +3761,13 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
    ══════════════════════════════════════════════════════════════ */
 
 const HUB_MAX_LINKS = 10;
-const HUB_ADMIN_SESSION_DAYS = 14;
-
-function hubAdminCookie(token) {
-  return `hub_admin_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${HUB_ADMIN_SESSION_DAYS * 86400}`;
-}
+/* Der Hub-Editor (hub-admin.html) läuft über die Sitzung des Tapstern Admin (/admin).
+   Das frühere eigene Hub-Passwort ist abgeschaltet — ein Zugang, eine 2FA, ein Protokoll. */
 async function requireHubAdmin(request, env) {
-  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)hub_admin_session=([^;]+)/);
-  if (!m) return false;
-  const row = await env.DB.prepare(
-    `SELECT 1 FROM hub_admin_sessions WHERE token_hash = ? AND expires_at > datetime('now')`
-  ).bind(await sha256(m[1])).first();
-  return !!row;
+  const ctx = await adminSession(env, request, { write: request.method !== 'GET' });
+  if (ctx.denied) return false;
+  if (request.method !== 'GET') await audit(env, request, ctx.admin, 'hub.editor', new URL(request.url).pathname.replace('/api/hub/admin/', ''), { methode: request.method });
+  return true;
 }
 
 async function hubUniqueSlug(env, businessName) {
@@ -3966,16 +3859,7 @@ async function handleHubSubmit(request, env) {
 
 /* ── Admin-Bereich (nur Yassir) ── */
 async function handleHubAdminLogin(request, env) {
-  const data = await request.json();
-  if (!env.HUB_ADMIN_PASSWORD) return json({ error: 'Admin-Zugang ist noch nicht eingerichtet' }, 500);
-  if (str(data.password) !== env.HUB_ADMIN_PASSWORD) return json({ error: 'Falsches Passwort' }, 401);
-
-  const token = crypto.randomUUID();
-  await env.DB.prepare(
-    `INSERT INTO hub_admin_sessions (token_hash, expires_at) VALUES (?, datetime('now', '+${HUB_ADMIN_SESSION_DAYS} days'))`
-  ).bind(await sha256(token)).run();
-
-  return json({ success: true }, 200, hubAdminCookie(token));
+  return json({ error: 'Die Anmeldung läuft jetzt über den Tapstern Admin unter /admin' }, 410);
 }
 
 async function handleHubAdminList(request, env) {
@@ -4265,4 +4149,1336 @@ async function handleHubPublicPage(request, env, slug) {
 <body>
   ${renderHubBody(page, links)}
 </body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Shop-Bestellungen (bestellen.html) — Preise rechnet NUR der Server
+   ──────────────────────────────────────────────────────────────────────
+   Früher kam der Preis aus dem Browser (unitAmount) — damit ließ sich jedes
+   Produkt für 1 Cent kaufen. Jetzt schickt die Seite nur, WAS bestellt wird;
+   der Preis kommt aus festen Paketen hier bzw. aus derselben Google-Tabelle,
+   aus der auch produkte.html die Produkte lädt. Jede Bestellung wird in
+   shop_orders gespeichert und erscheint im Admin.
+   ══════════════════════════════════════════════════════════════════════ */
+const SHOP_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSiDwRui-xoVv7-Me9mQWNezPeSPgQvUZd5RsX3oVqRBblv6uuIVdhrMzrA6h97i8SHcyp-IsE0jcO0/pub?output=csv';
+const SHOP_PACKAGES = {
+  'Aufkleber – Standard (30€)': { cents: 3000 },
+  'Aufsteller – Standard (30€)': { cents: 3000 },
+  'Aufkleber – Eigenes Branding (40€)': { cents: 4000 },
+  'Aufsteller – Eigenes Branding (40€)': { cents: 4000 },
+  'NFC-Visitenkarte (20€ Einführungspreis)': { cents: 2000, visitenkarte: true, minQty: 3 },
+};
+const SHOP_HOSTING_CENTS = { 1: 1900, 2: 3400 };
+const SHOP_DISCOUNT_FROM_QTY = 5; // ab 5 Stück gesamt: 50 % auf die Stückpreise (nicht aufs Hosting)
+let shopCatalogCache = { at: 0, prices: null };
+
+function parseCsvRows(text) {
+  const rows = []; let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], next = text[i + 1];
+    if (inQuotes) {
+      if (c === '"' && next === '"') { field += '"'; i++; } else if (c === '"') inQuotes = false; else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c !== '\r') field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1).filter(r => r.some(x => x.trim())).map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
+}
+
+function euroToCents(v) {
+  const n = parseFloat(String(v || '').replace(/[^\d,.-]/g, '').replace(',', '.'));
+  return isFinite(n) && n > 0 ? Math.round(n * 100) : null;
+}
+
+/* Name → Preis in Cent, nur aktive Produkte, 5 Minuten zwischengespeichert */
+async function shopCatalog() {
+  if (shopCatalogCache.prices && Date.now() - shopCatalogCache.at < 300000) return shopCatalogCache.prices;
+  const res = await fetch(SHOP_SHEET_CSV, { cf: { cacheTtl: 300 } });
+  if (!res.ok) throw new Error('Produktliste nicht erreichbar');
+  const prices = new Map();
+  for (const r of parseCsvRows(await res.text())) {
+    const active = ['ja', 'yes', 'true', '1'].includes(str(r.aktive || r.aktiv).toLowerCase());
+    const cents = euroToCents(r.einfuehrungspreis) || euroToCents(r.preis);
+    if (active && r.name && cents) prices.set(r.name.trim(), cents);
+  }
+  shopCatalogCache = { at: Date.now(), prices };
+  return prices;
+}
+
+/* Rechnet eine Bestellung aus: { kind: cart|package|product, ... } */
+async function priceShopOrder(order) {
+  const kind = str(order?.kind);
+  const qtyOf = v => Math.max(1, Math.min(500, parseInt(v, 10) || 1));
+  let lines = [], module = 'shop', hostingLine = null;
+
+  if (kind === 'cart') {
+    const items = Array.isArray(order.items) ? order.items.slice(0, 20) : [];
+    if (!items.length) return { error: 'Der Warenkorb ist leer' };
+    const catalog = await shopCatalog();
+    for (const it of items) {
+      const name = str(it?.name);
+      const cents = catalog.get(name);
+      if (!cents) return { error: `„${name.slice(0, 60)}“ ist nicht mehr verfügbar — bitte Warenkorb prüfen` };
+      lines.push({ name, qty: qtyOf(it.qty), unitCents: cents });
+    }
+  } else if (kind === 'package') {
+    const pkg = SHOP_PACKAGES[str(order.paket)];
+    if (!pkg) return { error: 'Unbekanntes Paket' };
+    let qty = qtyOf(order.qty);
+    if (pkg.minQty && qty < pkg.minQty) qty = pkg.minQty;
+    lines.push({ name: str(order.paket), qty, unitCents: pkg.cents });
+    if (pkg.visitenkarte) {
+      module = 'visitenkarten';
+      const years = parseInt(order.hostingYears, 10) === 2 ? 2 : 1;
+      hostingLine = { name: `Hosting digitales Profil (${years} ${years === 1 ? 'Jahr' : 'Jahre'})`, qty: 1, unitCents: SHOP_HOSTING_CENTS[years] };
+    }
+  } else if (kind === 'product') {
+    const name = str(order.name);
+    const cents = (await shopCatalog()).get(name);
+    if (!cents) return { error: 'Dieses Produkt ist nicht mehr verfügbar' };
+    lines.push({ name, qty: qtyOf(order.qty), unitCents: cents });
+  } else return { error: 'Ungültige Bestellung' };
+
+  const totalQty = lines.reduce((s, l) => s + l.qty, 0);
+  const discount = totalQty >= SHOP_DISCOUNT_FROM_QTY;
+  if (discount) lines = lines.map(l => ({ ...l, name: l.name + ' (50 % Mengenrabatt)', unitCents: Math.round(l.unitCents / 2) }));
+  if (hostingLine) lines.push(hostingLine);
+  lines = lines.map(l => ({ ...l, lineCents: l.unitCents * l.qty }));
+  return { lines, module, discount, totalCents: lines.reduce((s, l) => s + l.lineCents, 0) };
+}
+
+function cleanShopCustomer(c) {
+  const f = (v, n) => str(v).slice(0, n);
+  return { firma: f(c?.firma, 120), ansprechpartner: f(c?.ansprechpartner, 120), email: f(c?.email, 200).toLowerCase(), telefon: f(c?.telefon, 60), adresse: f(c?.adresse, 400) };
+}
+function cleanShopDetails(d) {
+  const out = {};
+  for (const [k, v] of Object.entries(d && typeof d === 'object' ? d : {}).slice(0, 15)) {
+    const val = str(v).slice(0, 1000);
+    if (val) out[str(k).slice(0, 40)] = val;
+  }
+  return out;
+}
+
+async function recordShopOrder(env, priced, customer, details, payment) {
+  await ensureAdminTables(env);
+  const id = 'TS-' + new Date().toISOString().slice(2, 10).replace(/-/g, '') + '-' + base32Encode(crypto.getRandomValues(new Uint8Array(4))).slice(0, 5);
+  await env.DB.prepare(`INSERT INTO shop_orders (id, created_at, module, payment, payment_status, total_cents, items, customer, details)
+                        VALUES (?,?,?,?,?,?,?,?,?)`)
+    .bind(id, nowSec(), priced.module, payment, 'offen', priced.totalCents,
+      JSON.stringify(priced.lines.map(l => ({ name: l.name, qty: l.qty, unitCents: l.unitCents }))),
+      JSON.stringify(customer), JSON.stringify(details)).run();
+  return id;
+}
+
+/* Schutz gegen massenhaft Spam-Bestellungen: max. 10 pro IP in 15 Minuten */
+async function shopOrderGate(env, request) {
+  const key = 'order:' + clientIp(request);
+  const gate = await checkLock(env, key);
+  if (gate) return gate;
+  await noteFail(env, key); // zählt hier Bestellversuche, nicht Fehler
+  return null;
+}
+
+/* POST /api/create-checkout — Online-Zahlung über Stripe */
+async function handleCreateCheckout(request, env) {
+  if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet' }, 500);
+  const data = await readJson(request);
+  if (!data?.order) return json({ error: 'Bitte die Seite neu laden und erneut bestellen' }, 400);
+  const customer = cleanShopCustomer(data.customer);
+  if (!validEmail(customer.email)) return json({ error: 'Bitte eine gültige E-Mail angeben' }, 400);
+  const gate = await shopOrderGate(env, request);
+  if (gate) return json({ error: gate }, 429);
+
+  let priced;
+  try { priced = await priceShopOrder(data.order); } catch (e) { return json({ error: 'Preise konnten nicht geladen werden — bitte später erneut versuchen' }, 503); }
+  if (priced.error) return json({ error: priced.error }, 400);
+  const orderId = await recordShopOrder(env, priced, customer, cleanShopDetails(data.details), 'stripe');
+
+  const origin = new URL(request.url).origin;
+  const params = new URLSearchParams();
+  params.set('mode', 'payment');
+  params.set('success_url', origin + '/bestellen.html?zahlung=erfolg');
+  params.set('cancel_url', origin + '/bestellen.html?zahlung=abgebrochen');
+  params.set('customer_email', customer.email);
+  params.set('client_reference_id', orderId);
+  priced.lines.forEach((l, i) => {
+    params.set(`line_items[${i}][price_data][currency]`, 'eur');
+    params.set(`line_items[${i}][price_data][product_data][name]`, l.name.slice(0, 200));
+    params.set(`line_items[${i}][price_data][unit_amount]`, String(l.unitCents));
+    params.set(`line_items[${i}][quantity]`, String(l.qty));
+  });
+  params.set('metadata[shop_order_id]', orderId);
+  if (customer.firma) params.set('metadata[Betrieb]', customer.firma);
+
+  try {
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const session = await res.json();
+    if (!res.ok) { console.error('Stripe:', session.error?.message); return json({ error: 'Zahlung konnte nicht gestartet werden' }, 502); }
+    await env.DB.prepare('UPDATE shop_orders SET stripe_session_id = ? WHERE id = ?').bind(session.id, orderId).run();
+    return json({ url: session.url, orderId });
+  } catch (e) {
+    console.error('Stripe nicht erreichbar:', e);
+    return json({ error: 'Zahlung konnte nicht gestartet werden' }, 500);
+  }
+}
+
+/* POST /api/shop-order — Bestellung „Per Rechnung“ festhalten (Mail geht weiter über das Formular) */
+async function handleShopOrder(request, env) {
+  const data = await readJson(request);
+  const customer = cleanShopCustomer(data?.customer);
+  if (!validEmail(customer.email)) return json({ error: 'Bitte eine gültige E-Mail angeben' }, 400);
+  const gate = await shopOrderGate(env, request);
+  if (gate) return json({ error: gate }, 429);
+  let priced;
+  try { priced = await priceShopOrder(data?.order); } catch (e) { return json({ error: 'Preise konnten nicht geladen werden' }, 503); }
+  if (priced.error) return json({ error: priced.error }, 400);
+  const orderId = await recordShopOrder(env, priced, customer, cleanShopDetails(data?.details), 'rechnung');
+  return json({ orderId, totalCents: priced.totalCents });
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TAPSTERN ADMIN — zentrale Verwaltung aller Module (admin.html, /api/admin/*)
+   ──────────────────────────────────────────────────────────────────────
+   Sicherheitskonzept (Kurzfassung):
+   • Eigene Admin-Konten (admin_users), getrennt von Laden-/Kunden-Konten.
+     Passwort PBKDF2 (100 000 Runden) + Pflicht-2FA (TOTP, RFC 6238) +
+     10 Einmal-Wiederherstellungscodes (nur Hash gespeichert).
+   • Anmeldung in Stufen: Passwort → 2FA (bzw. 2FA-Einrichtung) → volle Sitzung.
+   • Sitzungen: zufälliges 256-Bit-Token, nur Hash in der DB, Cookie
+     __Host-ts_admin (HttpOnly, Secure, SameSite=Strict), 8 h absolut,
+     30 min Leerlauf; einsehbar und einzeln/gesammelt beendbar.
+   • CSRF: SameSite=Strict + Pflicht-Header X-Tapstern-Admin + Origin-Prüfung.
+   • Brute Force: Sperre pro IP und pro E-Mail (login_locks), 2FA-Versuche pro
+     Sitzung begrenzt, TOTP-Codes nicht wiederverwendbar.
+   • Heikle Aktionen (Team, Export, Löschen, Passwort) verlangen einen
+     frischen 2FA-Code. Jede Aktion landet im Protokoll (admin_audit).
+   • Rollen: owner (alles), admin (alles außer Team/Einstellungen),
+     viewer (nur lesen).
+   • Optional davor: Cloudflare Access (CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD).
+   • TOTP-Geheimnisse AES-GCM-verschlüsselt, wenn ADMIN_ENCRYPTION_KEY gesetzt ist.
+   Erstes Konto: solange admin_users leer ist, gelten ADMIN_BOOTSTRAP_EMAIL /
+   ADMIN_BOOTSTRAP_PASSWORD (ersatzweise STEMPEL_ADMIN_EMAILS /
+   STEMPEL_ADMIN_PASSWORD) einmalig als Zugang für den Inhaber.
+   ══════════════════════════════════════════════════════════════════════ */
+
+const ADMIN_COOKIE = '__Host-ts_admin';
+const ADMIN_SESSION_HOURS = 8;
+const ADMIN_IDLE_MINUTES = 30;
+const ADMIN_PENDING_MINUTES = 10;
+const ADMIN_ROLES = ['owner', 'admin', 'viewer'];
+const ADMIN_ORDER_STATUSES = ['neu', 'in_bearbeitung', 'versendet', 'erledigt', 'storniert'];
+let adminTablesReady = false;
+
+async function ensureAdminTables(env) {
+  if (adminTablesReady) return;
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS admin_users (
+       id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT, role TEXT NOT NULL DEFAULT 'admin',
+       password_hash TEXT NOT NULL, totp_secret TEXT, totp_pending TEXT, totp_last_counter INTEGER DEFAULT 0,
+       recovery_codes TEXT, disabled INTEGER NOT NULL DEFAULT 0, must_change_password INTEGER NOT NULL DEFAULT 0,
+       created_at INTEGER NOT NULL, last_login_at INTEGER, password_changed_at INTEGER)`,
+    `CREATE TABLE IF NOT EXISTS admin_sessions (
+       token_hash TEXT PRIMARY KEY, admin_id TEXT NOT NULL, stage TEXT NOT NULL, created_at INTEGER NOT NULL,
+       last_seen INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip TEXT, user_agent TEXT, totp_fails INTEGER NOT NULL DEFAULT 0)`,
+    `CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin ON admin_sessions(admin_id)`,
+    `CREATE TABLE IF NOT EXISTS admin_audit (
+       id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, admin_id TEXT, admin_email TEXT,
+       action TEXT NOT NULL, target TEXT, details TEXT, ip TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit(created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS admin_trusted_devices (
+       token_hash TEXT PRIMARY KEY, admin_id TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER,
+       expires_at INTEGER NOT NULL, ip TEXT, user_agent TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_admin_trusted_admin ON admin_trusted_devices(admin_id)`,
+    `CREATE TABLE IF NOT EXISTS admin_email_codes (
+       admin_id TEXT PRIMARY KEY, code_hash TEXT, expires_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
+       window_start INTEGER NOT NULL DEFAULT 0, sent_count INTEGER NOT NULL DEFAULT 0, breakglass_used_at INTEGER)`,
+    `CREATE TABLE IF NOT EXISTS platform_modules (
+       key TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, color TEXT, icon TEXT,
+       enabled INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0, updated_at INTEGER)`,
+    `CREATE TABLE IF NOT EXISTS shop_orders (
+       id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, module TEXT NOT NULL DEFAULT 'shop', payment TEXT NOT NULL,
+       payment_status TEXT NOT NULL, total_cents INTEGER NOT NULL, items TEXT NOT NULL, customer TEXT NOT NULL,
+       details TEXT, stripe_session_id TEXT, paid_at INTEGER)`,
+    `CREATE TABLE IF NOT EXISTS order_admin (
+       source TEXT NOT NULL, order_id TEXT NOT NULL, status TEXT NOT NULL, note TEXT, updated_at INTEGER,
+       PRIMARY KEY (source, order_id))`,
+  ];
+  for (const sql of stmts) await env.DB.prepare(sql).run();
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM platform_modules').first();
+  if (!count?.n) {
+    const now = nowSec();
+    for (const m of DEFAULT_MODULES) {
+      await env.DB.prepare('INSERT OR IGNORE INTO platform_modules (key, name, description, color, icon, enabled, sort, updated_at) VALUES (?,?,?,?,?,1,?,?)')
+        .bind(m.key, m.name, m.description, m.color, m.icon, m.sort, now).run();
+    }
+  }
+  adminTablesReady = true;
+}
+
+/* Modul-Registry: Namen, Farben, Symbole zentral — Umbenennen wirkt überall,
+   im Admin und über /api/platform/modules auch auf Website/App. */
+const DEFAULT_MODULES = [
+  { key: 'tapstempel', name: 'Tapstempel', description: 'Digitale Stempelkarten für Läden', color: '#e5543d', icon: '🎟️', sort: 1 },
+  { key: 'business_hub', name: 'Business Hub', description: 'Link-Landingpages für Betriebe', color: '#8b7cf6', icon: '🔗', sort: 2 },
+  { key: 'visitenkarten', name: 'Visitenkarten', description: 'Digitale NFC-Visitenkarten', color: '#0ea5e9', icon: '🪪', sort: 3 },
+  { key: 'shop', name: 'Shop', description: 'NFC-Aufsteller, Aufkleber & Karten', color: '#22c55e', icon: '🛍️', sort: 4 },
+];
+
+function nowSec() { return Math.floor(Date.now() / 1000); }
+function clientIp(request) { return request.headers.get('CF-Connecting-IP') || 'unbekannt'; }
+function sqlTimeToSec(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return v > 1e12 ? Math.floor(v / 1000) : v;
+  const t = Date.parse(String(v).replace(' ', 'T') + (String(v).includes('Z') || String(v).includes('+') ? '' : 'Z'));
+  return isNaN(t) ? null : Math.floor(t / 1000);
+}
+
+function adminJson(obj, status = 200, cookie) {
+  const headers = {
+    'Content-Type': 'application/json; charset=UTF-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Robots-Tag': 'noindex, nofollow',
+  };
+  const res = new Response(JSON.stringify(obj), { status, headers });
+  if (cookie) res.headers.append('Set-Cookie', cookie);
+  return res;
+}
+
+function adminCookie(token, maxAge) {
+  return `${ADMIN_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
+}
+
+/* ── Vertraute Geräte ──
+   Nach erfolgreicher 2FA kann ein Gerät 30 Tage vertraut werden: dort reicht dann
+   E-Mail + Passwort. Das Gerät bekommt ein eigenes Zufalls-Token (nur als Hash in der
+   Datenbank), gebunden an genau dieses Admin-Konto. Heikle Aktionen verlangen weiterhin
+   einen frischen 2FA-Code. Passwortwechsel, 2FA-Umzug und Zurücksetzen widerrufen alle. */
+const ADMIN_TRUST_COOKIE = '__Host-ts_trust';
+const ADMIN_TRUST_DAYS = 30;
+function trustCookie(token, maxAge) {
+  return `${ADMIN_TRUST_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`;
+}
+async function createTrustedDevice(env, request, adminId) {
+  const token = randomToken(), now = nowSec();
+  await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE expires_at <= ?').bind(now).run();
+  await env.DB.prepare('INSERT INTO admin_trusted_devices (token_hash, admin_id, created_at, last_used_at, expires_at, ip, user_agent) VALUES (?,?,?,?,?,?,?)')
+    .bind(await sha256(token), adminId, now, now, now + ADMIN_TRUST_DAYS * 86400, clientIp(request), str(request.headers.get('User-Agent')).slice(0, 200)).run();
+  return trustCookie(token, ADMIN_TRUST_DAYS * 86400);
+}
+async function trustedDeviceFor(env, request, adminId) {
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)__Host-ts_trust=([a-f0-9]{64})/);
+  if (!m) return null;
+  const hash = await sha256(m[1]);
+  const row = await env.DB.prepare('SELECT * FROM admin_trusted_devices WHERE token_hash = ? AND admin_id = ? AND expires_at > ?').bind(hash, adminId, nowSec()).first();
+  if (!row) return null;
+  await env.DB.prepare('UPDATE admin_trusted_devices SET last_used_at = ?, ip = ? WHERE token_hash = ?').bind(nowSec(), clientIp(request), hash).run();
+  return row;
+}
+/* 2FA komplett zurücksetzen: Geheimnis, Codes, vertraute Geräte und andere Sitzungen weg */
+async function wipeSecondFactor(env, adminId, keepTokenHash) {
+  await env.DB.prepare(`UPDATE admin_users SET totp_secret = NULL, totp_pending = NULL, totp_last_counter = 0, recovery_codes = NULL WHERE id = ?`).bind(adminId).run();
+  await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(adminId).run();
+  await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND token_hash != ?').bind(adminId, keepTokenHash || '').run();
+}
+function adminSecurityMail(env, request, admin, what) {
+  return sendMail(env, admin.email, 'Tapstern Admin: Sicherheitshinweis', what,
+    `Zeitpunkt: ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} · IP: ${clientIp(request)}. Warst du das nicht, melde dich sofort an, ändere dein Passwort und prüfe das Protokoll.`,
+    'Zum Admin', new URL(request.url).origin + '/admin');
+}
+
+async function audit(env, request, admin, action, target, details) {
+  try {
+    await env.DB.prepare('INSERT INTO admin_audit (created_at, admin_id, admin_email, action, target, details, ip) VALUES (?,?,?,?,?,?,?)')
+      .bind(nowSec(), admin?.id || null, admin?.email || null, action, target || null,
+        details ? JSON.stringify(details).slice(0, 2000) : null, clientIp(request)).run();
+  } catch (e) { console.error('Audit fehlgeschlagen:', e); }
+}
+
+/* ── TOTP (RFC 6238, SHA-1, 30 s, 6 Stellen) ── */
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32Encode(bytes) {
+  let bits = 0, value = 0, out = '';
+  for (const b of bytes) {
+    value = (value << 8) | b; bits += 8;
+    while (bits >= 5) { out += B32[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+function base32Decode(str32) {
+  const clean = String(str32).toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = 0, value = 0; const out = [];
+  for (const c of clean) {
+    value = (value << 5) | B32.indexOf(c); bits += 5;
+    if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return new Uint8Array(out);
+}
+async function totpCode(secretBytes, counter) {
+  const msg = new Uint8Array(8);
+  let c = counter;
+  for (let i = 7; i >= 0; i--) { msg[i] = c & 0xff; c = Math.floor(c / 256); }
+  const key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', key, msg));
+  const o = h[h.length - 1] & 0x0f;
+  const bin = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return String(bin % 1000000).padStart(6, '0');
+}
+/* Gibt den passenden Zeitschritt zurück (±1 Schritt Toleranz) oder -1.
+   Schritte ≤ lastCounter werden abgelehnt — ein Code gilt nur einmal. */
+async function verifyTotp(secretB32, code, lastCounter = 0) {
+  const c = String(code || '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(c)) return -1;
+  const secret = base32Decode(secretB32);
+  const now = Math.floor(Date.now() / 30000);
+  for (const step of [0, -1, 1]) {
+    const counter = now + step;
+    if (counter <= lastCounter) continue;
+    if (timingSafeEqual(await totpCode(secret, counter), c)) return counter;
+  }
+  return -1;
+}
+
+/* ── Verschlüsselung der TOTP-Geheimnisse (optional, ADMIN_ENCRYPTION_KEY) ── */
+async function adminCryptoKey(env) {
+  const raw = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.ADMIN_ENCRYPTION_KEY));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function sealSecret(env, plain) {
+  if (!env.ADMIN_ENCRYPTION_KEY) return 'plain:' + plain;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await adminCryptoKey(env), new TextEncoder().encode(plain)));
+  return 'enc1:' + bytesToHex(iv) + ':' + bytesToHex(ct);
+}
+async function openSecret(env, sealed) {
+  if (!sealed) return null;
+  if (sealed.startsWith('plain:')) return sealed.slice(6);
+  if (sealed.startsWith('enc1:')) {
+    if (!env.ADMIN_ENCRYPTION_KEY) throw new Error('ADMIN_ENCRYPTION_KEY fehlt — 2FA-Geheimnis nicht lesbar');
+    const [, ivHex, ctHex] = sealed.split(':');
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(ivHex) }, await adminCryptoKey(env), hexToBytes(ctHex));
+    return new TextDecoder().decode(pt);
+  }
+  return sealed;
+}
+
+function newRecoveryCodes() {
+  const codes = [];
+  for (let i = 0; i < 10; i++) {
+    const b = base32Encode(crypto.getRandomValues(new Uint8Array(7))).slice(0, 10);
+    codes.push(b.slice(0, 5) + '-' + b.slice(5));
+  }
+  return codes;
+}
+async function hashRecoveryCodes(codes) {
+  return JSON.stringify(await Promise.all(codes.map(c => sha256(c.replace(/-/g, '').toUpperCase()))));
+}
+
+/* ── Cloudflare Access (optional, zusätzliche Schicht vor dem Admin) ── */
+let accessKeysCache = { at: 0, keys: [] };
+async function verifyCloudflareAccess(env, request) {
+  if (!env.CF_ACCESS_TEAM_DOMAIN || !env.CF_ACCESS_AUD) return true;
+  const jwt = request.headers.get('Cf-Access-Jwt-Assertion');
+  if (!jwt) return false;
+  try {
+    const [h, p, s] = jwt.split('.');
+    const header = JSON.parse(new TextDecoder().decode(b64urlDecode(h)));
+    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(p)));
+    const team = env.CF_ACCESS_TEAM_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (Date.now() - accessKeysCache.at > 3600000) {
+      const r = await fetch(`https://${team}/cdn-cgi/access/certs`);
+      accessKeysCache = { at: Date.now(), keys: (await r.json()).keys || [] };
+    }
+    const jwk = accessKeysCache.keys.find(k => k.kid === header.kid);
+    if (!jwk || header.alg !== 'RS256') return false;
+    const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64urlDecode(s), new TextEncoder().encode(h + '.' + p));
+    const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    return ok && aud.includes(env.CF_ACCESS_AUD) && payload.exp > nowSec() && payload.iss === `https://${team}`;
+  } catch (e) {
+    return false;
+  }
+}
+function b64urlDecode(s) {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+/* ── Sitzung prüfen ──
+   opts.stage: 'full' (Standard) | 'any' ; opts.write: nur owner/admin ; opts.owner: nur owner */
+async function adminSession(env, request, opts = {}) {
+  await ensureAdminTables(env);
+  if (!(await verifyCloudflareAccess(env, request))) return { denied: adminJson({ error: 'Zugriff verweigert' }, 403) };
+
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    // CSRF-Schutz: eigener Header (lässt sich ohne CORS nicht fälschen) + gleiche Herkunft
+    if (request.headers.get('X-Tapstern-Admin') !== '1') return { denied: adminJson({ error: 'Ungültige Anfrage' }, 403) };
+    const origin = request.headers.get('Origin');
+    if (origin && origin !== new URL(request.url).origin) return { denied: adminJson({ error: 'Ungültige Herkunft' }, 403) };
+  }
+
+  const m = (request.headers.get('cookie') || '').match(/(?:^|;\s*)__Host-ts_admin=([a-f0-9]{64})/);
+  if (!m) return { denied: adminJson({ error: 'Nicht angemeldet' }, 401) };
+  const tokenHash = await sha256(m[1]);
+  const now = nowSec();
+  const s = await env.DB.prepare('SELECT * FROM admin_sessions WHERE token_hash = ?').bind(tokenHash).first();
+  if (!s || s.expires_at <= now || (s.stage === 'full' && now - s.last_seen > ADMIN_IDLE_MINUTES * 60)) {
+    if (s) await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').bind(tokenHash).run();
+    return { denied: adminJson({ error: 'Sitzung abgelaufen — bitte neu anmelden' }, 401, adminCookie('', 0)) };
+  }
+  const admin = await env.DB.prepare('SELECT * FROM admin_users WHERE id = ?').bind(s.admin_id).first();
+  if (!admin || admin.disabled) {
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(s.admin_id).run();
+    return { denied: adminJson({ error: 'Konto deaktiviert' }, 401, adminCookie('', 0)) };
+  }
+  if (opts.stage !== 'any' && s.stage !== 'full') return { denied: adminJson({ error: '2FA erforderlich', stage: s.stage }, 401) };
+  if (opts.owner && admin.role !== 'owner') return { denied: adminJson({ error: 'Nur für Inhaber' }, 403) };
+  if (opts.write && admin.role === 'viewer') return { denied: adminJson({ error: 'Nur-Lesen-Zugang' }, 403) };
+
+  if (now - s.last_seen > 60) {
+    await env.DB.prepare('UPDATE admin_sessions SET last_seen = ? WHERE token_hash = ?').bind(now, tokenHash).run();
+  }
+  return { admin, session: s, tokenHash };
+}
+
+/* Heikle Aktionen: frischer 2FA-Code nötig */
+async function requireFreshTotp(env, admin, code) {
+  const secret = await openSecret(env, admin.totp_secret);
+  if (!secret) return false;
+  const counter = await verifyTotp(secret, code, admin.totp_last_counter || 0);
+  if (counter < 0) return false;
+  await env.DB.prepare('UPDATE admin_users SET totp_last_counter = ? WHERE id = ?').bind(counter, admin.id).run();
+  admin.totp_last_counter = counter;
+  return true;
+}
+
+function publicAdmin(a) {
+  return { id: a.id, email: a.email, name: a.name, role: a.role, twoFactor: !!a.totp_secret, lastLoginAt: a.last_login_at, createdAt: a.created_at };
+}
+
+async function newAdminSession(env, request, adminId, stage) {
+  const token = randomToken();
+  const now = nowSec();
+  const ttl = stage === 'full' ? ADMIN_SESSION_HOURS * 3600 : ADMIN_PENDING_MINUTES * 60;
+  await env.DB.prepare('DELETE FROM admin_sessions WHERE expires_at <= ?').bind(now).run();
+  await env.DB.prepare(
+    'INSERT INTO admin_sessions (token_hash, admin_id, stage, created_at, last_seen, expires_at, ip, user_agent) VALUES (?,?,?,?,?,?,?,?)'
+  ).bind(await sha256(token), adminId, stage, now, now, now + ttl, clientIp(request), str(request.headers.get('User-Agent')).slice(0, 200)).run();
+  return adminCookie(token, ttl);
+}
+
+async function upgradeSession(env, tokenHash, stage) {
+  const now = nowSec();
+  const ttl = stage === 'full' ? ADMIN_SESSION_HOURS * 3600 : ADMIN_PENDING_MINUTES * 60;
+  await env.DB.prepare('UPDATE admin_sessions SET stage = ?, last_seen = ?, expires_at = ?, totp_fails = 0 WHERE token_hash = ?')
+    .bind(stage, now, now + ttl, tokenHash).run();
+}
+
+/* ── Anmeldung ── */
+async function handleAdminLogin(request, env) {
+  await ensureAdminTables(env);
+  if (!(await verifyCloudflareAccess(env, request))) return adminJson({ error: 'Zugriff verweigert' }, 403);
+  if (request.headers.get('X-Tapstern-Admin') !== '1') return adminJson({ error: 'Ungültige Anfrage' }, 403);
+
+  const data = await readJson(request);
+  const email = str(data?.email).toLowerCase().slice(0, 200);
+  const password = String(data?.password || '').slice(0, 500);
+  const ipKey = 'admin-ip:' + clientIp(request), mailKey = 'admin-mail:' + email;
+  const gate = (await checkLock(env, ipKey)) || (await checkLock(env, mailKey));
+  if (gate) return adminJson({ error: gate }, 429);
+
+  const fail = async (reason) => {
+    await noteFail(env, ipKey); await noteFail(env, mailKey);
+    await audit(env, request, { email }, 'login.fehlgeschlagen', null, { reason });
+    return adminJson({ error: 'E-Mail oder Passwort falsch' }, 401);
+  };
+
+  let admin = await env.DB.prepare('SELECT * FROM admin_users WHERE email = ?').bind(email).first();
+
+  // Einmaliger Start: noch kein Admin-Konto → Inhaber aus den Cloudflare-Secrets anlegen
+  if (!admin) {
+    const anyAdmin = await env.DB.prepare('SELECT 1 FROM admin_users LIMIT 1').first();
+    const bootEmails = str(env.ADMIN_BOOTSTRAP_EMAIL || env.STEMPEL_ADMIN_EMAILS).toLowerCase().split(',').map(e => e.trim()).filter(Boolean);
+    const bootPassword = env.ADMIN_BOOTSTRAP_PASSWORD || env.STEMPEL_ADMIN_PASSWORD;
+    if (anyAdmin || !bootPassword || !bootEmails.includes(email)) {
+      await hashPassword(password || 'x'); // gleiche Laufzeit wie ein echter Vergleich
+      return fail('unbekannt');
+    }
+    if (!timingSafeEqual(await sha256(password), await sha256(bootPassword))) return fail('bootstrap-passwort');
+    const id = crypto.randomUUID();
+    await env.DB.prepare('INSERT INTO admin_users (id, email, name, role, password_hash, created_at, password_changed_at) VALUES (?,?,?,?,?,?,?)')
+      .bind(id, email, 'Inhaber', 'owner', await hashPassword(password), nowSec(), nowSec()).run();
+    admin = await env.DB.prepare('SELECT * FROM admin_users WHERE id = ?').bind(id).first();
+    await audit(env, request, admin, 'konto.erstes_inhaberkonto_angelegt', email);
+  } else if (admin.disabled || !(await verifyPassword(password, admin.password_hash))) {
+    return fail(admin.disabled ? 'deaktiviert' : 'passwort');
+  }
+
+  await clearFails(env, ipKey); await clearFails(env, mailKey);
+
+  // Notausgang, wenn Handy UND Wiederherstellungscodes weg sind: in Cloudflare ADMIN_RESET_EMAIL
+  // setzen → beim nächsten Login mit Passwort wird 2FA neu eingerichtet. Einmal pro 7 Tage.
+  if (admin.totp_secret && str(env.ADMIN_RESET_EMAIL).toLowerCase().split(',').map(e => e.trim()).includes(email)) {
+    const row = await env.DB.prepare('SELECT breakglass_used_at FROM admin_email_codes WHERE admin_id = ?').bind(admin.id).first();
+    if (!row?.breakglass_used_at || nowSec() - row.breakglass_used_at > 7 * 86400) {
+      await wipeSecondFactor(env, admin.id);
+      await env.DB.prepare(`INSERT INTO admin_email_codes (admin_id, breakglass_used_at) VALUES (?, ?)
+                            ON CONFLICT(admin_id) DO UPDATE SET breakglass_used_at = excluded.breakglass_used_at`).bind(admin.id, nowSec()).run();
+      await audit(env, request, admin, 'sicherheit.2fa_notfall_zurueckgesetzt', null, { via: 'ADMIN_RESET_EMAIL' });
+      await adminSecurityMail(env, request, admin, 'Deine Zwei-Faktor-Anmeldung wurde über den Cloudflare-Notzugang zurückgesetzt.');
+      admin.totp_secret = null;
+    }
+  }
+
+  // Vertrautes Gerät: Passwort reicht, 2FA wurde hier schon bestätigt
+  if (admin.totp_secret && await trustedDeviceFor(env, request, admin.id)) {
+    const cookie = await newAdminSession(env, request, admin.id, 'full');
+    await env.DB.prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?').bind(nowSec(), admin.id).run();
+    await audit(env, request, admin, 'login.erfolgreich_vertrautes_geraet');
+    return adminJson({ stage: 'full', mustChangePassword: !!admin.must_change_password }, 200, cookie);
+  }
+
+  const stage = admin.totp_secret ? 'totp' : 'setup';
+  const cookie = await newAdminSession(env, request, admin.id, stage);
+  await audit(env, request, admin, 'login.passwort_ok', null, { next: stage });
+  return adminJson({ stage, mustChangePassword: !!admin.must_change_password, emailRecovery: !!env.BREVO_KEY }, 200, cookie);
+}
+
+/* 2FA-Code (oder Wiederherstellungscode) nach dem Passwort */
+async function handleAdminLoginTotp(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session, tokenHash } = ctx;
+  if (session.stage !== 'totp') return adminJson({ error: 'Kein 2FA-Schritt offen' }, 400);
+  const data = await readJson(request);
+
+  let ok = false, usedRecovery = false;
+  if (data?.recoveryCode) {
+    const hash = await sha256(str(data.recoveryCode).replace(/-/g, '').toUpperCase());
+    const list = JSON.parse(admin.recovery_codes || '[]');
+    const idx = list.findIndex(h => timingSafeEqual(h, hash));
+    if (idx >= 0) {
+      list.splice(idx, 1);
+      await env.DB.prepare('UPDATE admin_users SET recovery_codes = ? WHERE id = ?').bind(JSON.stringify(list), admin.id).run();
+      ok = true; usedRecovery = true;
+    }
+  } else {
+    ok = await requireFreshTotp(env, admin, data?.code);
+  }
+
+  if (!ok) {
+    const fails = (session.totp_fails || 0) + 1;
+    if (fails >= 5) {
+      await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').bind(tokenHash).run();
+      await audit(env, request, admin, 'login.2fa_gesperrt');
+      return adminJson({ error: 'Zu viele falsche Codes — bitte neu anmelden' }, 401, adminCookie('', 0));
+    }
+    await env.DB.prepare('UPDATE admin_sessions SET totp_fails = ? WHERE token_hash = ?').bind(fails, tokenHash).run();
+    await audit(env, request, admin, 'login.2fa_falsch');
+    return adminJson({ error: 'Code ist falsch oder abgelaufen' }, 401);
+  }
+
+  await upgradeSession(env, tokenHash, 'full');
+  await env.DB.prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?').bind(nowSec(), admin.id).run();
+  await audit(env, request, admin, usedRecovery ? 'login.erfolgreich_mit_wiederherstellungscode' : 'login.erfolgreich');
+  const left = usedRecovery ? JSON.parse((await env.DB.prepare('SELECT recovery_codes FROM admin_users WHERE id = ?').bind(admin.id).first()).recovery_codes || '[]').length : null;
+  const res = adminJson({ stage: 'full', recoveryCodesLeft: left }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_SESSION_HOURS * 3600));
+  if (data?.trustDevice === true) {
+    res.headers.append('Set-Cookie', await createTrustedDevice(env, request, admin.id));
+    await audit(env, request, admin, 'sicherheit.geraet_vertraut');
+  }
+  return res;
+}
+
+/* Nach dem Stufenwechsel ein neues Token ausgeben (gegen Session-Fixation) */
+async function rotateCookieToken(env, oldHash) {
+  const token = randomToken();
+  await env.DB.prepare('UPDATE admin_sessions SET token_hash = ? WHERE token_hash = ?').bind(await sha256(token), oldHash).run();
+  return token;
+}
+
+/* 2FA einrichten: Geheimnis erzeugen + QR-Code */
+async function handleAdminTotpSetup(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session } = ctx;
+  if (admin.totp_secret && session.stage !== 'full') return adminJson({ error: '2FA ist bereits eingerichtet' }, 400);
+  if (session.stage === 'totp') return adminJson({ error: 'Erst mit 2FA anmelden' }, 400);
+  if (admin.totp_secret) return adminJson({ error: '2FA ist bereits aktiv' }, 400);
+
+  const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
+  await env.DB.prepare('UPDATE admin_users SET totp_pending = ? WHERE id = ?').bind(await sealSecret(env, secret), admin.id).run();
+  const uri = `otpauth://totp/${encodeURIComponent('Tapstern Admin:' + admin.email)}?secret=${secret}&issuer=${encodeURIComponent('Tapstern Admin')}&algorithm=SHA1&digits=6&period=30`;
+  const svg = generateQrSvg(uri, 5);
+  return adminJson({ secret: secret.replace(/(.{4})/g, '$1 ').trim(), qr: 'data:image/svg+xml;base64,' + btoa(svg) });
+}
+
+async function handleAdminTotpEnable(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session, tokenHash } = ctx;
+  if (admin.totp_secret || session.stage === 'totp') return adminJson({ error: '2FA ist bereits aktiv' }, 400);
+  const pending = await openSecret(env, admin.totp_pending);
+  if (!pending) return adminJson({ error: 'Bitte die Einrichtung neu starten' }, 400);
+  const data = await readJson(request);
+  const counter = await verifyTotp(pending, data?.code, 0);
+  if (counter < 0) return adminJson({ error: 'Code stimmt nicht — Uhrzeit am Handy prüfen und neuen Code eingeben' }, 400);
+
+  const codes = newRecoveryCodes();
+  await env.DB.prepare('UPDATE admin_users SET totp_secret = totp_pending, totp_pending = NULL, totp_last_counter = ?, recovery_codes = ?, last_login_at = ? WHERE id = ?')
+    .bind(counter, await hashRecoveryCodes(codes), nowSec(), admin.id).run();
+  await upgradeSession(env, tokenHash, 'full');
+  await audit(env, request, admin, 'sicherheit.2fa_aktiviert');
+  const res = adminJson({ stage: 'full', recoveryCodes: codes }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_SESSION_HOURS * 3600));
+  if (data?.trustDevice === true) {
+    res.headers.append('Set-Cookie', await createTrustedDevice(env, request, admin.id));
+    await audit(env, request, admin, 'sicherheit.geraet_vertraut');
+  }
+  return res;
+}
+
+async function handleAdminLogout(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (!ctx.denied) {
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').bind(ctx.tokenHash).run();
+    await audit(env, request, ctx.admin, 'logout');
+  }
+  return adminJson({ success: true }, 200, adminCookie('', 0));
+}
+
+async function handleAdminMe(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session } = ctx;
+  return adminJson({
+    stage: session.stage,
+    admin: session.stage === 'full' ? publicAdmin(admin) : { email: admin.email },
+    mustChangePassword: !!admin.must_change_password,
+    recoveryCodesLeft: session.stage === 'full' ? JSON.parse(admin.recovery_codes || '[]').length : undefined,
+    sessionExpiresAt: session.expires_at,
+    idleMinutes: ADMIN_IDLE_MINUTES,
+  });
+}
+
+/* ── Eigenes Konto: Passwort, Wiederherstellungscodes, Sitzungen ── */
+function passwordProblemAdmin(pw, email) {
+  if (pw.length < 12) return 'Das Passwort braucht mindestens 12 Zeichen';
+  if (pw.length > 200) return 'Das Passwort ist zu lang';
+  if (pw.toLowerCase().includes(String(email).split('@')[0].toLowerCase()) && String(email).split('@')[0].length >= 4) return 'Das Passwort darf nicht die E-Mail enthalten';
+  if (new Set(pw).size < 6) return 'Das Passwort ist zu einfach';
+  return null;
+}
+
+async function handleAdminChangePassword(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const { admin, tokenHash } = ctx;
+  const data = await readJson(request);
+  if (!(await verifyPassword(String(data?.current || ''), admin.password_hash))) return adminJson({ error: 'Aktuelles Passwort ist falsch' }, 400);
+  if (!(await requireFreshTotp(env, admin, data?.code))) return adminJson({ error: '2FA-Code ist falsch' }, 400);
+  const next = String(data?.next || '');
+  const problem = passwordProblemAdmin(next, admin.email);
+  if (problem) return adminJson({ error: problem }, 400);
+  await env.DB.prepare('UPDATE admin_users SET password_hash = ?, must_change_password = 0, password_changed_at = ? WHERE id = ?')
+    .bind(await hashPassword(next), nowSec(), admin.id).run();
+  // Alle anderen Sitzungen beenden — wer das alte Passwort kannte, fliegt raus
+  await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND token_hash != ?').bind(admin.id, tokenHash).run();
+  await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(admin.id).run();
+  await audit(env, request, admin, 'sicherheit.passwort_geaendert');
+  await adminSecurityMail(env, request, admin, 'Dein Admin-Passwort wurde geändert.');
+  return adminJson({ success: true });
+}
+
+async function handleAdminRecoveryCodes(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (!(await requireFreshTotp(env, ctx.admin, data?.code))) return adminJson({ error: '2FA-Code ist falsch' }, 400);
+  const codes = newRecoveryCodes();
+  await env.DB.prepare('UPDATE admin_users SET recovery_codes = ? WHERE id = ?').bind(await hashRecoveryCodes(codes), ctx.admin.id).run();
+  await audit(env, request, ctx.admin, 'sicherheit.wiederherstellungscodes_neu');
+  return adminJson({ recoveryCodes: codes });
+}
+
+async function handleAdminSessions(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const { results } = await env.DB.prepare(
+    `SELECT token_hash, stage, created_at, last_seen, expires_at, ip, user_agent FROM admin_sessions
+     WHERE admin_id = ? AND expires_at > ? ORDER BY last_seen DESC`
+  ).bind(ctx.admin.id, nowSec()).all();
+  const trusted = (await env.DB.prepare('SELECT token_hash, created_at, last_used_at, expires_at, ip, user_agent FROM admin_trusted_devices WHERE admin_id = ? AND expires_at > ? ORDER BY last_used_at DESC')
+    .bind(ctx.admin.id, nowSec()).all()).results || [];
+  const cur = (request.headers.get('cookie') || '').match(/(?:^|;\s*)__Host-ts_trust=([a-f0-9]{64})/);
+  const curHash = cur ? await sha256(cur[1]) : '';
+  return adminJson({
+    trustedDevices: trusted.map(t => ({ id: t.token_hash.slice(0, 16), current: t.token_hash === curHash, createdAt: t.created_at,
+      lastUsed: t.last_used_at, expiresAt: t.expires_at, ip: t.ip, userAgent: t.user_agent })),
+    sessions: (results || []).map(s => ({
+      id: s.token_hash.slice(0, 16), current: s.token_hash === ctx.tokenHash, stage: s.stage,
+      createdAt: s.created_at, lastSeen: s.last_seen, ip: s.ip, userAgent: s.user_agent,
+    })),
+  });
+}
+
+async function handleAdminRevokeSessions(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (data?.all) {
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND token_hash != ?').bind(ctx.admin.id, ctx.tokenHash).run();
+    await audit(env, request, ctx.admin, 'sicherheit.andere_sitzungen_beendet');
+  } else {
+    const id = str(data?.id);
+    if (!/^[a-f0-9]{16}$/.test(id)) return adminJson({ error: 'Ungültige Sitzung' }, 400);
+    await env.DB.prepare(`DELETE FROM admin_sessions WHERE admin_id = ? AND substr(token_hash, 1, 16) = ? AND token_hash != ?`)
+      .bind(ctx.admin.id, id, ctx.tokenHash).run();
+    await audit(env, request, ctx.admin, 'sicherheit.sitzung_beendet', id);
+  }
+  return adminJson({ success: true });
+}
+
+async function handleAdminRevokeTrusted(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (data?.all) {
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(ctx.admin.id).run();
+    await audit(env, request, ctx.admin, 'sicherheit.alle_geraete_entfernt');
+  } else {
+    const id = str(data?.id);
+    if (!/^[a-f0-9]{16}$/.test(id)) return adminJson({ error: 'Ungültiges Gerät' }, 400);
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ? AND substr(token_hash, 1, 16) = ?').bind(ctx.admin.id, id).run();
+    await audit(env, request, ctx.admin, 'sicherheit.geraet_entfernt', id);
+  }
+  return adminJson({ success: true });
+}
+
+/* 2FA auf neues Handy umziehen: Passwort + (alter Code ODER Wiederherstellungscode) */
+async function handleAdminTotpMove(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const { admin, tokenHash } = ctx;
+  const data = await readJson(request);
+  const gate = await checkLock(env, 'admin-move:' + admin.id);
+  if (gate) return adminJson({ error: gate }, 429);
+  let ok = await verifyPassword(String(data?.password || ''), admin.password_hash);
+  if (ok) {
+    if (data?.recoveryCode) {
+      const hash = await sha256(str(data.recoveryCode).replace(/-/g, '').toUpperCase());
+      ok = JSON.parse(admin.recovery_codes || '[]').some(h => timingSafeEqual(h, hash));
+    } else ok = await requireFreshTotp(env, admin, data?.code);
+  }
+  if (!ok) { await noteFail(env, 'admin-move:' + admin.id); return adminJson({ error: 'Passwort oder Code ist falsch' }, 400); }
+  await wipeSecondFactor(env, admin.id, tokenHash);
+  await upgradeSession(env, tokenHash, 'setup');
+  await audit(env, request, admin, 'sicherheit.2fa_umzug_gestartet');
+  await adminSecurityMail(env, request, admin, 'Deine Zwei-Faktor-Anmeldung wird auf ein neues Gerät umgezogen.');
+  return adminJson({ stage: 'setup' }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_PENDING_MINUTES * 60));
+}
+
+/* Handy verloren: nach richtigem Passwort einen Code an die Admin-E-Mail schicken.
+   Passwort + Zugriff aufs Postfach zusammen erlauben, 2FA neu einzurichten. */
+async function handleAdminEmailRecoveryStart(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session } = ctx;
+  if (session.stage !== 'totp') return adminJson({ error: 'Erst mit Passwort anmelden' }, 400);
+  if (!env.BREVO_KEY) return adminJson({ error: 'E-Mail-Versand ist nicht eingerichtet — bitte Wiederherstellungscode verwenden' }, 503);
+  const now = nowSec();
+  const row = await env.DB.prepare('SELECT * FROM admin_email_codes WHERE admin_id = ?').bind(admin.id).first();
+  const inWindow = row && now - (row.window_start || 0) < 3600;
+  if (inWindow && row.sent_count >= 3) return adminJson({ error: 'Es wurden schon 3 Codes verschickt — bitte in einer Stunde erneut versuchen' }, 429);
+  const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 100000000).padStart(8, '0');
+  await env.DB.prepare(`INSERT INTO admin_email_codes (admin_id, code_hash, expires_at, attempts, window_start, sent_count) VALUES (?,?,?,0,?,1)
+                        ON CONFLICT(admin_id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
+                        window_start = ?, sent_count = ?`)
+    .bind(admin.id, await sha256(code), now + 900, now, inWindow ? row.window_start : now, inWindow ? row.sent_count + 1 : 1).run();
+  await sendMail(env, admin.email, 'Tapstern Admin: Code zum Wiederherstellen', 'Dein Wiederherstellungs-Code',
+    `Code: ${code.slice(0, 4)} ${code.slice(4)} — gültig 15 Minuten. Damit richtest du die Zwei-Faktor-Anmeldung auf einem neuen Handy ein. Hast du das nicht angefordert, kennt jemand dein Passwort: ändere es sofort.`);
+  await audit(env, request, admin, 'sicherheit.email_code_angefordert');
+  return adminJson({ success: true, sentTo: admin.email.replace(/^(.{2}).*(@.*)$/, '$1•••$2') });
+}
+
+async function handleAdminEmailRecoveryVerify(request, env) {
+  const ctx = await adminSession(env, request, { stage: 'any' });
+  if (ctx.denied) return ctx.denied;
+  const { admin, session, tokenHash } = ctx;
+  if (session.stage !== 'totp') return adminJson({ error: 'Erst mit Passwort anmelden' }, 400);
+  const data = await readJson(request);
+  const row = await env.DB.prepare('SELECT * FROM admin_email_codes WHERE admin_id = ?').bind(admin.id).first();
+  if (!row?.code_hash || row.expires_at <= nowSec()) return adminJson({ error: 'Code abgelaufen — bitte neu anfordern' }, 400);
+  const given = str(data?.code).replace(/\D/g, '');
+  if (!timingSafeEqual(await sha256(given), row.code_hash)) {
+    const attempts = (row.attempts || 0) + 1;
+    await env.DB.prepare(`UPDATE admin_email_codes SET attempts = ?${attempts >= 5 ? ', code_hash = NULL' : ''} WHERE admin_id = ?`).bind(attempts, admin.id).run();
+    await audit(env, request, admin, 'login.email_code_falsch');
+    return adminJson({ error: attempts >= 5 ? 'Zu viele Versuche — bitte neuen Code anfordern' : 'Code ist falsch' }, 400);
+  }
+  await env.DB.prepare('UPDATE admin_email_codes SET code_hash = NULL, attempts = 0 WHERE admin_id = ?').bind(admin.id).run();
+  await wipeSecondFactor(env, admin.id, tokenHash);
+  await upgradeSession(env, tokenHash, 'setup');
+  await audit(env, request, admin, 'sicherheit.2fa_per_email_zurueckgesetzt');
+  await adminSecurityMail(env, request, admin, 'Deine Zwei-Faktor-Anmeldung wurde per E-Mail-Code zurückgesetzt.');
+  return adminJson({ stage: 'setup' }, 200, adminCookie(await rotateCookieToken(env, tokenHash), ADMIN_PENDING_MINUTES * 60));
+}
+
+/* ── Team (nur Inhaber) ── */
+async function handleAdminTeam(request, env) {
+  const ctx = await adminSession(env, request, { owner: true });
+  if (ctx.denied) return ctx.denied;
+  const { results } = await env.DB.prepare('SELECT * FROM admin_users ORDER BY created_at').all();
+  return adminJson({ team: (results || []).map(a => ({ ...publicAdmin(a), disabled: !!a.disabled, mustChangePassword: !!a.must_change_password })) });
+}
+
+async function handleAdminTeamCreate(request, env) {
+  const ctx = await adminSession(env, request, { owner: true });
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (!(await requireFreshTotp(env, ctx.admin, data?.code))) return adminJson({ error: '2FA-Code ist falsch' }, 400);
+  const email = str(data?.email).toLowerCase();
+  const role = ADMIN_ROLES.includes(data?.role) && data.role !== 'owner' ? data.role : 'admin';
+  if (!validEmail(email)) return adminJson({ error: 'Bitte eine gültige E-Mail angeben' }, 400);
+  if (await env.DB.prepare('SELECT 1 FROM admin_users WHERE email = ?').bind(email).first()) return adminJson({ error: 'Diese E-Mail hat schon ein Admin-Konto' }, 409);
+  // Einmal-Passwort: wird nur jetzt angezeigt, muss beim ersten Login geändert werden
+  const tempPassword = base32Encode(crypto.getRandomValues(new Uint8Array(12))).slice(0, 16).replace(/(.{4})(?!$)/g, '$1-');
+  const id = crypto.randomUUID();
+  await env.DB.prepare('INSERT INTO admin_users (id, email, name, role, password_hash, must_change_password, created_at) VALUES (?,?,?,?,?,1,?)')
+    .bind(id, email, str(data?.name).slice(0, 80) || null, role, await hashPassword(tempPassword), nowSec()).run();
+  await audit(env, request, ctx.admin, 'team.admin_angelegt', email, { role });
+  return adminJson({ success: true, tempPassword });
+}
+
+async function handleAdminTeamUpdate(request, env, id) {
+  const ctx = await adminSession(env, request, { owner: true });
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (!(await requireFreshTotp(env, ctx.admin, data?.code))) return adminJson({ error: '2FA-Code ist falsch' }, 400);
+  const target = await env.DB.prepare('SELECT * FROM admin_users WHERE id = ?').bind(id).first();
+  if (!target) return adminJson({ error: 'Nicht gefunden' }, 404);
+  if (target.id === ctx.admin.id) return adminJson({ error: 'Das eigene Konto bitte unter „Sicherheit“ verwalten' }, 400);
+  const action = str(data?.action);
+  // Es muss immer einen aktiven Inhaber geben — vorher prüfen, nicht hinterher reparieren
+  const removesOwner = target.role === 'owner' && !target.disabled &&
+    (action === 'disable' || action === 'delete' || action === 'reset' || (action === 'role' && data?.role !== 'owner'));
+  if (removesOwner) {
+    const others = await env.DB.prepare(`SELECT COUNT(*) AS n FROM admin_users WHERE role = 'owner' AND disabled = 0 AND id != ?`).bind(id).first();
+    if (!others?.n) return adminJson({ error: 'Es muss mindestens ein aktiver Inhaber bleiben' }, 400);
+  }
+
+  if (action === 'role') {
+    if (!ADMIN_ROLES.includes(data?.role)) return adminJson({ error: 'Unbekannte Rolle' }, 400);
+    await env.DB.prepare('UPDATE admin_users SET role = ? WHERE id = ?').bind(data.role, id).run();
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run(); // neue Rechte ab nächster Anmeldung
+  } else if (action === 'disable' || action === 'enable') {
+    await env.DB.prepare('UPDATE admin_users SET disabled = ? WHERE id = ?').bind(action === 'disable' ? 1 : 0, id).run();
+    if (action === 'disable') {
+      await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
+      await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(id).run();
+    }
+  } else if (action === 'reset') {
+    // 2FA und Passwort zurücksetzen: neues Einmal-Passwort, 2FA wird beim nächsten Login neu eingerichtet
+    const tempPassword = base32Encode(crypto.getRandomValues(new Uint8Array(12))).slice(0, 16).replace(/(.{4})(?!$)/g, '$1-');
+    await env.DB.prepare(`UPDATE admin_users SET password_hash = ?, must_change_password = 1, totp_secret = NULL, totp_pending = NULL,
+      totp_last_counter = 0, recovery_codes = NULL WHERE id = ?`).bind(await hashPassword(tempPassword), id).run();
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(id).run();
+    await audit(env, request, ctx.admin, 'team.zugang_zurueckgesetzt', target.email);
+    return adminJson({ success: true, tempPassword });
+  } else if (action === 'delete') {
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_users WHERE id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_trusted_devices WHERE admin_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM admin_email_codes WHERE admin_id = ?').bind(id).run();
+  } else return adminJson({ error: 'Unbekannte Aktion' }, 400);
+
+  await audit(env, request, ctx.admin, 'team.' + action, target.email, action === 'role' ? { role: data.role } : null);
+  return adminJson({ success: true });
+}
+
+/* ── Protokoll ── */
+async function handleAdminAudit(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const url = new URL(request.url);
+  const limit = Math.min(500, Math.max(10, parseInt(url.searchParams.get('limit')) || 200));
+  const { results } = await env.DB.prepare('SELECT * FROM admin_audit ORDER BY id DESC LIMIT ?').bind(limit).all();
+  return adminJson({ entries: results || [] });
+}
+
+/* ── Module ── */
+async function listModules(env) {
+  await ensureAdminTables(env);
+  const { results } = await env.DB.prepare('SELECT * FROM platform_modules ORDER BY sort, key').all();
+  return (results || []).map(m => ({ key: m.key, name: m.name, description: m.description, color: m.color, icon: m.icon, enabled: !!m.enabled, sort: m.sort }));
+}
+
+async function handlePublicModules(request, env) {
+  const modules = (await listModules(env)).filter(m => m.enabled).map(({ key, name, description, color, icon }) => ({ key, name, description, color, icon }));
+  return new Response(JSON.stringify({ modules }), {
+    headers: { 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleAdminModules(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  return adminJson({ modules: await listModules(env) });
+}
+
+async function handleAdminModuleUpdate(request, env, key) {
+  const ctx = await adminSession(env, request, { owner: true });
+  if (ctx.denied) return ctx.denied;
+  const current = await env.DB.prepare('SELECT * FROM platform_modules WHERE key = ?').bind(key).first();
+  if (!current) return adminJson({ error: 'Modul nicht gefunden' }, 404);
+  const data = await readJson(request);
+  const name = str(data?.name).slice(0, 40) || current.name;
+  const description = str(data?.description).slice(0, 120);
+  const color = /^#[0-9a-fA-F]{6}$/.test(str(data?.color)) ? str(data.color) : current.color;
+  const icon = [...str(data?.icon)].slice(0, 2).join('') || current.icon;
+  const enabled = data?.enabled === false ? 0 : 1;
+  await env.DB.prepare('UPDATE platform_modules SET name = ?, description = ?, color = ?, icon = ?, enabled = ?, updated_at = ? WHERE key = ?')
+    .bind(name, description, color, icon, enabled, nowSec(), key).run();
+  await audit(env, request, ctx.admin, 'einstellungen.modul_geaendert', key, { von: current.name, zu: name, aktiv: !!enabled });
+  return adminJson({ success: true });
+}
+
+/* ── Hilfen für Abfragen, die fehlschlagen dürfen (Tabelle noch nicht da) ── */
+async function q(env, sql, ...args) {
+  try { return (await env.DB.prepare(sql).bind(...args).all()).results || []; } catch (e) { return []; }
+}
+async function q1(env, sql, ...args) {
+  try { return await env.DB.prepare(sql).bind(...args).first(); } catch (e) { return null; }
+}
+
+/* ── Bestellungen aller Module in einem Format ── */
+async function collectOrders(env) {
+  const admin = Object.fromEntries((await q(env, 'SELECT * FROM order_admin')).map(r => [r.source + ':' + r.order_id, r]));
+  const orders = [];
+  const state = (source, id, fallback) => admin[source + ':' + id] || { status: fallback || 'neu', note: null, updated_at: null };
+
+  for (const o of await q(env, 'SELECT * FROM shop_orders ORDER BY created_at DESC LIMIT 1000')) {
+    const st = state('shop', o.id);
+    let customer = {}, items = [], details = {};
+    try { customer = JSON.parse(o.customer); items = JSON.parse(o.items); details = JSON.parse(o.details || '{}'); } catch (e) {}
+    orders.push({
+      source: 'shop', id: o.id, module: o.module, createdAt: o.created_at,
+      title: items.map(i => `${i.qty}× ${i.name}`).join(', ').slice(0, 160),
+      customer: { name: customer.firma || customer.ansprechpartner, contact: customer.ansprechpartner, email: customer.email, phone: customer.telefon, address: customer.adresse },
+      amountCents: o.total_cents, payment: o.payment === 'rechnung' ? 'rechnung' : (o.payment_status === 'bezahlt' ? 'bezahlt' : 'offen'),
+      status: st.status, note: st.note, items, details,
+    });
+  }
+
+  for (const o of await q(env, `SELECT o.*, s.name AS shop_name, s.email AS shop_email, s.phone AS shop_phone, s.slug AS shop_slug
+                                FROM stempel_card_orders o LEFT JOIN stempel_shops s ON s.id = o.shop_id LIMIT 1000`)) {
+    const st = state('stempel', o.id);
+    orders.push({
+      source: 'stempel', id: o.id, module: 'tapstempel', createdAt: sqlTimeToSec(o.created_at),
+      title: `${o.quantity}× NFC-Aufsteller (NTAG 424 DNA)`,
+      customer: { name: o.shop_name, email: o.shop_email, phone: o.shop_phone },
+      amountCents: o.amount_cents, payment: o.status === 'bezahlt' ? 'bezahlt' : 'offen',
+      status: st.status, note: st.note, items: [{ name: 'NFC-Aufsteller', qty: o.quantity }], details: { Laden: o.shop_slug },
+    });
+  }
+
+  for (const p of await q(env, `SELECT * FROM hub_pages WHERE hosting_years IS NOT NULL OR paid = 1 LIMIT 1000`)) {
+    const st = state('hub', p.id);
+    const cards = HUB_CARD_PRICES[p.card_quantity] || HUB_CARD_PRICES[10];
+    const hosting = HUB_HOSTING_PRICES[p.hosting_years || 1];
+    orders.push({
+      source: 'hub', id: p.id, module: 'business_hub', createdAt: sqlTimeToSec(p.updated_at || p.created_at),
+      title: `Business Hub — ${p.card_quantity} Karten + ${p.hosting_years || 1} Jahr(e) Hosting`,
+      customer: { name: p.business_name, email: p.contact_email, phone: p.contact_phone },
+      amountCents: Math.round((cards + hosting) * 100), payment: p.paid ? 'bezahlt' : 'offen',
+      status: st.status, note: st.note, items: [{ name: `${p.card_quantity} Karten`, qty: 1 }, { name: `${p.hosting_years || 1} Jahr(e) Hosting`, qty: 1 }],
+      details: { Seite: '/hub/' + p.slug, Veröffentlicht: p.published ? 'ja' : 'nein' },
+    });
+  }
+  return orders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+async function handleAdminOrders(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  return adminJson({ orders: await collectOrders(env), statuses: ADMIN_ORDER_STATUSES });
+}
+
+async function handleAdminOrderUpdate(request, env, source, id) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  if (!['shop', 'stempel', 'hub'].includes(source)) return adminJson({ error: 'Unbekannte Quelle' }, 400);
+  const data = await readJson(request);
+  const status = ADMIN_ORDER_STATUSES.includes(data?.status) ? data.status : null;
+  if (!status) return adminJson({ error: 'Unbekannter Status' }, 400);
+  const note = str(data?.note).slice(0, 2000) || null;
+  await env.DB.prepare(`INSERT INTO order_admin (source, order_id, status, note, updated_at) VALUES (?,?,?,?,?)
+                        ON CONFLICT(source, order_id) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at`)
+    .bind(source, str(id).slice(0, 100), status, note, nowSec()).run();
+  if (data?.markPaid === true) {
+    if (source === 'shop') await env.DB.prepare(`UPDATE shop_orders SET payment_status = 'bezahlt', paid_at = ? WHERE id = ?`).bind(nowSec(), id).run();
+    if (source === 'stempel') await env.DB.prepare(`UPDATE stempel_card_orders SET status = 'bezahlt' WHERE id = ?`).bind(id).run();
+    if (source === 'hub') await env.DB.prepare(`UPDATE hub_pages SET paid = 1, updated_at = datetime('now') WHERE id = ?`).bind(id).run();
+  }
+  await audit(env, request, ctx.admin, 'bestellung.aktualisiert', `${source}:${id}`, { status, bezahlt: !!data?.markPaid });
+  return adminJson({ success: true });
+}
+
+/* ── Übersicht ── */
+async function handleAdminOverview(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const now = nowSec(), d7 = now - 7 * 86400, d30 = now - 30 * 86400;
+  const orders = await collectOrders(env);
+  const paid30 = orders.filter(o => o.payment === 'bezahlt' && (o.createdAt || 0) >= d30);
+  const shops = await q(env, `SELECT s.id, s.subscription_status, s.created_at, s.verified, a.trial_ends_at, a.override
+                              FROM stempel_shops s LEFT JOIN stempel_shop_access a ON a.shop_id = s.id`);
+  const shopStates = shops.filter(s => s.verified).map(s => accessStateOf(s, s.trial_ends_at ? s : null, now).state);
+  const count = st => shopStates.filter(x => x === st).length;
+
+  // Umsatz je Tag (30 Tage) für das Diagramm
+  const daily = Array.from({ length: 30 }, (_, i) => ({ day: now - (29 - i) * 86400, cents: 0 }));
+  for (const o of paid30) {
+    const idx = 29 - Math.floor((now - o.createdAt) / 86400);
+    if (idx >= 0 && idx < 30) daily[idx].cents += o.amountCents || 0;
+  }
+
+  return adminJson({
+    revenue30Cents: paid30.reduce((s, o) => s + (o.amountCents || 0), 0),
+    revenueDaily: daily.map(d => d.cents),
+    openOrders: orders.filter(o => !['erledigt', 'storniert'].includes(o.status)).length,
+    unpaidOrders: orders.filter(o => o.payment !== 'bezahlt' && o.status !== 'storniert').length,
+    latestOrders: orders.slice(0, 6),
+    tapstempel: {
+      shops: shopStates.length, trial: count('trial'), subscribed: count('subscribed'), unlocked: count('unlocked'),
+      expired: count('expired'), locked: count('locked'),
+      new7: shops.filter(s => (sqlTimeToSec(s.created_at) || 0) >= d7).length,
+      customers: (await q1(env, 'SELECT COUNT(*) AS n FROM stempel_customers'))?.n || 0,
+      stamps7: (await q1(env, `SELECT COUNT(*) AS n FROM stempel_events WHERE created_at >= datetime('now', '-7 days')`))?.n || 0,
+    },
+    hub: {
+      pages: (await q1(env, 'SELECT COUNT(*) AS n FROM hub_pages'))?.n || 0,
+      published: (await q1(env, 'SELECT COUNT(*) AS n FROM hub_pages WHERE published = 1'))?.n || 0,
+      review: (await q1(env, 'SELECT COUNT(*) AS n FROM hub_pages WHERE ready_for_review = 1 AND published = 0'))?.n || 0,
+    },
+    visitenkarten: {
+      users: (await q1(env, 'SELECT COUNT(*) AS n FROM users'))?.n || 0,
+      cards: (await q1(env, 'SELECT COUNT(*) AS n FROM businesscards'))?.n || 0,
+      published: (await q1(env, 'SELECT COUNT(*) AS n FROM businesscards WHERE published = 1'))?.n || 0,
+      views7: (await q1(env, 'SELECT COUNT(*) AS n FROM card_events WHERE created_at >= ?', (now - 7 * 86400) * 1000))?.n || 0,
+    },
+    security: await securityChecklist(env, ctx.admin),
+    recentActivity: await q(env, 'SELECT created_at, admin_email, action, target FROM admin_audit ORDER BY id DESC LIMIT 8'),
+  });
+}
+
+/* Was an der Plattform-Sicherheit noch fehlt — sichtbar im Admin */
+async function securityChecklist(env, admin) {
+  const recovery = JSON.parse(admin.recovery_codes || '[]').length;
+  return [
+    { key: '2fa', ok: !!admin.totp_secret, label: 'Zwei-Faktor-Anmeldung aktiv' },
+    { key: 'recovery', ok: recovery >= 3, label: `Wiederherstellungscodes übrig: ${recovery}` },
+    { key: 'stripe_webhook', ok: !!env.STEMPEL_STRIPE_WEBHOOK_SECRET, label: 'Stripe-Webhook-Signatur (STEMPEL_STRIPE_WEBHOOK_SECRET)' },
+    { key: 'encryption', ok: !!env.ADMIN_ENCRYPTION_KEY, label: '2FA-Geheimnisse verschlüsselt (ADMIN_ENCRYPTION_KEY)' },
+    { key: 'cf_access', ok: !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD), label: 'Cloudflare Access vor dem Admin (optional)' },
+    { key: 'bootstrap', ok: !(env.ADMIN_BOOTSTRAP_PASSWORD || env.STEMPEL_ADMIN_PASSWORD), label: 'Start-Passwort aus Cloudflare entfernt' },
+    { key: 'email_recovery', ok: !!env.BREVO_KEY, label: 'Wiederherstellung per E-Mail möglich (BREVO_KEY)' },
+    ...(env.ADMIN_RESET_EMAIL ? [{ key: 'reset_email', ok: false, label: 'Notzugang ADMIN_RESET_EMAIL noch gesetzt — nach Gebrauch löschen' }] : []),
+  ];
+}
+
+/* ── Tapstempel ── (Zugangs-Aktionen wie bisher, jetzt mit zentralem Login) */
+async function handleAdminTapstempelShops(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  await ensureAccessTable(env);
+  const rows = await q(env,
+    `SELECT s.id, s.slug, s.name, s.email, s.first_name, s.last_name, s.phone, s.branche, s.plan, s.billing_interval,
+            s.subscription_status, s.verified, s.created_at, a.trial_ends_at, a.override, a.note,
+            (SELECT COUNT(*) FROM stempel_customers c WHERE c.shop_id = s.id) AS customers
+     FROM stempel_shops s LEFT JOIN stempel_shop_access a ON a.shop_id = s.id ORDER BY s.created_at DESC`);
+  const now = nowSec();
+  return adminJson({ shops: rows.map(r => ({ ...r, access: accessStateOf(r, r.trial_ends_at ? r : null, now) })) });
+}
+
+async function handleAdminTapstempelAccess(request, env, shopId) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(shopId).first();
+  if (!shop) return adminJson({ error: 'Laden nicht gefunden' }, 404);
+  const data = await readJson(request);
+  const action = str(data?.action);
+  const row = await shopAccessRow(env, shop.id);
+  const now = nowSec();
+  let { trial_ends_at: trialEndsAt, override } = row;
+  if (action === 'unlock') override = 'unlocked';
+  else if (action === 'lock') override = 'locked';
+  else if (action === 'auto') override = null;
+  else if (action === 'extend') {
+    const days = Math.max(1, Math.min(365, parseInt(data?.days) || 1));
+    trialEndsAt = Math.max(now, trialEndsAt) + days * 86400;
+    if (override === 'locked') override = null;
+  } else if (action !== 'note') return adminJson({ error: 'Unbekannte Aktion' }, 400);
+  const note = data?.note !== undefined ? (str(data.note).slice(0, 500) || null) : row.note;
+  await env.DB.prepare('UPDATE stempel_shop_access SET trial_ends_at = ?, override = ?, note = ?, updated_at = ? WHERE shop_id = ?')
+    .bind(trialEndsAt, override, note, now, shop.id).run();
+  await audit(env, request, ctx.admin, 'tapstempel.zugang_' + action, shop.name, action === 'extend' ? { tage: parseInt(data?.days) || 1 } : null);
+  return adminJson({ success: true, access: accessStateOf(shop, { trial_ends_at: trialEndsAt, override }, now) });
+}
+
+/* ── Business Hub ── */
+async function handleAdminHubPages(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const rows = await q(env, `SELECT p.id, p.slug, p.business_name, p.contact_email, p.contact_phone, p.published, p.paid, p.ready_for_review,
+                                    p.hosting_years, p.card_quantity, p.created_at, p.updated_at, p.preview_token,
+                                    (SELECT COUNT(*) FROM hub_links l WHERE l.page_id = p.id) AS links
+                             FROM hub_pages p ORDER BY p.created_at DESC`);
+  return adminJson({ pages: rows.map(({ preview_token, ...p }) => ({ ...p, previewUrl: preview_token ? '/hub-preview/' + preview_token : null })) });
+}
+
+async function handleAdminHubAction(request, env, id, action) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  const page = await env.DB.prepare('SELECT id, business_name, logo_key, banner_key FROM hub_pages WHERE id = ?').bind(id).first();
+  if (!page) return adminJson({ error: 'Seite nicht gefunden' }, 404);
+  const data = await readJson(request);
+  if (action === 'publish' || action === 'unpublish') {
+    await env.DB.prepare(`UPDATE hub_pages SET published = ?, updated_at = datetime('now') WHERE id = ?`).bind(action === 'publish' ? 1 : 0, id).run();
+  } else if (action === 'paid') {
+    await env.DB.prepare(`UPDATE hub_pages SET paid = 1, updated_at = datetime('now') WHERE id = ?`).bind(id).run();
+  } else if (action === 'delete') {
+    if (!(await requireFreshTotp(env, ctx.admin, data?.code))) return adminJson({ error: '2FA-Code ist falsch' }, 400);
+    await env.DB.prepare('DELETE FROM hub_links WHERE page_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM hub_pages WHERE id = ?').bind(id).run();
+    for (const key of [page.logo_key, page.banner_key]) if (key) await env.PHOTOS.delete(key).catch(() => {});
+  } else return adminJson({ error: 'Unbekannte Aktion' }, 400);
+  await audit(env, request, ctx.admin, 'hub.' + action, page.business_name);
+  return adminJson({ success: true });
+}
+
+/* ── Visitenkarten ── */
+async function handleAdminCards(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const since = (nowSec() - 30 * 86400) * 1000;
+  const users = await q(env, 'SELECT id, email, verified, created_at FROM users ORDER BY created_at DESC LIMIT 2000');
+  const cards = await q(env, `SELECT c.id, c.user_id, c.slug, c.name, c.company_name, c.job_title, c.published, c.created_at, c.updated_at,
+                                     (SELECT COUNT(*) FROM card_events e WHERE e.slug = c.slug AND e.created_at >= ?) AS views30
+                              FROM businesscards c ORDER BY c.updated_at DESC LIMIT 5000`, since);
+  const byUser = {};
+  for (const c of cards) (byUser[c.user_id] ||= []).push(c);
+  return adminJson({ users: users.map(u => ({ ...u, createdAt: sqlTimeToSec(u.created_at), cards: byUser[u.id] || [] })) });
+}
+
+async function handleAdminCardAction(request, env, id, action) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  if (action !== 'publish' && action !== 'unpublish') return adminJson({ error: 'Unbekannte Aktion' }, 400);
+  const card = await env.DB.prepare('SELECT id, slug FROM businesscards WHERE id = ?').bind(id).first();
+  if (!card) return adminJson({ error: 'Karte nicht gefunden' }, 404);
+  await env.DB.prepare('UPDATE businesscards SET published = ?, updated_at = ? WHERE id = ?').bind(action === 'publish' ? 1 : 0, Date.now(), id).run();
+  await audit(env, request, ctx.admin, 'visitenkarten.' + action, card.slug);
+  return adminJson({ success: true });
+}
+
+/* ── Datenexport (Backup) — ohne Passwörter, Tokens und Geheimnisse ── */
+const EXPORT_TABLES = {
+  users: ['password_hash', 'verify_token', 'reset_token'],
+  businesscards: [], card_events: [],
+  stempel_shops: ['password_hash', 'session_token_hash', 'verify_code_hash'],
+  stempel_customers: ['device_token', 'redeem_token'],
+  stempel_events: [], stempel_employees: ['pin_hash'], stempel_card_orders: [], stempel_messages: [], stempel_shop_access: [],
+  hub_pages: ['preview_token'], hub_links: [],
+  shop_orders: [], order_admin: [], platform_modules: [],
+  admin_users: ['password_hash', 'totp_secret', 'totp_pending', 'recovery_codes'],
+  admin_audit: [],
+};
+
+async function handleAdminExport(request, env) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  if (!(await requireFreshTotp(env, ctx.admin, data?.code))) return adminJson({ error: '2FA-Code ist falsch' }, 400);
+  const out = { exportedAt: new Date().toISOString(), exportedBy: ctx.admin.email, tables: {} };
+  for (const [table, drop] of Object.entries(EXPORT_TABLES)) {
+    const rows = await q(env, `SELECT * FROM ${table} LIMIT 50000`);
+    out.tables[table] = rows.map(r => { for (const c of drop) delete r[c]; return r; });
+  }
+  await audit(env, request, ctx.admin, 'datenexport', null, Object.fromEntries(Object.entries(out.tables).map(([k, v]) => [k, v.length])));
+  return new Response(JSON.stringify(out, null, 1), {
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Content-Disposition': `attachment; filename="tapstern-backup-${new Date().toISOString().slice(0, 10)}.json"`,
+      'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
+/* ── Admin-Seite selbst ausliefern — mit strengen Sicherheits-Headern ── */
+const ADMIN_PAGE_HEADERS = {
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'X-Robots-Tag': 'noindex, nofollow',
+  'Cache-Control': 'no-store',
+};
+
+async function serveAdminAsset(request, env, file) {
+  if (!(await verifyCloudflareAccess(env, request))) return new Response('Zugriff verweigert', { status: 403 });
+  const res = await env.ASSETS.fetch(new Request(new URL('/' + file, request.url), { headers: request.headers }));
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(ADMIN_PAGE_HEADERS)) out.headers.set(k, v);
+  return out;
+}
+
+/* ── Admin-API: eine Stelle für alle Routen ── */
+async function routeAdminApi(request, env, sub, method) {
+  const seg = sub.split('/');
+  const R = (m, p) => method === m && sub === p;
+  if (R('POST', 'login')) return handleAdminLogin(request, env);
+  if (R('POST', 'login/totp')) return handleAdminLoginTotp(request, env);
+  if (R('POST', 'logout')) return handleAdminLogout(request, env);
+  if (R('GET', 'me')) return handleAdminMe(request, env);
+  if (R('POST', '2fa/setup')) return handleAdminTotpSetup(request, env);
+  if (R('POST', '2fa/enable')) return handleAdminTotpEnable(request, env);
+  if (R('POST', 'password')) return handleAdminChangePassword(request, env);
+  if (R('POST', 'recovery-codes')) return handleAdminRecoveryCodes(request, env);
+  if (R('GET', 'sessions')) return handleAdminSessions(request, env);
+  if (R('POST', 'sessions/revoke')) return handleAdminRevokeSessions(request, env);
+  if (R('POST', 'trusted-devices/revoke')) return handleAdminRevokeTrusted(request, env);
+  if (R('POST', '2fa/move')) return handleAdminTotpMove(request, env);
+  if (R('POST', 'recovery/email')) return handleAdminEmailRecoveryStart(request, env);
+  if (R('POST', 'recovery/email/verify')) return handleAdminEmailRecoveryVerify(request, env);
+  if (R('GET', 'team')) return handleAdminTeam(request, env);
+  if (R('POST', 'team')) return handleAdminTeamCreate(request, env);
+  if (method === 'POST' && seg[0] === 'team' && seg.length === 2) return handleAdminTeamUpdate(request, env, seg[1]);
+  if (R('GET', 'audit')) return handleAdminAudit(request, env);
+  if (R('GET', 'modules')) return handleAdminModules(request, env);
+  if (method === 'PUT' && seg[0] === 'modules' && seg.length === 2) return handleAdminModuleUpdate(request, env, seg[1]);
+  if (R('GET', 'overview')) return handleAdminOverview(request, env);
+  if (R('GET', 'orders')) return handleAdminOrders(request, env);
+  if (method === 'POST' && seg[0] === 'orders' && seg.length === 3) return handleAdminOrderUpdate(request, env, seg[1], seg[2]);
+  if (R('GET', 'tapstempel/shops')) return handleAdminTapstempelShops(request, env);
+  if (method === 'POST' && seg[0] === 'tapstempel' && seg[1] === 'shops' && seg[3] === 'access' && seg.length === 4) return handleAdminTapstempelAccess(request, env, seg[2]);
+  if (R('GET', 'hub/pages')) return handleAdminHubPages(request, env);
+  if (method === 'POST' && seg[0] === 'hub' && seg[1] === 'pages' && seg.length === 4) return handleAdminHubAction(request, env, seg[2], seg[3]);
+  if (R('GET', 'visitenkarten')) return handleAdminCards(request, env);
+  if (method === 'POST' && seg[0] === 'visitenkarten' && seg[1] === 'cards' && seg.length === 4) return handleAdminCardAction(request, env, seg[2], seg[3]);
+  if (R('POST', 'export')) return handleAdminExport(request, env);
+  return adminJson({ error: 'Nicht gefunden' }, 404);
 }

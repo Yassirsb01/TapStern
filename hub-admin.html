@@ -47,8 +47,8 @@
 <section id="s-login" class="wrap" style="max-width:360px; margin-top:100px;">
   <h1>Business Hub — Admin</h1>
   <div class="card">
-    <div class="field"><label>Passwort</label><input type="password" id="li-pw"></div>
-    <button class="btn btn-primary btn-block" id="do-login">Anmelden</button>
+    <p style="margin:0 0 16px; color:var(--muted); font-size:0.9rem;">Die Anmeldung läuft über den Tapstern Admin — mit Zwei-Faktor-Schutz.</p>
+    <a class="btn btn-primary btn-block" href="/admin" style="display:block; text-align:center; text-decoration:none;">Zum Tapstern Admin</a>
     <div class="err" id="login-err"></div>
   </div>
 </section>
@@ -120,18 +120,12 @@
   let currentPage = null;
 
   async function api(path, opts = {}) {
-    const res = await fetch(path, { headers: opts.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }, ...opts });
+    const base = { 'X-Tapstern-Admin': '1' }; // Schutz gegen fremde Seiten (CSRF), vom Admin-Server verlangt
+    const res = await fetch(path, { headers: opts.body instanceof FormData ? base : { ...base, 'Content-Type': 'application/json' }, ...opts });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Fehler ' + res.status);
     return data;
   }
-
-  $('do-login').onclick = async () => {
-    try {
-      await api('/api/hub/admin/login', { method: 'POST', body: JSON.stringify({ password: $('li-pw').value }) });
-      boot();
-    } catch (e) { $('login-err').textContent = e.message; }
-  };
 
   async function boot() {
     $('s-login').classList.add('hide');
@@ -303,6 +297,9 @@
   };
 
   $('backToList').onclick = showList;
+
+  // Mit gültiger Admin-Sitzung direkt starten, sonst Hinweis auf /admin
+  (async () => { try { await api('/api/hub/admin/list'); boot(); } catch (e) { /* Hinweis bleibt sichtbar */ } })();
 </script>
 </body>
 </html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Tapstern Admin</title>
+<link rel="icon" href="/tapstern-favicon.png">
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+
+<!-- ══ Anmeldung ══ -->
+<section id="auth" class="auth hide">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand-mark"><img src="/tapstern-icon.png" alt=""><div>Tapstern<small>Admin</small></div></div>
+      <h1>Alles von Tapstern.<br>An einem Ort.</h1>
+      <p>Bestellungen, Läden, Karten und Seiten aller Module — sicher verwaltet.</p>
+      <ul class="trust">
+        <li><span class="ico">🔐</span><span><b>Zwei-Faktor-Pflicht</b><br>Passwort und Code aus deiner Authenticator-App.</span></li>
+        <li><span class="ico">🛡️</span><span><b>Geschützte Sitzungen</b><br>Automatische Abmeldung nach 30 Minuten Inaktivität.</span></li>
+        <li><span class="ico">📜</span><span><b>Lückenloses Protokoll</b><br>Jede Anmeldung und Änderung wird festgehalten.</span></li>
+      </ul>
+    </div>
+
+    <div class="auth-form">
+      <!-- Schritt 1: Passwort -->
+      <form id="f-login" autocomplete="on">
+        <h2>Anmelden</h2>
+        <p class="sub">Mit deinem Tapstern-Admin-Konto.</p>
+        <div class="field"><label class="lbl" for="l-email">E-Mail</label><input class="input" id="l-email" type="email" autocomplete="username" required></div>
+        <div class="field"><label class="lbl" for="l-pw">Passwort</label><input class="input" id="l-pw" type="password" autocomplete="current-password" required></div>
+        <button class="btn btn-primary btn-block" type="submit">Weiter</button>
+        <div class="err" id="l-err" role="alert"></div>
+      </form>
+
+      <!-- Schritt 2: 2FA-Code -->
+      <form id="f-totp" class="hide" autocomplete="off">
+        <h2>Bestätigungscode</h2>
+        <p class="sub" id="totp-sub">Gib den 6-stelligen Code aus deiner Authenticator-App ein.</p>
+        <div class="field" id="totp-code-field"><label class="lbl" for="t-code">Code</label><input class="input code-input" id="t-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"></div>
+        <div class="field hide" id="totp-rec-field"><label class="lbl" for="t-rec">Wiederherstellungscode</label><input class="input mono" id="t-rec" placeholder="XXXXX-XXXXX" autocomplete="off"></div>
+        <label class="check"><input type="checkbox" id="t-trust"> Diesem Gerät 30 Tage vertrauen (nur eigenes Gerät)</label>
+        <button class="btn btn-primary btn-block" type="submit">Anmelden</button>
+        <div class="err" id="t-err" role="alert"></div>
+        <p class="hint"><button type="button" class="link-btn" id="t-toggle">Wiederherstellungscode verwenden</button></p>
+        <p class="hint"><button type="button" class="link-btn" id="t-mail">Handy verloren? Code per E-Mail anfordern</button></p>
+        <p class="hint"><button type="button" class="link-btn" data-action="restart">← Zurück zur Anmeldung</button></p>
+      </form>
+
+      <!-- Schritt 2 (Notfall): Wiederherstellung per E-Mail -->
+      <form id="f-mailrec" class="hide" autocomplete="off">
+        <h2>Per E-Mail wiederherstellen</h2>
+        <p class="sub">Dein Passwort ist bestätigt. Wir schicken einen 8-stelligen Code an deine Admin-E-Mail. Danach richtest du die Zwei-Faktor-Anmeldung auf deinem neuen Handy ein — das alte Handy und alle Wiederherstellungscodes werden ungültig.</p>
+        <button class="btn btn-ghost btn-block" type="button" id="mr-send">Code an meine E-Mail senden</button>
+        <p class="hint" id="mr-sent"></p>
+        <div class="field"><label class="lbl" for="mr-code">Code aus der E-Mail</label><input class="input code-input" id="mr-code" inputmode="numeric" maxlength="9" autocomplete="one-time-code"></div>
+        <button class="btn btn-primary btn-block" type="submit">Bestätigen</button>
+        <div class="err" id="mr-err" role="alert"></div>
+        <p class="hint"><button type="button" class="link-btn" id="mr-back">← Zurück zum 2FA-Code</button></p>
+      </form>
+
+      <!-- Schritt 2b: 2FA einrichten -->
+      <form id="f-setup" class="hide" autocomplete="off">
+        <h2>Zwei-Faktor einrichten</h2>
+        <p class="sub">Pflicht für jedes Admin-Konto. Scanne den Code mit einer Authenticator-App (z. B. Google Authenticator, 1Password, Microsoft Authenticator).</p>
+        <div class="qr-box">
+          <img id="s-qr" alt="QR-Code für die Authenticator-App">
+          <div><label class="lbl">Oder manuell eingeben</label><div class="secret" id="s-secret"></div></div>
+        </div>
+        <div class="field"><label class="lbl" for="s-code">Code aus der App</label><input class="input code-input" id="s-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></div>
+        <label class="check"><input type="checkbox" id="s-trust"> Diesem Gerät 30 Tage vertrauen (nur eigenes Gerät)</label>
+        <button class="btn btn-primary btn-block" type="submit">Aktivieren</button>
+        <div class="err" id="s-err" role="alert"></div>
+      </form>
+
+      <!-- Schritt 3: Wiederherstellungscodes sichern -->
+      <div id="f-recovery" class="hide">
+        <h2>Wiederherstellungscodes sichern</h2>
+        <p class="sub">Damit kommst du rein, wenn dein Handy weg ist. Jeder Code gilt einmal. Bewahre sie offline oder im Passwort-Manager auf — sie werden nur jetzt angezeigt.</p>
+        <div class="codes" id="r-codes"></div>
+        <div class="toolbar"><button class="btn btn-ghost btn-sm" type="button" id="r-copy">Kopieren</button><button class="btn btn-ghost btn-sm" type="button" id="r-download">Als Datei speichern</button></div>
+        <label class="check"><input type="checkbox" id="r-ok"> Ich habe die Codes sicher gespeichert.</label>
+        <button class="btn btn-primary btn-block" type="button" id="r-continue" disabled>Weiter zum Admin</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ Admin ══ -->
+<div id="app" class="app hide">
+  <aside class="side" id="side">
+    <div class="brand-mark"><img src="/tapstern-icon.png" alt=""><div>Tapstern<small>Admin</small></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <div class="me"><div class="avatar" id="me-avatar">TA</div><div class="me-info"><b id="me-name"></b><small id="me-role"></small></div></div>
+      <button class="btn btn-ghost btn-sm btn-block" id="logout" type="button">Abmelden</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="btn btn-ghost btn-sm menu-btn" id="menu" type="button" aria-label="Menü">☰</button>
+        <h1 id="title">Übersicht</h1>
+        <div class="sub" id="subtitle"></div>
+      </div>
+      <div class="topbar-actions">
+        <span class="session-pill" id="session-pill"><i></i><span id="session-text">Sitzung aktiv</span></span>
+        <button class="btn btn-ghost btn-sm" id="refresh" type="button">↻ Aktualisieren</button>
+      </div>
+    </div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<div id="overlay" class="hide"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="/admin.js"></script>
+</body>
+</html>

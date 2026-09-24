@@ -225,6 +225,30 @@
   aside nav a.locked{opacity:0.45;}
   aside nav a.locked::after{content:' 🔒'; font-size:11px;}
 
+  /* Admin: Läden verwalten */
+  .adm-stats{display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin:0 0 14px;}
+  .adm-stat{background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer; text-align:left; font:inherit;}
+  .adm-stat.on{border-color:var(--coral); background:#fffaf9;}
+  .adm-stat small{display:block; color:var(--muted); font:11px "DM Mono", monospace;}
+  .adm-stat strong{font-size:20px;}
+  .adm-search{width:100%; border:1px solid #d5d0c9; border-radius:8px; padding:11px 12px; background:#fffefa; font:inherit; font-size:14px; margin-bottom:6px;}
+  .adm-shop{background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-top:10px;}
+  .adm-head{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;}
+  .adm-name{font-weight:700; font-size:15px;}
+  .adm-meta{font-size:12.5px; color:var(--muted); margin-top:3px; line-height:1.5; overflow-wrap:anywhere;}
+  .adm-note{font-size:12.5px; margin-top:8px; padding:8px 10px; border-radius:8px; background:#f7f3ec; overflow-wrap:anywhere;}
+  .adm-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+  .adm-actions .btn{font-size:12px; padding:7px 13px;}
+  .adm-badge{font-size:11px; font-weight:700; padding:3px 9px; border-radius:99px; white-space:nowrap;}
+  .adm-badge.trial{background:#fff3d6; color:#8a5a00;}
+  .adm-badge.subscribed{background:#dcf5e6; color:#1d7a45;}
+  .adm-badge.unlocked{background:#e1ecfd; color:#2455a4;}
+  .adm-badge.expired{background:#eee9e1; color:#6f6a62;}
+  .adm-badge.locked{background:#fde2dc; color:#a3301c;}
+  .adm-badge.unverified{background:#f3f0ea; color:#8f8a82;}
+  .btn-ok{background:#dcf5e6; color:#1d7a45; border:1px solid #b6e6c8;}
+  .btn-warn{background:transparent; color:#b23a24; border:1px solid #f1a89c;}
+
   /* 📱 MOBILE ANPASSUNGEN */
   @media (max-width:900px){
     .dash-layout{padding:12px 14px; margin:16px auto 60px;}
@@ -380,6 +404,7 @@
         <a data-go="billing">💳 Abo &amp; Karten</a>
         <a data-go="settings">◌ Stempelkarte gestalten</a>
         <a data-go="messages">✉ Nachricht an Kunden</a>
+        <a data-go="admin" id="navAdmin" class="hide">🛡 Admin</a>
       </nav>
       <div class="aside-footer">
         <button class="btn btn-ghost" id="logout" style="width:100%; font-size:12px; padding:8px;">Abmelden</button>
@@ -543,6 +568,16 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- SEITE 8: ADMIN (nur für Tapstempel-Admins) -->
+      <div id="p-admin" class="hide">
+        <h3>Admin: Läden verwalten</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Nur für dich sichtbar. Zugang freischalten, sperren oder Testphase verlängern.</p>
+        <div class="adm-stats" id="admStats"></div>
+        <input type="search" class="adm-search" id="admSearch" placeholder="Suchen nach Name, E-Mail, Telefon …">
+        <div id="admList"></div>
+        <div id="admErr" style="color:#c0392b; font-size:13px; margin-top:10px;"></div>
       </div>
 
       <!-- SEITE 6: STEMPELKARTE GESTALTEN -->
@@ -727,7 +762,7 @@
       }
       document.querySelectorAll('aside a').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
+      ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages', 'admin'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
       
       toggleMobileAside(false); // Auf Mobile nach Klick schließen!
 
@@ -737,6 +772,7 @@
       if (target === 'billing') loadBilling();
       if (target === 'settings') loadSettingsForm();
       if (target === 'messages') loadMessages();
+      if (target === 'admin') loadAdmin();
     };
   });
 
@@ -770,6 +806,7 @@
   /* BOOT */
   async function boot(shopData) {
     shop = shopData;
+    $('navAdmin').classList.toggle('hide', !shop.isAdmin);
     renderAccess();
     if (shop.access && !shop.access.active) goTo('billing');
     $('s-auth').classList.add('hide');
@@ -1421,6 +1458,96 @@
       $('msgStatus').textContent = '✓ Nachricht beendet';
     } catch (e) { $('msgStatus').textContent = e.message; }
   };
+
+  /* ADMIN: LÄDEN VERWALTEN */
+  const ADM_STATES = {
+    trial: 'Im Test', subscribed: 'Abo aktiv', unlocked: 'Freigeschaltet', expired: 'Test abgelaufen', locked: 'Gesperrt',
+  };
+  let admShops = [], admFilter = 'all';
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const admDate = sec => new Date(sec * 1000).toLocaleString('de-DE', { day: 'numeric', month: 'numeric', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  function admLeft(sec) {
+    const ms = sec * 1000 - Date.now();
+    if (ms <= 0) return 'abgelaufen';
+    const h = Math.floor(ms / 3600000);
+    return h >= 48 ? `noch ${Math.floor(h / 24)} Tage` : h >= 1 ? `noch ${h} Std.` : `noch ${Math.max(1, Math.floor(ms / 60000))} Min.`;
+  }
+  $('admSearch').oninput = () => renderAdmin();
+
+  async function loadAdmin() {
+    $('admErr').textContent = '';
+    try { admShops = (await api('/api/stempel/admin/shops')).shops; renderAdmin(); }
+    catch (e) { $('admErr').textContent = e.message; }
+  }
+
+  function renderAdmin() {
+    const verified = admShops.filter(s => s.verified);
+    const n = st => verified.filter(s => s.access.state === st).length;
+    const tiles = [['all', 'Alle', verified.length], ...Object.entries(ADM_STATES).map(([k, v]) => [k, v, n(k)]), ['unverified', 'Unbestätigt', admShops.length - verified.length]];
+    $('admStats').innerHTML = tiles.map(([k, label, c]) =>
+      `<button class="adm-stat ${admFilter === k ? 'on' : ''}" data-f="${k}"><small>${label}</small><strong>${c}</strong></button>`).join('');
+    document.querySelectorAll('.adm-stat').forEach(b => b.onclick = () => { admFilter = b.dataset.f; renderAdmin(); });
+
+    const q = $('admSearch').value.trim().toLowerCase();
+    const list = admShops.filter(s => {
+      if (admFilter === 'unverified' ? s.verified : !s.verified) return false;
+      if (admFilter !== 'all' && admFilter !== 'unverified' && s.access.state !== admFilter) return false;
+      return !q || [s.name, s.email, s.phone, s.first_name, s.last_name, s.slug, s.branche].some(v => String(v || '').toLowerCase().includes(q));
+    });
+    $('admList').innerHTML = list.length ? list.map(admShopHtml).join('') : '<p style="color:var(--muted); font-size:13px; margin-top:16px;">Keine Läden gefunden.</p>';
+    document.querySelectorAll('[data-adm]').forEach(b => b.onclick = () => admAct(b.dataset.id, b.dataset.adm, b.dataset.days));
+  }
+
+  function admShopHtml(s) {
+    const badge = !s.verified ? '<span class="adm-badge unverified">E-Mail nicht bestätigt</span>'
+      : `<span class="adm-badge ${s.access.state}">${s.isAdmin ? 'Admin' : ADM_STATES[s.access.state]}</span>`;
+    const contact = [[s.first_name, s.last_name].filter(Boolean).join(' '), s.email, s.phone].filter(Boolean).map(esc).join(' · ');
+    const plan = s.subscription_status === 'active'
+      ? `Stripe-Abo: ${s.plan === 'premium' ? 'Premium' : 'Basic'} ${s.billing_interval === 'yearly' ? '(jährlich)' : '(monatlich)'}` : 'kein Stripe-Abo';
+    const trial = s.subscription_status === 'active' || s.isAdmin ? ''
+      : s.access.trialEndsAt ? ` · Test bis ${admDate(s.access.trialEndsAt)} (${admLeft(s.access.trialEndsAt)})` : ' · Test startet beim nächsten Aufruf';
+    const manual = s.override === 'unlocked' || s.override === 'locked';
+    const id = esc(s.id);
+    return `
+      <div class="adm-shop">
+        <div class="adm-head">
+          <div style="min-width:0;">
+            <div class="adm-name">${esc(s.name)} <a href="/s/${encodeURIComponent(s.slug)}" target="_blank" rel="noopener" style="font-size:12px; font-weight:500; color:var(--coral);">Karte ↗</a></div>
+            <div class="adm-meta">${contact}</div>
+            <div class="adm-meta">${esc(s.branche || 'keine Branche')} · ${s.customers} Kunden · registriert ${esc(String(s.created_at || '').slice(0, 10))}</div>
+            <div class="adm-meta">${plan}${trial}${manual ? ' · <strong>manuell ' + (s.override === 'locked' ? 'gesperrt' : 'freigeschaltet') + '</strong>' : ''}</div>
+          </div>
+          ${badge}
+        </div>
+        ${s.note ? `<div class="adm-note">📝 ${esc(s.note)}</div>` : ''}
+        ${s.isAdmin ? '' : `<div class="adm-actions">
+          ${s.override !== 'unlocked' ? `<button class="btn btn-ok" data-adm="unlock" data-id="${id}">Freischalten</button>` : ''}
+          ${s.override !== 'locked' ? `<button class="btn btn-warn" data-adm="lock" data-id="${id}">Sperren</button>` : ''}
+          ${manual ? `<button class="btn btn-ghost" data-adm="auto" data-id="${id}">Automatisch (Test/Abo)</button>` : ''}
+          <button class="btn btn-ghost" data-adm="extend" data-days="1" data-id="${id}">Test +1 Tag</button>
+          <button class="btn btn-ghost" data-adm="extend" data-days="7" data-id="${id}">Test +7 Tage</button>
+          <button class="btn btn-ghost" data-adm="note" data-id="${id}">Notiz</button>
+        </div>`}
+      </div>`;
+  }
+
+  async function admAct(id, action, days) {
+    const s = admShops.find(x => x.id === id);
+    const body = { action };
+    if (action === 'lock' && !confirm(`„${s.name}“ sperren?\n\nKarte, Link, Stempeln und Wallet werden sofort pausiert.`)) return;
+    if (action === 'unlock' && !confirm(`„${s.name}“ dauerhaft freischalten, auch ohne Stripe-Abo?`)) return;
+    if (action === 'extend') body.days = parseInt(days, 10);
+    if (action === 'note') {
+      const note = prompt(`Notiz zu „${s.name}“ (nur für dich sichtbar):`, s.note || '');
+      if (note === null) return;
+      body.action = s.override === 'unlocked' ? 'unlock' : s.override === 'locked' ? 'lock' : 'auto';
+      body.note = note;
+    }
+    try {
+      await api(`/api/stempel/admin/shops/${encodeURIComponent(id)}/access`, { method: 'POST', body: JSON.stringify(body) });
+      await loadAdmin();
+    } catch (e) { alert(e.message); }
+  }
 
   /* AUTO-LOGIN CHECK */
   (async () => {

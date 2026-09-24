@@ -69,6 +69,11 @@ export default {
       if (method === 'GET' && appleWalletMatch) return handleAppleWalletPass(request, env, appleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
 
+      /* ── Admin: Stempel-Läden ── */
+      if (method === 'GET'  && path === '/api/admin/stempel/shops') return handleAdminStempelShops(request, env);
+      const adminAccessMatch = path.match(/^\/api\/admin\/stempel\/shops\/([^/]+)\/access$/);
+      if (method === 'POST' && adminAccessMatch) return handleAdminStempelAccess(request, env, adminAccessMatch[1]);
+
       /* ── Business Hub ── */
       if (method === 'POST' && path === '/api/hub/submit') return handleHubSubmit(request, env);
       if (method === 'POST' && path === '/api/hub/admin/login') return handleHubAdminLogin(request, env);
@@ -1177,6 +1182,141 @@ async function currentShop(env, request) {
   return row || null;
 }
 
+
+/* ══ Zugang: 24-Stunden-Test, Abo, Admin-Entscheidung ══
+   Nach der E-Mail-Bestätigung hat ein Laden 24 Stunden alles offen zum Testen und
+   Gestalten. Danach bleibt ohne aktives Abo nur „Abo & Karten“ im Dashboard; Kartenlink,
+   Stempeln, Personal-Scan und „Zu Wallet hinzufügen“ sind pausiert. Im Admin-Bereich
+   (stempel-admin.html) kann ein Laden unabhängig davon freigeschaltet, gesperrt oder
+   sein Test verlängert werden. Eigene Tabelle stempel_shop_access, damit stempel_shops
+   unverändert bleibt; Läden von vor dieser Regel bekommen ihre 24 Stunden ab dem
+   ersten Aufruf danach. */
+const TRIAL_HOURS = 24;
+let accessTableReady = false;
+
+async function ensureAccessTable(env) {
+  if (accessTableReady) return;
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS stempel_shop_access (
+       shop_id TEXT PRIMARY KEY,
+       trial_ends_at INTEGER NOT NULL,
+       override TEXT,
+       note TEXT,
+       updated_at INTEGER
+     )`
+  ).run();
+  accessTableReady = true;
+}
+
+/* Zugangs-Datensatz eines Ladens; fehlt er, beginnt jetzt der 24-Stunden-Test */
+async function shopAccessRow(env, shopId) {
+  await ensureAccessTable(env);
+  let row = await env.DB.prepare('SELECT * FROM stempel_shop_access WHERE shop_id = ?').bind(shopId).first();
+  if (!row) {
+    const now = Math.floor(Date.now() / 1000);
+    row = { shop_id: shopId, trial_ends_at: now + TRIAL_HOURS * 3600, override: null, note: null, updated_at: now };
+    await env.DB.prepare('INSERT OR IGNORE INTO stempel_shop_access (shop_id, trial_ends_at, updated_at) VALUES (?, ?, ?)')
+      .bind(shopId, row.trial_ends_at, now).run();
+  }
+  return row;
+}
+
+/* state: trial | subscribed | unlocked (Admin) | expired | locked (Admin) */
+function accessStateOf(shop, row, now = Math.floor(Date.now() / 1000)) {
+  const trialEndsAt = row?.trial_ends_at || null;
+  if (row?.override === 'locked') return { state: 'locked', active: false, trialEndsAt };
+  if (row?.override === 'unlocked') return { state: 'unlocked', active: true, trialEndsAt };
+  if (shop.subscription_status === 'active') return { state: 'subscribed', active: true, trialEndsAt };
+  if (!trialEndsAt || now < trialEndsAt) return { state: 'trial', active: true, trialEndsAt };
+  return { state: 'expired', active: false, trialEndsAt };
+}
+
+async function shopAccess(env, shop) {
+  return accessStateOf(shop, await shopAccessRow(env, shop.id));
+}
+
+/* Für Dashboard-Endpunkte, die nur mit aktivem Test oder Abo gehen */
+async function requireActiveShop(env, request) {
+  const shop = await currentShop(env, request);
+  if (!shop) return { denied: json({ error: 'Nicht angemeldet' }, 401) };
+  const access = await shopAccess(env, shop);
+  if (!access.active) {
+    return { denied: json({
+      error: access.state === 'locked'
+        ? 'Dein Konto ist gesperrt. Bitte melde dich beim Tapstern-Support.'
+        : 'Deine Testphase ist abgelaufen. Schließe ein Abo ab, um weiterzumachen.',
+      access,
+    }, 402) };
+  }
+  return { shop, access };
+}
+
+/* Laden-Daten fürs Dashboard, ohne Geheimnisse, mit Zugangsstatus */
+async function publicShop(env, shop) {
+  const { password_hash, session_token_hash, verify_code_hash, ...safe } = shop;
+  safe.access = await shopAccess(env, shop);
+  return safe;
+}
+
+/* Kundenseite, wenn der Laden gerade nicht aktiv ist */
+function inactiveShopResponse(shop, asJson) {
+  const msg = `Die Stempelkarte von ${shop.name} ist gerade pausiert. Frag gern direkt im Laden nach.`;
+  if (asJson) return json({ error: msg }, 403);
+  return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(shop.name)} — Stempelkarte pausiert</title>
+<style>
+  body{margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    font-family:'Inter',system-ui,-apple-system,sans-serif; background:#14131a; color:#f3f0ea;}
+  .box{max-width:340px; text-align:center; background:#211f29; border-radius:20px; padding:32px 26px;}
+  h1{font-size:1.15rem; margin:0 0 10px;}
+  p{color:#a39cad; font-size:0.9rem; line-height:1.5; margin:0;}
+</style></head>
+<body><div class="box"><h1>${escapeHtml(shop.name)}</h1><p>${escapeHtml(msg)}</p></div></body></html>`,
+    { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+/* ── Admin: Läden verwalten (gleiches Login wie der Hub-Admin) ── */
+async function handleAdminStempelShops(request, env) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  await ensureAccessTable(env);
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.slug, s.name, s.email, s.first_name, s.last_name, s.phone, s.branche, s.plan, s.billing_interval,
+            s.subscription_status, s.verified, s.created_at, a.trial_ends_at, a.override, a.note,
+            (SELECT COUNT(*) FROM stempel_customers c WHERE c.shop_id = s.id) AS customers
+     FROM stempel_shops s LEFT JOIN stempel_shop_access a ON a.shop_id = s.id
+     ORDER BY s.created_at DESC`
+  ).all();
+  const now = Math.floor(Date.now() / 1000);
+  return json({ shops: (results || []).map(r => ({ ...r, access: accessStateOf(r, r.trial_ends_at ? r : null, now) })) });
+}
+
+/* POST /api/admin/stempel/shops/:id/access — { action: unlock | lock | auto | extend, days?, note? } */
+async function handleAdminStempelAccess(request, env, shopId) {
+  if (!(await requireHubAdmin(request, env))) return json({ error: 'Nicht angemeldet' }, 401);
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(shopId).first();
+  if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
+  const data = await readJson(request);
+  const action = str(data?.action);
+  const row = await shopAccessRow(env, shop.id);
+  const now = Math.floor(Date.now() / 1000);
+  let { trial_ends_at: trialEndsAt, override } = row;
+
+  if (action === 'unlock') override = 'unlocked';
+  else if (action === 'lock') override = 'locked';
+  else if (action === 'auto') override = null;
+  else if (action === 'extend') {
+    const days = Math.max(1, Math.min(365, parseInt(data?.days) || 1));
+    trialEndsAt = Math.max(now, trialEndsAt) + days * 86400;
+    if (override === 'locked') override = null; // wer verlängert, will den Laden wieder offen haben
+  } else return json({ error: 'Unbekannte Aktion' }, 400);
+
+  const note = data?.note !== undefined ? (str(data.note).slice(0, 500) || null) : row.note;
+  await env.DB.prepare('UPDATE stempel_shop_access SET trial_ends_at = ?, override = ?, note = ?, updated_at = ? WHERE shop_id = ?')
+    .bind(trialEndsAt, override, note, now, shop.id).run();
+  return json({ success: true, access: accessStateOf(shop, { trial_ends_at: trialEndsAt, override }, now) });
+}
+
 async function handleStempelSignup(request, env) {
   const data = await request.json();
   const email = str(data.email).toLowerCase();
@@ -1241,6 +1381,13 @@ async function handleStempelVerifyEmail(request, env) {
   const token = randomToken();
   await env.DB.prepare('UPDATE stempel_shops SET verified = 1, verify_code_hash = NULL, session_token_hash = ? WHERE id = ?')
     .bind(await sha256(token), shop.id).run();
+  // 24-Stunden-Test beginnt mit der Bestätigung
+  await ensureAccessTable(env);
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    `INSERT INTO stempel_shop_access (shop_id, trial_ends_at, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(shop_id) DO UPDATE SET trial_ends_at = excluded.trial_ends_at, updated_at = excluded.updated_at`
+  ).bind(shop.id, now + TRIAL_HOURS * 3600, now).run();
 
   if (env.MAIL_FROM) {
     const adminUrl = new URL(request.url).origin + '/stempel.html';
@@ -1251,8 +1398,7 @@ async function handleStempelVerifyEmail(request, env) {
     ).catch(() => {});
   }
 
-  const { password_hash, session_token_hash, verify_code_hash, ...safe } = shop;
-  safe.verified = 1;
+  const safe = await publicShop(env, { ...shop, verified: 1 });
   return json({ success: true, shop: safe }, 200, stempelCookie(shop.id, token));
 }
 
@@ -1271,20 +1417,18 @@ async function handleStempelLogin(request, env) {
   await env.DB.prepare('UPDATE stempel_shops SET session_token_hash = ? WHERE id = ?')
     .bind(await sha256(token), shop.id).run();
 
-  const { password_hash, session_token_hash, ...safe } = shop;
-  return json({ success: true, shop: safe }, 200, stempelCookie(shop.id, token));
+  return json({ success: true, shop: await publicShop(env, shop) }, 200, stempelCookie(shop.id, token));
 }
 
 async function handleStempelMe(request, env) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
-  const { password_hash, session_token_hash, ...safe } = shop;
-  return json({ shop: safe });
+  return json({ shop: await publicShop(env, shop) });
 }
 
 async function handleStempelSettings(request, env, ctx) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const data = await request.json();
 
   const stampIcon = STAMP_ICON_IDS.includes(str(data.stamp_icon)) ? str(data.stamp_icon) : (shop.stamp_icon || 'circle');
@@ -1325,8 +1469,8 @@ async function handleStempelUploadImage(request, env, opts, ctx) {
   let form;
   try { form = await request.formData(); } catch (e) { return json({ error: 'Ungültige Anfrage' }, 400); }
 
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
 
   const file = form.get(opts.formField);
   if (!file) return json({ error: 'Fehlende Angaben' }, 400);
@@ -1349,8 +1493,8 @@ async function handleStempelUploadImage(request, env, opts, ctx) {
 }
 
 async function handleStempelRemoveImage(request, env, column, ctx) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   if (shop[column]) { try { await env.PHOTOS.delete(shop[column]); } catch (e) {} }
   await env.DB.prepare(`UPDATE stempel_shops SET ${column} = NULL WHERE id = ?`).bind(shop.id).run();
   if (column === 'logo_key') {
@@ -1361,8 +1505,8 @@ async function handleStempelRemoveImage(request, env, column, ctx) {
 }
 
 async function handleStempelCustomers(request, env) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const { results } = await env.DB.prepare(
     `SELECT id, card_code, stamps, redeemed_count, created_at, last_stamp_at FROM stempel_customers WHERE shop_id = ? ORDER BY last_stamp_at DESC LIMIT 200`
   ).bind(shop.id).all();
@@ -1464,6 +1608,7 @@ async function grantStampToCustomer(env, customer, shop, employeeId, request, ct
 async function handleStempelTap(request, env, slug, ctx) {
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
   if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop);
 
   const customer = await customerOfDevice(env, shop, deviceTokenOf(request));
   if (!customer) {
@@ -1478,6 +1623,7 @@ async function handleStempelTap(request, env, slug, ctx) {
 async function handleStempelTapSubmit(request, env, slug, ctx) {
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
   if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop);
 
   const form = await request.formData().catch(() => null);
   const action = str(form?.get('action'));
@@ -1545,8 +1691,8 @@ async function cardResponse(request, env, shop, customer, state, setDeviceToken)
 
 /* ── Mitarbeiter-Verwaltung ── */
 async function handleStempelListEmployees(request, env) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const { results } = await env.DB.prepare(
     `SELECT id, name, created_at FROM stempel_employees WHERE shop_id = ? ORDER BY created_at`
   ).bind(shop.id).all();
@@ -1554,8 +1700,8 @@ async function handleStempelListEmployees(request, env) {
 }
 
 async function handleStempelAddEmployee(request, env) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const data = await readJson(request);
   const name = str(data?.name);
   const pin = str(data?.pin);
@@ -1575,8 +1721,8 @@ async function handleStempelAddEmployee(request, env) {
 }
 
 async function handleStempelDeleteEmployee(request, env, id) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const row = await env.DB.prepare(`SELECT id FROM stempel_employees WHERE id = ? AND shop_id = ?`).bind(id, shop.id).first();
   if (!row) return json({ error: 'Nicht gefunden' }, 404);
   await env.DB.prepare(`DELETE FROM stempel_employees WHERE id = ?`).bind(id).run();
@@ -1642,7 +1788,8 @@ async function handleStempelCheckoutSubscription(request, env) {
 async function handleStempelCheckoutCard(request, env) {
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
-  if (shop.subscription_status !== 'active') {
+  const { state } = await shopAccess(env, shop);
+  if (state !== 'subscribed' && state !== 'unlocked') { // im Test noch nicht, vom Admin freigeschaltet schon
     return json({ error: 'Karten können erst nach einem aktiven Abo bestellt werden' }, 403);
   }
   if (!env.STRIPE_SECRET_KEY) return json({ error: 'Zahlung ist noch nicht eingerichtet' }, 500);
@@ -1844,6 +1991,7 @@ async function handleGoogleWalletSave(request, env, slug) {
   }
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
   if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop);
 
   const cookieMatch = (request.headers.get('cookie') || '').match(/(?:^|;\s*)stempel_device=([^;]+)/);
   const customer = cookieMatch
@@ -1987,6 +2135,7 @@ async function handleAppleWalletPass(request, env, slug) {
   if (!env.APPLE_PASS_CERT || !env.APPLE_PASS_KEY) return text('Apple Wallet ist noch nicht eingerichtet.', 500);
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE slug = ?').bind(slug).first();
   if (!shop) return text('Laden nicht gefunden', 404);
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop);
 
   const customer = await customerOfDevice(env, shop, deviceTokenOf(request));
   if (!customer) return text('Keine Stempelkarte gefunden — erst antippen oder QR-Code beitreten.', 404);
@@ -2812,8 +2961,8 @@ async function lastMessageCreatedAt(env, shopId) {
 
 /* GET /api/stempel/message — aktuelle Nachricht, Empfänger, wann die nächste möglich ist */
 async function handleStempelGetMessage(request, env) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   await ensureMessagesTable(env);
   const last = await lastMessageCreatedAt(env, shop.id);
   const next = last + MESSAGE_INTERVAL_SEC;
@@ -2827,8 +2976,8 @@ async function handleStempelGetMessage(request, env) {
 
 /* POST /api/stempel/message — Nachricht senden */
 async function handleStempelSendMessage(request, env, ctx) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const data = await readJson(request);
   const text = str(data?.text).replace(/\s+/g, ' ');
   if (text.length < 3) return json({ error: 'Bitte schreib eine Nachricht.' }, 400);
@@ -2865,8 +3014,8 @@ async function handleStempelSendMessage(request, env, ctx) {
 
 /* DELETE /api/stempel/message — Nachricht vorzeitig beenden (ohne neue Mitteilung) */
 async function handleStempelEndMessage(request, env, ctx) {
-  const shop = await currentShop(env, request);
-  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
   const message = await currentShopMessage(env, shop.id);
   if (!message) return json({ success: true });
   await env.DB.prepare('UPDATE stempel_messages SET ended_at = ? WHERE id = ?').bind(Math.floor(Date.now() / 1000), message.id).run();
@@ -2961,6 +3110,7 @@ async function handleStaffRedeemPage(request, env, token) {
   if (!customer) return new Response('Karte nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
   if (!shop) return new Response('Laden nicht gefunden.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop);
 
   const accent = shop.accent_color || '#6366f1';
   return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
@@ -3020,6 +3170,7 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
   if (!customer) return json({ error: 'Karte nicht gefunden' }, 404);
   const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
   if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop, true);
 
   const pinHash = await sha256(pin);
   const employee = await env.DB.prepare('SELECT * FROM stempel_employees WHERE shop_id = ? AND pin_hash = ?')

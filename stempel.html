@@ -216,6 +216,15 @@
   .notif-head span{font-weight:400; color:#6b6b6b;}
   .notif-text{font-size:12.5px; color:#15141a; line-height:1.35; margin-top:2px; overflow-wrap:anywhere;}
 
+  /* Zugang: Testphase / abgelaufen / gesperrt */
+  .access-banner{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    border-radius:12px; padding:14px 18px; margin:0 0 22px; font-size:14px; line-height:1.45;}
+  .access-banner.trial{background:#fff7e6; border:1px solid #f3d9a4; color:#6b4b10;}
+  .access-banner.expired, .access-banner.locked{background:#fdece8; border:1px solid #f6c9bf; color:#8a2a1a;}
+  .access-banner b{display:block; margin-bottom:2px;}
+  aside nav a.locked{opacity:0.45;}
+  aside nav a.locked::after{content:' 🔒'; font-size:11px;}
+
   /* 📱 MOBILE ANPASSUNGEN */
   @media (max-width:900px){
     .dash-layout{padding:12px 14px; margin:16px auto 60px;}
@@ -386,6 +395,8 @@
         </div>
         <div class="dash-avatar" id="dashAvatar">TS</div>
       </div>
+
+      <div id="accessBanner" class="access-banner hide"></div>
 
       <!-- SEITE 1: ÜBERSICHT (HOME) MIT ZEITRAUM-FILTER -->
       <div id="p-home">
@@ -676,6 +687,7 @@
   async function api(path, opts = {}) {
     const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 402 && data.access && shop) { shop.access = data.access; renderAccess(); goTo('billing'); }
     if (!res.ok) throw new Error(data.error || 'Fehler ' + res.status);
     return data;
   }
@@ -708,9 +720,13 @@
   /* NAVIGATION */
   document.querySelectorAll('aside a[data-go]').forEach(b => {
     b.onclick = () => {
+      let target = b.dataset.go;
+      if (shop && shop.access && !shop.access.active && target !== 'billing') {
+        target = 'billing'; // ohne Test/Abo bleibt nur „Abo & Karten“
+        b = document.querySelector('aside a[data-go="billing"]');
+      }
       document.querySelectorAll('aside a').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      const target = b.dataset.go;
       ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
       
       toggleMobileAside(false); // Auf Mobile nach Klick schließen!
@@ -724,9 +740,38 @@
     };
   });
 
+  function goTo(target) { document.querySelector('aside a[data-go="' + target + '"]').click(); }
+
+  /* ZUGANG: Testphase, abgelaufen, gesperrt */
+  function renderAccess() {
+    const a = shop.access || { state: 'subscribed', active: true };
+    const el = $('accessBanner');
+    document.querySelectorAll('aside nav a[data-go]').forEach(x => x.classList.toggle('locked', !a.active && x.dataset.go !== 'billing'));
+    if (a.state === 'trial') {
+      const left = a.trialEndsAt ? Math.max(0, a.trialEndsAt * 1000 - Date.now()) : 0;
+      const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60;
+      const time = h >= 1 ? `${h} Std. ${m} Min.` : `${m} Min.`;
+      el.className = 'access-banner trial';
+      el.innerHTML = `<div><b>Testphase: noch ${time}</b>Probier alles aus und gestalte deine Karte. Danach werden Karte, Link und Wallet pausiert, bis du ein Abo abschließt.</div>
+        <button class="btn btn-coral" style="font-size:13px; padding:9px 16px;" onclick="goTo('billing')">Abo wählen</button>`;
+    } else if (a.state === 'expired') {
+      el.className = 'access-banner expired';
+      el.innerHTML = `<div><b>Deine Testphase ist abgelaufen</b>Deine Stempelkarte, der Kartenlink und Wallet sind pausiert. Mit einem Abo geht es sofort weiter — deine Einstellungen und Kunden bleiben erhalten.</div>
+        <button class="btn btn-coral" style="font-size:13px; padding:9px 16px;" onclick="goTo('billing')">Abo wählen</button>`;
+    } else if (a.state === 'locked') {
+      el.className = 'access-banner locked';
+      el.innerHTML = `<div><b>Dein Konto ist gesperrt</b>Deine Stempelkarte ist gerade pausiert. Bitte melde dich bei uns: <a href="mailto:anfrage@tapstern.de" style="color:inherit;">anfrage@tapstern.de</a></div>`;
+    } else {
+      el.className = 'access-banner hide';
+    }
+  }
+  setInterval(() => { if (shop && shop.access && shop.access.state === 'trial') renderAccess(); }, 60000);
+
   /* BOOT */
   async function boot(shopData) {
     shop = shopData;
+    renderAccess();
+    if (shop.access && !shop.access.active) goTo('billing');
     $('s-auth').classList.add('hide');
     $('s-app').classList.remove('hide');
     

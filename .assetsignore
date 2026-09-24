@@ -4,3 +4,8 @@ schema.sql
 migration-v2.sql
 .git
 .wrangler
+# Interna nicht öffentlich ausliefern (Schema, Migrationen, Doku)
+*.sql
+*.md
+.claude
+node_modules

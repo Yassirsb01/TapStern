@@ -435,6 +435,26 @@
   document.querySelectorAll('input[name="Zahlungsart"]').forEach(el => el.addEventListener('change', updateTotal));
   updateTotal();
 
+  // ─── BESTELLUNG FÜR DEN SERVER — nur WAS bestellt wird, den Preis rechnet der Server ───
+  function buildOrderPayload() {
+    const menge = parseInt(document.getElementById('menge').value, 10) || 1;
+    const hostingEl = document.querySelector('input[name="Hosting"]:checked');
+    let order;
+    if (isCartOrder) order = { kind: 'cart', items: cart.map(i => ({ name: i.name, qty: i.qty })) };
+    else if (urlProdukt) order = { kind: 'product', name: decodeURIComponent(urlProdukt), qty: menge };
+    else order = { kind: 'package', paket: getCurrentPaket(), qty: menge, hostingYears: hostingEl && hostingEl.value.startsWith('2') ? 2 : 1 };
+    const val = id => (document.getElementById(id) || {}).value || '';
+    return {
+      order,
+      customer: { firma: val('firma'), ansprechpartner: val('ansprechpartner'), email: val('email'), telefon: val('telefon'), adresse: val('adresse') },
+      details: {
+        'NFC-Ziel-Links': val('zielLinks'), 'Website': val('webseite'), 'Design-Wünsche': val('wuensche'),
+        'Name auf Karte': val('vkName'), 'Position': val('vkPosition'), 'Telefon auf Karte': val('vkTelefon'),
+        'E-Mail auf Karte': val('vkEmail'), 'Visitenkarte-Design': val('vkLogo'),
+      },
+    };
+  }
+
   // ─── FORMULAR ABSENDEN ───
   document.getElementById('orderForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -457,46 +477,10 @@
     if (zahlungsart === 'Sofort online') {
       btn.textContent = 'Weiterleitung zu Stripe …';
       try {
-        let items = [];
-        let metadata = {
-          Betrieb: document.getElementById('firma').value,
-          Ansprechpartner: document.getElementById('ansprechpartner').value,
-          Ziel_Links: strSlice(zielLinksVal, 480)
-        };
-
-        if (isCartOrder) {
-          items = cart.map(i => {
-            const finalUnit = pricing.hasDiscount ? i.price * 0.5 : i.price;
-            return {
-              name: i.name + (pricing.hasDiscount ? ' (50% Mengenrabatt)' : ''),
-              unitAmount: Math.round(finalUnit * 100),
-              quantity: i.qty
-            };
-          });
-          metadata['Bestelltyp'] = 'Warenkorb (' + pricing.totalCartQty + ' Artikel gesamt)';
-          if (pricing.hasDiscount) metadata['Rabatt'] = '50% Mengenrabatt ab 5 Stück';
-        } else {
-          const menge = parseInt(document.getElementById('menge').value, 10) || 1;
-          const finalPriceEUR = pricing.total;
-
-          items = [{
-            name: getCurrentPaket() + ' × ' + menge + (pricing.hasDiscount ? ' (inkl. 50% Rabatt)' : ''),
-            unitAmount: Math.round(finalPriceEUR * 100),
-            quantity: 1
-          }];
-          metadata['Paket'] = getCurrentPaket();
-          metadata['Menge'] = menge;
-          if (pricing.hasDiscount) metadata['Rabatt'] = '50% Mengenrabatt ab 5 Stk.';
-        }
-
         const res = await fetch('/api/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items,
-            customerEmail: document.getElementById('email').value,
-            metadata
-          })
+          body: JSON.stringify(buildOrderPayload())
         });
         const data = await res.json();
         if (!res.ok || !data.url) throw new Error(data.error || 'Zahlung konnte nicht gestartet werden');
@@ -512,7 +496,15 @@
 
     btn.textContent = 'Wird gesendet…';
     try {
+      // Bestellung auch bei uns festhalten (Admin-Übersicht) — die Mail läuft wie bisher übers Formular
+      let orderId = '';
+      try {
+        const r = await fetch('/api/shop-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(buildOrderPayload()) });
+        const d = await r.json();
+        if (r.ok) orderId = d.orderId;
+      } catch (e) { /* Formular-Mail geht trotzdem raus */ }
       const formData = new FormData(form);
+      if (orderId) formData.append('Bestellnummer', orderId);
       formData.append('Gesamtpreis', pricing.total.toLocaleString('de-DE', { minimumFractionDigits: 2 }) + ' €');
       if (pricing.hasDiscount) {
         formData.append('Rabatt_Angewendet', '50% Mengenrabatt ab 5 Stück Gesamtmenge');

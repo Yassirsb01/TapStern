@@ -502,7 +502,7 @@ $('nextBtn').onclick = async () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Code falsch');
       // Direkt zur Plattform!
-      window.location.href = 'stempel.html';
+      window.location.href = 'stempel.html?willkommen=1';
     } catch(e) {
       $('regError').textContent = e.message;
       $('regError').style.display = 'block';

@@ -65,6 +65,9 @@ async function routeRequest(request, env, ctx) {
       if (method === 'POST' && path === '/api/stempel/verify-email') return handleStempelVerifyEmail(request, env);
       if (method === 'POST' && path === '/api/stempel/login') return handleStempelLogin(request, env);
       if (method === 'GET'  && path === '/api/stempel/me') return handleStempelMe(request, env);
+      if (method === 'GET'  && path === '/api/stempel/notices') return handleStempelNotices(request, env);
+      const stempelNoticeMatch = path.match(/^\/api\/stempel\/notices\/([a-f0-9-]{36})$/);
+      if (method === 'POST' && stempelNoticeMatch) return handleStempelNoticeAction(request, env, stempelNoticeMatch[1], ctx);
       if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env, ctx);
       if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
       if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' }, ctx);
@@ -4394,6 +4397,13 @@ async function ensureAdminTables(env) {
        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL, admin_id TEXT, admin_email TEXT,
        action TEXT NOT NULL, target TEXT, details TEXT, ip TEXT)`,
     `CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit(created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS customer_notices (
+       id TEXT PRIMARY KEY, module TEXT NOT NULL, target_id TEXT, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+       show_from INTEGER NOT NULL, expires_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL, cancelled INTEGER NOT NULL DEFAULT 0)`,
+    `CREATE INDEX IF NOT EXISTS idx_customer_notices_target ON customer_notices(module, target_id)`,
+    `CREATE TABLE IF NOT EXISTS customer_notice_state (
+       notice_id TEXT NOT NULL, target_id TEXT NOT NULL, read_at INTEGER, dismissed_at INTEGER,
+       rating INTEGER, feedback TEXT, feedback_at INTEGER, PRIMARY KEY (notice_id, target_id))`,
     `CREATE TABLE IF NOT EXISTS admin_trusted_devices (
        token_hash TEXT PRIMARY KEY, admin_id TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER,
        expires_at INTEGER NOT NULL, ip TEXT, user_agent TEXT)`,
@@ -5480,5 +5490,143 @@ async function routeAdminApi(request, env, sub, method) {
   if (R('GET', 'visitenkarten')) return handleAdminCards(request, env);
   if (method === 'POST' && seg[0] === 'visitenkarten' && seg[1] === 'cards' && seg.length === 4) return handleAdminCardAction(request, env, seg[2], seg[3]);
   if (R('POST', 'export')) return handleAdminExport(request, env);
+  if (method === 'GET' && seg[0] === 'notices' && seg.length === 1) return handleAdminNotices(request, env);
+  if (R('POST', 'notices')) return handleAdminNoticeCreate(request, env);
+  if (method === 'POST' && seg[0] === 'notices' && seg[2] === 'cancel' && seg.length === 3) return handleAdminNoticeCancel(request, env, seg[1]);
   return adminJson({ error: 'Nicht gefunden' }, 404);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   Nachrichten an Kunden (zuerst Tapstempel-Läden, Tabelle ist modulfähig)
+   ──────────────────────────────────────────────────────────────────────
+   Der Admin schreibt einem Laden (oder allen) eine Nachricht, die ab einem
+   gewählten Zeitpunkt oben im Dashboard erscheint — z. B. „Dein Gratismonat
+   endet am {testende}“. Art „feedback“ zeigt Sterne + Textfeld; Antworten
+   landen im Admin. Platzhalter: {laden}, {name}, {testende}.
+   Sichtbar auch bei abgelaufenem oder gesperrtem Konto (kein Zugangs-Gate).
+   ══════════════════════════════════════════════════════════════════════ */
+const NOTICE_KINDS = ['info', 'erinnerung', 'feedback'];
+const NOTICE_MODULES = ['tapstempel'];
+
+function fmtBerlinDate(sec) {
+  return sec ? new Date(sec * 1000).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: 'numeric', month: 'long', year: 'numeric' }) : '–';
+}
+function fillNoticeText(text, shop, access) {
+  return String(text)
+    .replace(/\{laden\}/g, shop.name || '')
+    .replace(/\{name\}/g, shop.first_name || shop.name || '')
+    .replace(/\{testende\}/g, fmtBerlinDate(access?.trialEndsAt));
+}
+
+async function handleStempelNotices(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  await ensureAdminTables(env);
+  const now = nowSec();
+  const access = await shopAccess(env, shop);
+  const { results } = await env.DB.prepare(
+    `SELECT n.id, n.kind, n.title, n.body, n.show_from, st.read_at, st.rating, st.feedback
+     FROM customer_notices n
+     LEFT JOIN customer_notice_state st ON st.notice_id = n.id AND st.target_id = ?
+     WHERE n.module = 'tapstempel' AND (n.target_id = ? OR n.target_id IS NULL) AND n.cancelled = 0
+       AND n.show_from <= ? AND (n.expires_at IS NULL OR n.expires_at > ?) AND st.dismissed_at IS NULL
+     ORDER BY n.show_from DESC LIMIT 5`
+  ).bind(shop.id, shop.id, now, now).all();
+  return json({ notices: (results || []).map(n => ({
+    id: n.id, kind: n.kind, title: fillNoticeText(n.title, shop, access), body: fillNoticeText(n.body, shop, access),
+    date: n.show_from, read: !!n.read_at, answered: n.rating != null || !!n.feedback,
+  })) });
+}
+
+async function handleStempelNoticeAction(request, env, id, ctx) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  await ensureAdminTables(env);
+  const now = nowSec();
+  const notice = await env.DB.prepare(
+    `SELECT * FROM customer_notices WHERE id = ? AND module = 'tapstempel' AND (target_id = ? OR target_id IS NULL) AND cancelled = 0 AND show_from <= ?`
+  ).bind(id, shop.id, now).first();
+  if (!notice) return json({ error: 'Nachricht nicht gefunden' }, 404);
+  const data = await readJson(request);
+  const action = str(data?.action);
+  await env.DB.prepare('INSERT OR IGNORE INTO customer_notice_state (notice_id, target_id) VALUES (?, ?)').bind(id, shop.id).run();
+
+  if (action === 'read') {
+    await env.DB.prepare('UPDATE customer_notice_state SET read_at = COALESCE(read_at, ?) WHERE notice_id = ? AND target_id = ?').bind(now, id, shop.id).run();
+  } else if (action === 'dismiss') {
+    await env.DB.prepare('UPDATE customer_notice_state SET read_at = COALESCE(read_at, ?), dismissed_at = ? WHERE notice_id = ? AND target_id = ?').bind(now, now, id, shop.id).run();
+  } else if (action === 'feedback') {
+    if (notice.kind !== 'feedback') return json({ error: 'Hier ist keine Antwort vorgesehen' }, 400);
+    const rating = parseInt(data?.rating, 10);
+    const ratingOk = rating >= 1 && rating <= 5 ? rating : null;
+    const text = str(data?.text).slice(0, 2000) || null;
+    if (!ratingOk && !text) return json({ error: 'Bitte Sterne wählen oder etwas schreiben' }, 400);
+    const prev = await env.DB.prepare('SELECT feedback_at FROM customer_notice_state WHERE notice_id = ? AND target_id = ?').bind(id, shop.id).first();
+    if (prev?.feedback_at) return json({ error: 'Du hast schon geantwortet — danke!' }, 409);
+    await env.DB.prepare(`UPDATE customer_notice_state SET rating = ?, feedback = ?, feedback_at = ?, read_at = COALESCE(read_at, ?), dismissed_at = ?
+                          WHERE notice_id = ? AND target_id = ?`).bind(ratingOk, text, now, now, now, id, shop.id).run();
+    // Inhaber bekommen eine kurze Mail
+    const owners = await q(env, `SELECT email FROM admin_users WHERE role = 'owner' AND disabled = 0`);
+    const origin = new URL(request.url).origin;
+    const mails = owners.map(o => sendMail(env, o.email, `Tapstern: Feedback von ${shop.name}`, `Feedback von ${shop.name}`,
+      `${ratingOk ? '★'.repeat(ratingOk) + '☆'.repeat(5 - ratingOk) + ' — ' : ''}${text || '(ohne Text)'}\n\nZur Nachricht: „${notice.title}“`,
+      'Im Admin ansehen', origin + '/admin#modul/tapstempel'));
+    if (ctx?.waitUntil) ctx.waitUntil(Promise.all(mails)); else await Promise.all(mails);
+  } else return json({ error: 'Unbekannte Aktion' }, 400);
+  return json({ success: true });
+}
+
+async function handleAdminNotices(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const notices = await q(env,
+    `SELECT n.*, a.email AS created_by_email,
+            (SELECT name FROM stempel_shops s WHERE s.id = n.target_id) AS target_name,
+            (SELECT COUNT(*) FROM customer_notice_state st WHERE st.notice_id = n.id AND st.read_at IS NOT NULL) AS reads
+     FROM customer_notices n LEFT JOIN admin_users a ON a.id = n.created_by
+     WHERE n.module = 'tapstempel' ORDER BY n.created_at DESC LIMIT 200`);
+  const answers = await q(env,
+    `SELECT st.notice_id, st.target_id, st.rating, st.feedback, st.feedback_at, s.name AS shop_name
+     FROM customer_notice_state st JOIN customer_notices n ON n.id = st.notice_id
+     LEFT JOIN stempel_shops s ON s.id = st.target_id
+     WHERE n.module = 'tapstempel' AND st.feedback_at IS NOT NULL ORDER BY st.feedback_at DESC LIMIT 500`);
+  return adminJson({ notices: notices.map(({ created_by, ...n }) => ({ ...n, cancelled: !!n.cancelled })), answers });
+}
+
+async function handleAdminNoticeCreate(request, env) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  const data = await readJson(request);
+  const module = NOTICE_MODULES.includes(data?.module) ? data.module : 'tapstempel';
+  const kind = NOTICE_KINDS.includes(data?.kind) ? data.kind : 'info';
+  const title = str(data?.title).slice(0, 100);
+  const body = String(data?.body ?? '').replace(/\r/g, '').trim().slice(0, 1500);
+  if (!title || !body) return adminJson({ error: 'Bitte Titel und Text ausfüllen' }, 400);
+  const now = nowSec();
+  const showFrom = Number.isFinite(+data?.showFrom) && +data.showFrom > 0 ? Math.floor(+data.showFrom) : now;
+  const expiresAt = Number.isFinite(+data?.expiresAt) && +data.expiresAt > 0 ? Math.floor(+data.expiresAt) : null;
+  if (showFrom > now + 366 * 86400) return adminJson({ error: 'Startdatum zu weit in der Zukunft' }, 400);
+  if (expiresAt && expiresAt <= Math.max(now, showFrom)) return adminJson({ error: 'Das Enddatum muss nach dem Start liegen' }, 400);
+  let targetId = null, targetName = 'alle Läden';
+  if (data?.targetId) {
+    const shop = await env.DB.prepare('SELECT id, name FROM stempel_shops WHERE id = ?').bind(str(data.targetId)).first();
+    if (!shop) return adminJson({ error: 'Laden nicht gefunden' }, 404);
+    targetId = shop.id; targetName = shop.name;
+  }
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO customer_notices (id, module, target_id, kind, title, body, show_from, expires_at, created_by, created_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(id, module, targetId, kind, title, body, showFrom, expiresAt, ctx.admin.id, now).run();
+  await audit(env, request, ctx.admin, 'nachricht.erstellt', targetName, { titel: title, art: kind, ab: showFrom });
+  return adminJson({ success: true, id });
+}
+
+async function handleAdminNoticeCancel(request, env, id) {
+  const ctx = await adminSession(env, request, { write: true });
+  if (ctx.denied) return ctx.denied;
+  const n = await env.DB.prepare('SELECT id, title FROM customer_notices WHERE id = ?').bind(id).first();
+  if (!n) return adminJson({ error: 'Nicht gefunden' }, 404);
+  await env.DB.prepare('UPDATE customer_notices SET cancelled = 1 WHERE id = ?').bind(id).run();
+  await audit(env, request, ctx.admin, 'nachricht.beendet', n.title);
+  return adminJson({ success: true });
 }

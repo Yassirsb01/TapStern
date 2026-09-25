@@ -223,6 +223,23 @@
   .access-banner.expired, .access-banner.locked{background:#fdece8; border:1px solid #f6c9bf; color:#8a2a1a;}
   .access-banner b{display:block; margin-bottom:2px;}
   aside nav a.locked{opacity:0.45;}
+
+  /* Nachrichten vom Tapstern-Team */
+  .notice{position:relative; border-radius:14px; padding:16px 18px; margin:0 0 16px; background:#fff; border:1px solid var(--line);
+    box-shadow:0 6px 20px rgba(40,30,20,0.06); font-size:14px; line-height:1.5;}
+  .notice.erinnerung{background:#fff7e6; border-color:#f3d9a4;}
+  .notice.feedback{background:#f4f1ff; border-color:#d9d0fb;}
+  .notice-from{font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin-bottom:4px;}
+  .notice h4{margin:0 0 6px; font-size:16px;}
+  .notice p{margin:0; white-space:pre-line; overflow-wrap:anywhere;}
+  .notice-close{position:absolute; top:10px; right:10px; border:0; background:none; font-size:18px; line-height:1; cursor:pointer; color:var(--muted); padding:4px 8px;}
+  .notice-stars{display:flex; gap:4px; margin:12px 0 8px;}
+  .notice-stars button{border:0; background:none; font-size:26px; line-height:1; cursor:pointer; color:#d6d0c6; padding:0 2px;}
+  .notice-stars button.on{color:#f5a524;}
+  .notice textarea{width:100%; min-height:70px; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; resize:vertical; background:#fff;}
+  .notice-actions{display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;}
+  .notice-actions .btn{font-size:13px; padding:9px 16px;}
+  .notice-status{font-size:13px; color:var(--muted);}
   aside nav a.locked::after{content:' 🔒'; font-size:11px;}
 
   /* 📱 MOBILE ANPASSUNGEN */
@@ -397,6 +414,7 @@
       </div>
 
       <div id="accessBanner" class="access-banner hide"></div>
+      <div id="noticeBox"></div>
 
       <!-- SEITE 1: ÜBERSICHT (HOME) MIT ZEITRAUM-FILTER -->
       <div id="p-home">
@@ -749,8 +767,8 @@
     document.querySelectorAll('aside nav a[data-go]').forEach(x => x.classList.toggle('locked', !a.active && x.dataset.go !== 'billing'));
     if (a.state === 'trial') {
       const left = a.trialEndsAt ? Math.max(0, a.trialEndsAt * 1000 - Date.now()) : 0;
-      const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60;
-      const time = h >= 1 ? `${h} Std. ${m} Min.` : `${m} Min.`;
+      const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60, d = Math.floor(left / 86400000);
+      const time = h >= 48 ? `${d} Tage (bis ${new Date(a.trialEndsAt * 1000).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })})` : h >= 1 ? `${h} Std. ${m} Min.` : `${m} Min.`;
       el.className = 'access-banner trial';
       el.innerHTML = `<div><b>Testphase: noch ${time}</b>Probier alles aus und gestalte deine Karte. Danach werden Karte, Link und Wallet pausiert, bis du ein Abo abschließt.</div>
         <button class="btn btn-coral" style="font-size:13px; padding:9px 16px;" onclick="goTo('billing')">Abo wählen</button>`;
@@ -767,10 +785,56 @@
   }
   setInterval(() => { if (shop && shop.access && shop.access.state === 'trial') renderAccess(); }, 60000);
 
+  /* NACHRICHTEN VOM TAPSTERN-TEAM (auch bei abgelaufenem Zugang sichtbar) */
+  async function loadNotices() {
+    const box = $('noticeBox');
+    let list = [];
+    try { list = (await api('/api/stempel/notices')).notices || []; } catch (e) { return; }
+    box.innerHTML = '';
+    list.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'notice ' + (n.kind === 'erinnerung' ? 'erinnerung' : n.kind === 'feedback' ? 'feedback' : '');
+      const from = document.createElement('div'); from.className = 'notice-from';
+      from.textContent = 'Nachricht vom Tapstern-Team · ' + new Date(n.date * 1000).toLocaleDateString('de-DE');
+      const h = document.createElement('h4'); h.textContent = n.title;
+      const p = document.createElement('p'); p.textContent = n.body;
+      const close = document.createElement('button'); close.className = 'notice-close'; close.title = 'Ausblenden'; close.setAttribute('aria-label', 'Ausblenden'); close.textContent = '×';
+      close.onclick = async () => { el.remove(); try { await api('/api/stempel/notices/' + n.id, { method: 'POST', body: JSON.stringify({ action: 'dismiss' }) }); } catch (e) {} };
+      el.append(close, from, h, p);
+      if (n.kind === 'feedback') {
+        let rating = 0;
+        const stars = document.createElement('div'); stars.className = 'notice-stars';
+        for (let i = 1; i <= 5; i++) {
+          const b = document.createElement('button'); b.type = 'button'; b.textContent = '★'; b.setAttribute('aria-label', i + ' von 5 Sternen');
+          b.onclick = () => { rating = i; stars.querySelectorAll('button').forEach((x, j) => x.classList.toggle('on', j < i)); };
+          stars.appendChild(b);
+        }
+        const ta = document.createElement('textarea'); ta.maxLength = 2000; ta.placeholder = 'Was gefällt dir, was fehlt dir? (optional)';
+        const actions = document.createElement('div'); actions.className = 'notice-actions';
+        const send = document.createElement('button'); send.className = 'btn btn-coral'; send.type = 'button'; send.textContent = 'Antwort senden';
+        const status = document.createElement('span'); status.className = 'notice-status';
+        send.onclick = async () => {
+          send.disabled = true; status.textContent = '';
+          try {
+            await api('/api/stempel/notices/' + n.id, { method: 'POST', body: JSON.stringify({ action: 'feedback', rating, text: ta.value.trim() }) });
+            stars.remove(); ta.remove(); actions.remove();
+            const thanks = document.createElement('p'); thanks.className = 'notice-status'; thanks.textContent = 'Danke für deine Antwort! 💛';
+            el.appendChild(thanks); setTimeout(() => el.remove(), 4000);
+          } catch (e) { status.textContent = e.message; send.disabled = false; }
+        };
+        actions.append(send, status);
+        el.append(stars, ta, actions);
+      }
+      box.appendChild(el);
+      if (!n.read) api('/api/stempel/notices/' + n.id, { method: 'POST', body: JSON.stringify({ action: 'read' }) }).catch(() => {});
+    });
+  }
+
   /* BOOT */
   async function boot(shopData) {
     shop = shopData;
     renderAccess();
+    loadNotices();
     if (shop.access && !shop.access.active) goTo('billing');
     $('s-auth').classList.add('hide');
     $('s-app').classList.remove('hide');

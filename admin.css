@@ -312,3 +312,10 @@ textarea.input { min-height: 90px; resize: vertical; }
 }
 @media (max-width: 520px) { .g-4 { grid-template-columns: 1fr; } .qr-box { flex-direction: column; align-items: flex-start; } .topbar h1 { font-size: 21px; } }
 .spaced{margin-top:16px}
+/* Nachrichten an Läden */
+.notice-body { white-space: pre-line; overflow-wrap: anywhere; }
+.answer { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--violet) 8%, transparent); border: 1px solid color-mix(in srgb, var(--violet) 22%, transparent); font-size: 13px; }
+.answer .notice-body { margin-top: 4px; color: var(--text); }
+.stars { color: #fbbf24; letter-spacing: 1px; }
+.pill-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.modal textarea.input { resize: vertical; min-height: 110px; }

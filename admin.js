@@ -488,13 +488,21 @@
   async function viewTapstempel(view) {
     const { shops } = await api('tapstempel/shops');
     const writable = state.me.admin.role !== 'viewer';
-    let filter = 'alle', q = '';
+    let filter = 'alle', q = '', tab = 'shops', notices = null;
+    const tabs = () => `<div class="toolbar"><div class="chips"><button class="chip ${tab === 'shops' ? 'on' : ''}" data-tab="shops">Läden <b>${shops.length}</b></button><button class="chip ${tab === 'notices' ? 'on' : ''}" data-tab="notices">Nachrichten & Feedback${notices ? ` <b>${notices.answers.length}</b>` : ''}</button></div>
+      ${writable ? '<button class="btn btn-primary btn-sm" id="n-all">✉️ Nachricht an alle Läden</button>' : ''}</div>`;
+    const wireTabs = () => {
+      view.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { tab = b.dataset.tab; if (tab === 'notices') await loadNotices(); render(); });
+      const all = $('n-all'); if (all) all.onclick = () => composeNotice(null);
+    };
+    const loadNotices = async () => { notices = await api('notices'); };
     const render = () => {
+      if (tab === 'notices') return renderNotices();
       const verified = shops.filter(s => s.verified);
       const cnt = k => k === 'alle' ? verified.length : k === 'unbestaetigt' ? shops.length - verified.length : verified.filter(s => s.access.state === k).length;
       const list = shops.filter(s => (filter === 'unbestaetigt' ? !s.verified : s.verified && (filter === 'alle' || s.access.state === filter)) &&
         (!q || [s.name, s.email, s.phone, s.first_name, s.last_name, s.slug, s.branche].some(x => String(x || '').toLowerCase().includes(q))));
-      view.innerHTML = `
+      view.innerHTML = tabs() + `
         <div class="toolbar"><input class="input" id="t-q" placeholder="Laden, E-Mail, Telefon …" value="${esc(q)}">
           <div class="chips">${[['alle', 'Alle'], ...Object.entries(ACCESS).map(([k, [l]]) => [k, l]), ['unbestaetigt', 'Unbestätigt']].map(([k, l]) => `<button class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${l} <b>${cnt(k)}</b></button>`).join('')}</div></div>
         <div class="card">${list.length ? list.map(s => {
@@ -512,12 +520,86 @@
                 ${manual ? `<button class="btn btn-ghost btn-sm" data-a="auto" data-id="${esc(s.id)}">Automatisch</button>` : ''}
                 <button class="btn btn-ghost btn-sm" data-a="extend" data-days="1" data-id="${esc(s.id)}">Test +1 Tag</button>
                 <button class="btn btn-ghost btn-sm" data-a="extend" data-days="7" data-id="${esc(s.id)}">Test +7 Tage</button>
-                <button class="btn btn-ghost btn-sm" data-a="note" data-id="${esc(s.id)}">Notiz</button></div>` : ''}
+                <button class="btn btn-ghost btn-sm" data-a="extend" data-days="30" data-id="${esc(s.id)}">Gratismonat +30 Tage</button>
+                <button class="btn btn-ghost btn-sm" data-a="note" data-id="${esc(s.id)}">Notiz</button>
+                <button class="btn btn-ghost btn-sm" data-msg="${esc(s.id)}">✉️ Nachricht</button></div>` : ''}
             </div><span class="pill ${s.verified ? ac : 'p-muted'}">${s.verified ? al : 'Unbestätigt'}</span></div>`;
         }).join('') : '<div class="empty"><b>Keine Läden</b>Passe Filter oder Suche an.</div>'}</div>`;
       view.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });
       const qi = $('t-q'); qi.oninput = () => { q = qi.value.trim().toLowerCase(); const p = qi.selectionStart; render(); $('t-q').focus(); $('t-q').setSelectionRange(p, p); };
       view.querySelectorAll('[data-a]').forEach(b => b.onclick = () => shopAction(shops.find(s => s.id === b.dataset.id), b.dataset.a, b.dataset.days));
+      view.querySelectorAll('[data-msg]').forEach(b => b.onclick = () => composeNotice(shops.find(s => s.id === b.dataset.msg)));
+      wireTabs();
+    };
+
+    /* Nachrichten-Übersicht mit Status, Lesebestätigung und Antworten */
+    const KIND = { info: ['Info', 'p-info'], erinnerung: ['Erinnerung', 'p-warn'], feedback: ['Feedback-Frage', 'p-violet'] };
+    const stars = r => r ? '★'.repeat(r) + '☆'.repeat(5 - r) : '';
+    const renderNotices = () => {
+      const now = Date.now() / 1000;
+      const statusOf = n => n.cancelled ? ['Beendet', 'p-muted'] : n.show_from > now ? ['Geplant ab ' + fmtDate(n.show_from), 'p-info']
+        : n.expires_at && n.expires_at <= now ? ['Abgelaufen', 'p-muted'] : ['Sichtbar', 'p-ok'];
+      const byNotice = {};
+      notices.answers.forEach(a => (byNotice[a.notice_id] = byNotice[a.notice_id] || []).push(a));
+      view.innerHTML = tabs() + `<div class="card">${notices.notices.length ? notices.notices.map(n => {
+        const [sl, sc] = statusOf(n), [kl, kc] = KIND[n.kind] || KIND.info, ans = byNotice[n.id] || [];
+        return `<div class="row-item"><div>
+            <div class="cell-main">${esc(n.title)}</div>
+            <div class="cell-sub">An ${n.target_id ? esc(n.target_name || 'gelöschter Laden') : '<b>alle Läden</b>'} · erstellt ${fmtDate(n.created_at)} von ${esc(n.created_by_email || '–')}${n.expires_at ? ' · bis ' + fmtDate(n.expires_at) : ''}</div>
+            <div class="note notice-body">${esc(n.body)}</div>
+            <div class="cell-sub">👁 ${esc(n.reads)}× gelesen${n.kind === 'feedback' ? ` · 💬 ${ans.length} Antwort${ans.length === 1 ? '' : 'en'}` : ''}</div>
+            ${ans.map(a => `<div class="answer"><b>${esc(a.shop_name || 'Laden')}</b> <span class="stars">${stars(a.rating)}</span> <span class="faint">${ago(a.feedback_at)}</span>${a.feedback ? `<div class="notice-body">${esc(a.feedback)}</div>` : ''}</div>`).join('')}
+            ${writable && !n.cancelled && sl !== 'Abgelaufen' ? `<div class="row-actions"><button class="btn btn-ghost btn-sm" data-cancel="${esc(n.id)}">Beenden</button></div>` : ''}
+          </div><div class="pill-stack"><span class="pill ${kc}">${kl}</span><span class="pill ${sc}">${esc(sl)}</span></div></div>`;
+      }).join('') : '<div class="empty"><b>Noch keine Nachrichten</b>Schreib einem Laden über „✉️ Nachricht“ oder allen oben rechts.</div>'}</div>`;
+      view.querySelectorAll('[data-cancel]').forEach(b => b.onclick = async () => {
+        if (!(await confirmBox('Nachricht beenden?', 'Sie verschwindet sofort aus den Dashboards. Antworten bleiben erhalten.', 'Beenden', true))) return;
+        try { await api(`notices/${encodeURIComponent(b.dataset.cancel)}/cancel`, { method: 'POST', body: {} }); toast('Nachricht beendet'); await loadNotices(); render(); }
+        catch (err) { toast(err.message, true); }
+      });
+      wireTabs();
+    };
+
+    /* Nachricht verfassen — an einen Laden oder alle, sofort oder geplant */
+    const toLocalInput = sec => { const d = new Date(sec * 1000); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+    const composeNotice = shop => {
+      const now = Math.floor(Date.now() / 1000);
+      const trialEnd = shop?.access?.trialEndsAt;
+      const box = openOverlay(`<h3>Nachricht an ${shop ? '„' + esc(shop.name) + '“' : 'alle Läden'}</h3>
+        <p>Erscheint oben im Dashboard des Ladens${shop ? '' : ' — bei allen Läden'}, auch wenn der Zugang abgelaufen ist.</p>
+        <div class="field"><label class="lbl">Vorlage</label><div class="chips">
+          ${trialEnd ? '<button class="chip" data-tpl="ende">Gratiszeit endet bald</button>' : ''}
+          <button class="chip" data-tpl="feedback">Nach Feedback fragen</button><button class="chip" data-tpl="danke">Willkommen / Danke</button></div></div>
+        <div class="field"><label class="lbl" for="nc-kind">Art</label><select class="input" id="nc-kind"><option value="info">Info</option><option value="erinnerung">Erinnerung (auffällig)</option><option value="feedback">Feedback-Frage (mit Sternen + Antwortfeld)</option></select></div>
+        <div class="field"><label class="lbl" for="nc-title">Titel</label><input class="input" id="nc-title" maxlength="100"></div>
+        <div class="field"><label class="lbl" for="nc-body">Text</label><textarea class="input" id="nc-body" maxlength="1500" rows="5"></textarea>
+          <div class="faint">Platzhalter: {name} = Vorname, {laden} = Ladenname, {testende} = Ende der Test-/Gratiszeit</div></div>
+        <div class="grid g-2"><div class="field"><label class="lbl" for="nc-from">Anzeigen ab</label><input class="input" id="nc-from" type="datetime-local"></div>
+          <div class="field"><label class="lbl" for="nc-to">Anzeigen bis (optional)</label><input class="input" id="nc-to" type="datetime-local"></div></div>
+        <div class="actions"><button class="btn btn-ghost" data-action="close">Abbrechen</button><button class="btn btn-primary" id="nc-ok">${shop ? 'Speichern' : 'An alle Läden senden'}</button></div>`, 'modal');
+      $('overlay').querySelectorAll('[data-action="close"]').forEach(b => b.onclick = closeOverlay);
+      const f = id => box.querySelector('#' + id);
+      f('nc-from').value = toLocalInput(now);
+      const TPL = {
+        ende: () => { f('nc-kind').value = 'erinnerung'; f('nc-title').value = 'Deine Gratiszeit endet am {testende}';
+          f('nc-body').value = 'Hallo {name},\n\ndeine kostenlose Zeit mit Tapstempel endet bald. Damit deine Stempelkarte, der Kartenlink und die Wallet-Karten ohne Unterbrechung weiterlaufen, schließe einfach unter „Abo & Karten“ ein Abo ab. Deine Kunden und Einstellungen bleiben erhalten.\n\nFragen? Schreib uns an anfrage@tapstern.de.';
+          f('nc-from').value = toLocalInput(Math.max(now, trialEnd - 5 * 86400)); f('nc-to').value = toLocalInput(trialEnd); },
+        feedback: () => { f('nc-kind').value = 'feedback'; f('nc-title').value = 'Wie gefällt dir Tapstempel?';
+          f('nc-body').value = 'Hallo {name},\n\nwir möchten Tapstempel für {laden} noch besser machen. Wie zufrieden bist du bisher, und was fehlt dir noch? Deine Antwort liest das Tapstern-Team persönlich.'; f('nc-to').value = ''; },
+        danke: () => { f('nc-kind').value = 'info'; f('nc-title').value = 'Willkommen bei Tapstempel!';
+          f('nc-body').value = 'Hallo {name},\n\nschön, dass {laden} dabei ist. Bei Fragen erreichst du uns jederzeit unter anfrage@tapstern.de.'; f('nc-to').value = ''; },
+      };
+      box.querySelectorAll('[data-tpl]').forEach(b => b.onclick = () => { box.querySelectorAll('[data-tpl]').forEach(x => x.classList.toggle('on', x === b)); TPL[b.dataset.tpl](); });
+      f('nc-ok').onclick = async () => {
+        const sec = v => v ? Math.floor(new Date(v).getTime() / 1000) : null;
+        const body = { module: 'tapstempel', targetId: shop?.id || null, kind: f('nc-kind').value, title: f('nc-title').value.trim(), body: f('nc-body').value.trim(),
+          showFrom: sec(f('nc-from').value) || now, expiresAt: sec(f('nc-to').value) };
+        try {
+          await api('notices', { method: 'POST', body }); closeOverlay();
+          toast(body.showFrom > now + 60 ? 'Nachricht geplant ab ' + fmtDate(body.showFrom) : 'Nachricht ist jetzt sichtbar');
+          if (tab === 'notices') { await loadNotices(); render(); }
+        } catch (err) { toast(err.message, true); }
+      };
     };
     const shopAction = async (s, action, days) => {
       const body = { action };
@@ -709,6 +791,7 @@
     'visitenkarten.publish': 'Visitenkarte online', 'visitenkarten.unpublish': 'Visitenkarte offline',
     'tapstempel.zugang_unlock': 'Laden freigeschaltet', 'tapstempel.zugang_lock': 'Laden gesperrt', 'tapstempel.zugang_auto': 'Laden automatisch',
     'tapstempel.zugang_extend': 'Test verlängert', 'tapstempel.zugang_note': 'Notiz zum Laden',
+    'nachricht.erstellt': 'Nachricht an Laden erstellt', 'nachricht.beendet': 'Nachricht beendet',
     'login.erfolgreich_vertrautes_geraet': 'Angemeldet (vertrautes Gerät)', 'sicherheit.geraet_vertraut': 'Gerät als vertraut gespeichert',
     'sicherheit.geraet_entfernt': 'Vertrautes Gerät entfernt', 'sicherheit.alle_geraete_entfernt': 'Alle vertrauten Geräte entfernt',
     'sicherheit.2fa_umzug_gestartet': '⚠️ 2FA-Umzug auf neues Handy', 'sicherheit.email_code_angefordert': '⚠️ Wiederherstellungs-Code per E-Mail angefordert',

@@ -69,6 +69,7 @@ async function routeRequest(request, env, ctx) {
       const stempelNoticeMatch = path.match(/^\/api\/stempel\/notices\/([a-f0-9-]{36})$/);
       if (method === 'POST' && stempelNoticeMatch) return handleStempelNoticeAction(request, env, stempelNoticeMatch[1], ctx);
       if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env, ctx);
+      if (method === 'PUT'  && path === '/api/stempel/location') return handleStempelLocation(request, env, ctx);
       if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
       if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' }, ctx);
       if (method === 'POST' && path === '/api/stempel/upload-banner') return handleStempelUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'stempel-banner', resultKey: 'bannerUrl' });
@@ -1166,7 +1167,7 @@ async function currentShop(env, request) {
    verlängert werden. Eigene Tabelle stempel_shop_access, damit stempel_shops
    unverändert bleibt; Läden von vor dieser Regel bekommen ihre 24 Stunden ab dem
    ersten Aufruf danach. */
-const TRIAL_HOURS = 24;
+const TRIAL_HOURS = 30 * 24; // 30 Tage gratis mit allen Premium-Funktionen
 let accessTableReady = false;
 
 async function ensureAccessTable(env) {
@@ -1230,7 +1231,73 @@ async function requireActiveShop(env, request) {
 async function publicShop(env, shop) {
   const { password_hash, session_token_hash, verify_code_hash, ...safe } = shop;
   safe.access = await shopAccess(env, shop);
+  safe.features = shopFeatures(shop, safe.access);
+  safe.geo = await shopGeo(env, shop.id);
+  safe.freeStand = await freeStandClaim(env, shop.id);
   return safe;
+}
+
+/* ── Pakete: was darf ein Laden? ──
+   Gratismonat und vom Admin freigeschaltete Läden bekommen alles (wie Premium).
+   Hier zentral anpassen — Dashboard, Server und Wallet-Karte lesen nur diese Werte. */
+const PLAN_FEATURES = {
+  basic:   { plan: 'basic',   label: 'Basic',   maxEmployees: 3,    messageIntervalDays: 30, geofence: false, freeStand: false },
+  premium: { plan: 'premium', label: 'Premium', maxEmployees: null, messageIntervalDays: 1,  geofence: true,  freeStand: true },
+};
+function shopFeatures(shop, access) {
+  // Wer im Gratismonat schon bucht, behält bis zu dessen Ende alle Funktionen (abgebucht wird erst danach)
+  const trialRunning = access?.trialEndsAt && access.trialEndsAt > Date.now() / 1000;
+  if (access?.state === 'subscribed' && !trialRunning) return PLAN_FEATURES[shop.plan === 'premium' ? 'premium' : 'basic'];
+  if (access?.state === 'subscribed') return { ...PLAN_FEATURES.premium, plan: 'trial', label: 'Gratismonat', freeStand: false };
+  return { ...PLAN_FEATURES.premium, plan: access?.state === 'unlocked' ? 'unlocked' : 'trial', label: access?.state === 'unlocked' ? 'Freigeschaltet' : 'Gratismonat', freeStand: false };
+}
+
+/* ── Standort für die Vorbeilauf-Mitteilung (Geofencing, nur iPhone/Apple Wallet) ── */
+let geoTableReady = false;
+async function ensureShopExtrasTables(env) {
+  if (geoTableReady) return;
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS stempel_shop_geo (
+    shop_id TEXT PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, text TEXT, updated_at INTEGER)`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS stempel_perks (
+    shop_id TEXT PRIMARY KEY, free_stand_order_id TEXT, claimed_at INTEGER, pending_address TEXT)`).run();
+  geoTableReady = true;
+}
+async function shopGeo(env, shopId) {
+  try {
+    await ensureShopExtrasTables(env);
+    const g = await env.DB.prepare('SELECT latitude, longitude, text FROM stempel_shop_geo WHERE shop_id = ?').bind(shopId).first();
+    return g || null;
+  } catch (e) { return null; }
+}
+async function freeStandClaim(env, shopId) {
+  try {
+    await ensureShopExtrasTables(env);
+    const r = await env.DB.prepare('SELECT free_stand_order_id, claimed_at FROM stempel_perks WHERE shop_id = ?').bind(shopId).first();
+    return r?.claimed_at ? { orderId: r.free_stand_order_id, claimedAt: r.claimed_at } : null;
+  } catch (e) { return null; }
+}
+
+/* PUT /api/stempel/location — { latitude, longitude, text } oder { clear: true } */
+async function handleStempelLocation(request, env, ctx) {
+  const { shop, access, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
+  if (!shopFeatures(shop, access).geofence) return json({ error: 'Die Vorbeilauf-Mitteilung gibt es im Premium-Paket.' }, 403);
+  const data = await readJson(request);
+  await ensureShopExtrasTables(env);
+  if (data?.clear) {
+    await env.DB.prepare('DELETE FROM stempel_shop_geo WHERE shop_id = ?').bind(shop.id).run();
+  } else {
+    const lat = Number(data?.latitude), lng = Number(data?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
+      return json({ error: 'Ungültiger Standort' }, 400);
+    }
+    const text = str(data?.text).replace(/\s+/g, ' ').slice(0, 80) || `Du bist in der Nähe von ${shop.name} — hol dir deinen Stempel!`;
+    await env.DB.prepare(`INSERT INTO stempel_shop_geo (shop_id, latitude, longitude, text, updated_at) VALUES (?,?,?,?,?)
+                          ON CONFLICT(shop_id) DO UPDATE SET latitude = excluded.latitude, longitude = excluded.longitude, text = excluded.text, updated_at = excluded.updated_at`)
+      .bind(shop.id, Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, text, Math.floor(Date.now() / 1000)).run();
+  }
+  await markShopWalletChanged(env, shop.id, ctx); // iPhones laden die Karte mit dem neuen Standort
+  return json({ success: true, geo: await shopGeo(env, shop.id) });
 }
 
 /* Kundenseite, wenn der Laden gerade nicht aktiv ist */
@@ -1321,7 +1388,7 @@ async function handleStempelVerifyEmail(request, env) {
   const token = randomToken();
   await env.DB.prepare('UPDATE stempel_shops SET verified = 1, verify_code_hash = NULL, session_token_hash = ? WHERE id = ?')
     .bind(await sha256(token), shop.id).run();
-  // 24-Stunden-Test beginnt mit der Bestätigung
+  // Gratismonat beginnt mit der Bestätigung
   await ensureAccessTable(env);
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
@@ -1640,7 +1707,8 @@ async function handleStempelListEmployees(request, env) {
   const { results } = await env.DB.prepare(
     `SELECT id, name, created_at FROM stempel_employees WHERE shop_id = ? ORDER BY created_at`
   ).bind(shop.id).all();
-  return json({ employees: results, plan: shop.plan || 'basic' });
+  const features = shopFeatures(shop, await shopAccess(env, shop));
+  return json({ employees: results, plan: features.plan, planLabel: features.label, maxEmployees: features.maxEmployees });
 }
 
 async function handleStempelAddEmployee(request, env) {
@@ -1652,10 +1720,10 @@ async function handleStempelAddEmployee(request, env) {
   if (!name) return json({ error: 'Bitte einen Namen angeben' }, 400);
   if (!/^\d{4,6}$/.test(pin)) return json({ error: 'PIN muss 4-6 Ziffern haben' }, 400);
 
-  const limit = (shop.plan === 'premium') ? Infinity : 5;
+  const limit = shopFeatures(shop, await shopAccess(env, shop)).maxEmployees ?? Infinity;
   const { results: existing } = await env.DB.prepare(`SELECT id FROM stempel_employees WHERE shop_id = ?`).bind(shop.id).all();
   if ((existing || []).length >= limit) {
-    return json({ error: `Dein Paket erlaubt maximal ${limit} Mitarbeiter. Für mehr auf Premium wechseln.` }, 400);
+    return json({ error: `Im Basic-Paket sind bis zu ${limit} Mitarbeiter möglich. Mit Premium unbegrenzt.` }, 400);
   }
 
   const id = crypto.randomUUID();
@@ -1673,11 +1741,11 @@ async function handleStempelDeleteEmployee(request, env, id) {
   return json({ success: true });
 }
 
-/* ── Pakete & Preise ──
-   TODO: Jahrespreis ist vorerst "10 Monate zahlen, 12 bekommen" — bitte prüfen/anpassen. */
+/* ── Pakete & Preise ── Jahresabo: 10 Monate zahlen, 12 bekommen.
+   Bestehende Abos behalten ihren Preis bei Stripe; neue Abos zahlen diese Preise. */
 const STEMPEL_PLAN_PRICES = {
-  basic:   { monthly: 1999, yearly: 1999 * 10 },
-  premium: { monthly: 2999, yearly: 2999 * 10 },
+  basic:   { monthly: 899,  yearly: 899 * 10 },
+  premium: { monthly: 1999, yearly: 1999 * 10 },
 };
 const STEMPEL_CARD_FIRST_CENTS = 2000;
 const STEMPEL_CARD_EXTRA_CENTS = 500;
@@ -1710,9 +1778,20 @@ async function handleStempelCheckoutSubscription(request, env) {
   params.set('metadata[interval]', interval);
   params.set('subscription_data[metadata][shop_id]', shop.id);
   params.set('subscription_data[metadata][plan]', plan);
+  if (plan === 'premium' && !(await freeStandClaim(env, shop.id))) {
+    params.set('shipping_address_collection[allowed_countries][0]', 'DE');
+    params.set('shipping_address_collection[allowed_countries][1]', 'AT');
+    params.set('custom_text[shipping_address][message]', 'Hierhin schicken wir deinen gratis NFC-Aufsteller (inklusive im Premium-Paket).');
+  }
 
   if (shop.referral_code && env.STEMPEL_REFERRAL_CODE && shop.referral_code.toUpperCase() === env.STEMPEL_REFERRAL_CODE.toUpperCase()) {
     params.set('subscription_data[trial_period_days]', '60');
+  } else {
+    // Gratismonat läuft noch → erste Abbuchung erst an dessen Ende (Stripe verlangt mind. 2 Tage Vorlauf)
+    const access = await shopAccess(env, shop);
+    if (access.state === 'trial' && access.trialEndsAt && access.trialEndsAt > Date.now() / 1000 + 2 * 86400 + 600) {
+      params.set('subscription_data[trial_end]', String(access.trialEndsAt));
+    }
   }
 
   try {
@@ -1814,9 +1893,12 @@ async function handleStempelStripeWebhook(request, env) {
       await env.DB.prepare(`UPDATE hub_pages SET paid = 1, updated_at = datetime('now') WHERE id = ?`).bind(session.metadata.hub_page_id).run();
     }
     if (session.mode === 'subscription' && session.metadata?.shop_id) {
+      const plan = session.metadata.plan === 'premium' ? 'premium' : 'basic';
       await env.DB.prepare(
         `UPDATE stempel_shops SET subscription_status = 'active', plan = ?, billing_interval = ?, stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?`
-      ).bind(session.metadata.plan, session.metadata.interval, session.customer, session.subscription, session.metadata.shop_id).run();
+      ).bind(plan, session.metadata.interval, session.customer, session.subscription, session.metadata.shop_id).run();
+      if (plan === 'premium') await rememberFreeStandAddress(env, session.metadata.shop_id, session);
+      await markShopWalletChanged(env, session.metadata.shop_id); // Geofencing an/aus je nach Paket
     }
     if (session.mode === 'payment' && session.metadata?.order_id) {
       await env.DB.prepare(`UPDATE stempel_card_orders SET status = 'bezahlt' WHERE id = ?`).bind(session.metadata.order_id).run();
@@ -1826,6 +1908,16 @@ async function handleStempelStripeWebhook(request, env) {
         sendMail(env, parseSender(env.MAIL_FROM).email, 'Tapstempel: Kartenbestellung bezahlt — ' + shop.name,
           'Neue Kartenbestellung', `${shop.name} hat ${order.quantity} Karte(n) bestellt und bezahlt (${(order.amount_cents / 100).toFixed(2)}€).`).catch(() => {});
       }
+    }
+  }
+
+  // Erste echte Zahlung eines Premium-Abos → gratis Aufsteller als Bestellung anlegen (einmal pro Laden)
+  if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
+    const inv = event.data.object;
+    const subId = inv.subscription || inv.parent?.subscription_details?.subscription || null;
+    if (subId && inv.amount_paid > 0) {
+      const shop = await env.DB.prepare('SELECT id, plan FROM stempel_shops WHERE stripe_subscription_id = ?').bind(subId).first();
+      if (shop?.plan === 'premium') await createFreeStandOrder(env, shop.id);
     }
   }
 
@@ -2123,7 +2215,7 @@ function hexToRgb(hex) {
 /* Inhalt der Karte — gleiche Farben wie die Kartenseite (renderStempelTapPage).
    Die Stempel selbst zeigt das Bild strip.png; darunter im Nebenfeld der
    Belohnungssatz (Beschriftung steht dort über dem Wert). */
-function buildApplePassJson(origin, shop, customer, authToken, message) {
+function buildApplePassJson(origin, shop, customer, authToken, message, geo) {
   const total = shop.reward_threshold;
   const remaining = Math.max(0, total - customer.stamps);
   const bg = shop.card_bg_color || '#14131a';
@@ -2144,6 +2236,8 @@ function buildApplePassJson(origin, shop, customer, authToken, message) {
     sharingProhibited: true,
     webServiceURL: `${origin}/wallet/apple/ws`,
     authenticationToken: authToken,
+    // Vorbeilauf-Mitteilung: iPhone zeigt die Karte auf dem Sperrbildschirm, wenn man in der Nähe ist
+    ...(geo ? { locations: [{ latitude: geo.latitude, longitude: geo.longitude, relevantText: geo.text || `Du bist in der Nähe von ${shop.name}` }] } : {}),
     storeCard: {
       headerFields: [
         { key: 'stamps', label: 'STEMPEL', value: `${Math.min(customer.stamps, total)}/${total}` },
@@ -2183,7 +2277,8 @@ function buildApplePassJson(origin, shop, customer, authToken, message) {
 async function appleWalletFiles(env, origin, shop, customer) {
   const authToken = await appleAuthToken(env, customer.id);
   const message = await currentShopMessage(env, shop.id);
-  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer, authToken, message))) };
+  const geo = shopFeatures(shop, await shopAccess(env, shop)).geofence ? await shopGeo(env, shop.id) : null;
+  const files = { 'pass.json': new TextEncoder().encode(JSON.stringify(buildApplePassJson(origin, shop, customer, authToken, message, geo))) };
 
   let shopLogo = null;
   if (shop.logo_key) {
@@ -2820,7 +2915,6 @@ async function sendApplePush(env, push_token) {
    Kartenseite im Browser zeigt die Nachricht ebenfalls.
    Höchstens eine Nachricht pro Laden und 24 Stunden — gegen Spam. */
 const MESSAGE_MAX_LEN = 200;
-const MESSAGE_INTERVAL_SEC = 24 * 3600;
 
 async function ensureMessagesTable(env) {
   await env.DB.prepare(
@@ -2922,9 +3016,11 @@ async function handleStempelGetMessage(request, env) {
   const { shop, denied } = await requireActiveShop(env, request);
   if (denied) return denied;
   await ensureMessagesTable(env);
+  const features = shopFeatures(shop, await shopAccess(env, shop));
   const last = await lastMessageCreatedAt(env, shop.id);
-  const next = last + MESSAGE_INTERVAL_SEC;
+  const next = last + features.messageIntervalDays * 86400;
   return json({
+    intervalDays: features.messageIntervalDays, planLabel: features.label,
     message: await currentShopMessage(env, shop.id),
     reach: await walletReach(env, shop),
     nextAllowedAt: next > Date.now() / 1000 ? next : null,
@@ -2952,10 +3048,13 @@ async function handleStempelSendMessage(request, env, ctx) {
   await ensureMessagesTable(env);
   const now = Math.floor(Date.now() / 1000);
   const last = await lastMessageCreatedAt(env, shop.id);
-  if (last && now - last < MESSAGE_INTERVAL_SEC) {
-    const next = new Date((last + MESSAGE_INTERVAL_SEC) * 1000)
+  const { messageIntervalDays: days } = shopFeatures(shop, await shopAccess(env, shop));
+  if (last && now - last < days * 86400) {
+    const next = new Date((last + days * 86400) * 1000)
       .toLocaleString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
-    return json({ error: `Du kannst eine Nachricht pro Tag senden. Die nächste geht ab ${next} Uhr.` }, 429);
+    return json({ error: days > 1
+      ? `Im Basic-Paket geht eine Nachricht alle ${days} Tage — die nächste ab ${next} Uhr. Mit Premium täglich.`
+      : `Du kannst eine Nachricht pro Tag senden. Die nächste geht ab ${next} Uhr.` }, 429);
   }
 
   const message = { id: crypto.randomUUID(), shop_id: shop.id, text, created_at: now, expires_at: expiresAt, ended_at: null };
@@ -5629,4 +5728,52 @@ async function handleAdminNoticeCancel(request, env, id) {
   await env.DB.prepare('UPDATE customer_notices SET cancelled = 1 WHERE id = ?').bind(id).run();
   await audit(env, request, ctx.admin, 'nachricht.beendet', n.title);
   return adminJson({ success: true });
+}
+
+
+/* Premium: ein NFC-Aufsteller gratis — einmal pro Laden, erst nach der ersten echten
+   Zahlung (sonst: im Gratismonat buchen, Aufsteller kassieren, vor der Abbuchung kündigen).
+   Die Lieferadresse kommt aus dem Stripe-Checkout; die Bestellung erscheint im Admin. */
+async function rememberFreeStandAddress(env, shopId, session) {
+  try {
+    await ensureShopExtrasTables(env);
+    if (await freeStandClaim(env, shopId)) return;
+    const ship = session?.collected_information?.shipping_details || session?.shipping_details || null;
+    const a = ship?.address || session?.customer_details?.address || {};
+    const adresse = [ship?.name || session?.customer_details?.name, a.line1, a.line2, [a.postal_code, a.city].filter(Boolean).join(' '), a.country && a.country !== 'DE' ? a.country : '']
+      .filter(Boolean).join('\n');
+    await env.DB.prepare(`INSERT INTO stempel_perks (shop_id, pending_address) VALUES (?, ?)
+                          ON CONFLICT(shop_id) DO UPDATE SET pending_address = excluded.pending_address`).bind(shopId, adresse || null).run();
+  } catch (e) { console.error('Lieferadresse nicht gespeichert:', e); }
+}
+
+async function createFreeStandOrder(env, shopId) {
+  try {
+    await ensureShopExtrasTables(env);
+    if (await freeStandClaim(env, shopId)) return null;
+    const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(shopId).first();
+    if (!shop) return null;
+    const perk = await env.DB.prepare('SELECT pending_address FROM stempel_perks WHERE shop_id = ?').bind(shopId).first();
+    const adresse = perk?.pending_address || '(keine Adresse im Checkout — bitte beim Laden erfragen)';
+    // Erst den Anspruch sichern (gegen doppelte Webhooks), dann die Bestellung anlegen
+    const now = nowSec();
+    await env.DB.prepare(`INSERT INTO stempel_perks (shop_id, claimed_at) VALUES (?, ?)
+                          ON CONFLICT(shop_id) DO UPDATE SET claimed_at = excluded.claimed_at WHERE stempel_perks.claimed_at IS NULL`).bind(shopId, now).run();
+    const claim = await env.DB.prepare('SELECT claimed_at, free_stand_order_id FROM stempel_perks WHERE shop_id = ?').bind(shopId).first();
+    if (claim?.claimed_at !== now || claim?.free_stand_order_id) return null; // ein anderer Aufruf war schneller
+    const orderId = await recordShopOrder(env,
+      { module: 'tapstempel', totalCents: 0, lines: [{ name: 'NFC-Aufsteller Standard — gratis mit Premium', qty: 1, unitCents: 0 }] },
+      { firma: shop.name, ansprechpartner: [shop.first_name, shop.last_name].filter(Boolean).join(' '), email: shop.email || '', telefon: shop.phone || '', adresse },
+      { Hinweis: 'Inklusive im Tapstempel-Premium-Abo', Kartenlink: `/s/${shop.slug}` }, 'inklusive');
+    await env.DB.prepare(`UPDATE shop_orders SET payment_status = 'bezahlt', paid_at = ? WHERE id = ?`).bind(now, orderId).run();
+    await env.DB.prepare('UPDATE stempel_perks SET free_stand_order_id = ? WHERE shop_id = ?').bind(orderId, shopId).run();
+    if (env.MAIL_FROM) {
+      await sendMail(env, parseSender(env.MAIL_FROM).email, `Tapstempel Premium: gratis Aufsteller für ${shop.name}`, 'Aufsteller verschicken',
+        `${shop.name} hat Premium gebucht und die erste Zahlung ist da. Bestellung ${orderId}: 1 NFC-Aufsteller gratis. ${adresse.replace(/\n/g, ', ')}`);
+    }
+    return orderId;
+  } catch (e) {
+    console.error('Gratis-Aufsteller konnte nicht angelegt werden:', e);
+    return null;
+  }
 }

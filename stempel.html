@@ -192,6 +192,13 @@
   .plan-box.featured{border-color:var(--coral); background:#fffaf9;}
   .plan-box h4{font-size:18px; margin-bottom:4px;}
   .plan-price{font:700 24px "Roboto Slab"; margin:12px 0 16px;}
+  .plan-feats{list-style:none; padding:0; margin:0 0 16px; font-size:13px; line-height:1.5; display:grid; gap:6px;}
+  .plan-feats li{display:grid; grid-template-columns:18px 1fr; gap:6px;}
+  .plan-feats li.no{color:var(--muted);}
+  .plan-tag{display:inline-block; background:var(--coral); color:#fff; font-size:10px; font-weight:700; padding:3px 8px; border-radius:100px; vertical-align:middle; margin-left:6px;}
+  .geo-box{border:1px dashed #dfd9d0; border-radius:12px; padding:16px; background:#fcfaf6;}
+  .geo-box.locked{opacity:0.7;}
+  .geo-status{font-size:13px; margin:8px 0 0; color:var(--muted);}
   .plan-price small{font-size:12px; font-family:"DM Sans"; color:var(--muted); font-weight:400;}
 
   /* Nachricht an Kunden */
@@ -572,7 +579,7 @@
               <button class="btn btn-coral" id="sendMsg">Nachricht senden</button>
               <span id="msgStatus" style="font-size:13px; color:var(--coral); font-weight:600;"></span>
             </div>
-            <p class="msg-note">Du kannst eine Nachricht pro Tag senden, damit deine Kunden nicht genervt sind. Wer die Karte nur im Browser nutzt, sieht die Nachricht beim nächsten Öffnen der Kartenseite. Kunden können Mitteilungen für deine Karte in Wallet jederzeit abschalten.</p>
+            <p class="msg-note"><span id="msgRule">Du kannst eine Nachricht pro Tag senden, damit deine Kunden nicht genervt sind.</span> Wer die Karte nur im Browser nutzt, sieht die Nachricht beim nächsten Öffnen der Kartenseite. Kunden können Mitteilungen für deine Karte in Wallet jederzeit abschalten.</p>
           </div>
 
           <div>
@@ -678,6 +685,17 @@
             <input type="text" id="set-link-url" placeholder="Ziel-URL (z. B. https://instagram.com/mein_laden)">
           </div>
 
+            <div class="geo-box" id="geoBox">
+              <label style="display:block; font-weight:600; margin-bottom:4px;">📍 Vorbeilauf-Mitteilung <span class="plan-tag">Premium</span></label>
+              <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px; line-height:1.5;">Kommen Kunden mit deiner Karte in Apple Wallet an deinem Laden vorbei, zeigt ihr iPhone die Karte auf dem Sperrbildschirm — mit deinem Text. Drück den Knopf am besten, während du im Laden stehst.</p>
+              <input type="text" id="geo-text" maxlength="80" placeholder="Text auf dem Sperrbildschirm, z. B. Lust auf Kaffee? Hol dir deinen Stempel!" style="width:100%; box-sizing:border-box; padding:11px 12px; border:1px solid var(--line); border-radius:10px; font:inherit; font-size:14px; background:#fff; margin-bottom:10px;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="btn btn-dark" type="button" id="geoSet" style="font-size:13px; padding:9px 16px;">Standort des Ladens übernehmen</button>
+                <button class="btn btn-ghost" type="button" id="geoClear" style="font-size:13px; padding:9px 16px;">Entfernen</button>
+              </div>
+              <p class="geo-status" id="geoStatus"></p>
+            </div>
+
             <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
               <button class="btn btn-coral" id="saveSettings">Einstellungen speichern</button>
               <span id="saveMsg" style="font-size:13px; color:var(--coral); font-weight:600;"></span>
@@ -744,6 +762,7 @@
   let shop = null;
   let allCustomers = [];
   let currentFilterDays = 7;
+  const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -1062,13 +1081,12 @@
 
   /* MITARBEITER */
   async function loadEmployees() {
-    const { employees, plan } = await api('/api/stempel/employees');
-    const limit = plan === 'premium' ? 'unbegrenzt' : '5';
-    $('empLimitNote').textContent = `Paket: ${plan === 'premium' ? 'Premium' : 'Basic'} — bis zu ${limit} Mitarbeiter erlaubt.`;
+    const { employees, planLabel, maxEmployees } = await api('/api/stempel/employees');
+    $('empLimitNote').textContent = `Paket: ${planLabel} — ${maxEmployees ? 'bis zu ' + maxEmployees : 'unbegrenzt viele'} Mitarbeiter.` + (maxEmployees ? ' Mit Premium unbegrenzt.' : '');
     $('employeeList').innerHTML = employees.map(e => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
-        <div><strong>${e.name}</strong></div>
-        <button class="btn btn-ghost" style="padding:6px 12px; font-size:11px;" onclick="delEmp('${e.id}')">Entfernen</button>
+        <div><strong>${escH(e.name)}</strong></div>
+        <button class="btn btn-ghost" style="padding:6px 12px; font-size:11px;" onclick="delEmp('${escH(e.id)}')">Entfernen</button>
       </div>
     `).join('') || '<p style="color:var(--muted); font-size:12px; margin:0;">Noch keine Mitarbeiter angelegt.</p>';
   }
@@ -1089,17 +1107,34 @@
   };
 
   /* ABO & KARTENVERWALTUNG */
+  /* Paket-Inhalte — gleiche Werte wie PLAN_FEATURES im Server */
+  const BASIC_FEATS = [[1, 'Digitale Stempelkarte in Apple &amp; Google Wallet — ohne App'], [1, 'Unbegrenzt viele Kunden'], [1, 'Eigenes Design, Logo &amp; Farben'],
+    [1, 'Bis zu 3 Mitarbeiter-PINs'], [1, 'Nachricht an Kunden: 1× in 30 Tagen'], [0, 'Vorbeilauf-Mitteilung (Geofencing)'], [0, 'NFC-Aufsteller gratis']];
+  const PREMIUM_FEATS = [[1, 'Alles aus Basic'], [1, 'Unbegrenzt viele Mitarbeiter-PINs'], [1, 'Nachricht an Kunden: täglich möglich'],
+    [1, 'Vorbeilauf-Mitteilung (Geofencing) auf dem iPhone'], [1, '1 NFC-Aufsteller gratis (einmalig)'], [1, 'Persönlicher Support vor Ort']];
+
   function loadBilling() {
     const active = shop.subscription_status === 'active';
     const planPanel = $('planPanel');
 
+    const feats = plan => plan === 'premium' ? PREMIUM_FEATS : BASIC_FEATS;
+    const featList = list => `<ul class="plan-feats">${list.map(([ok, t]) => `<li class="${ok ? '' : 'no'}"><span>${ok ? '✓' : '–'}</span><span>${t}</span></li>`).join('')}</ul>`;
     if (active) {
+      const isPremium = shop.plan === 'premium';
+      const stand = !isPremium ? '' : shop.freeStand
+        ? `<p style="font-size:13px; margin:10px 0 0;">🎁 Dein gratis NFC-Aufsteller ist bestellt — wir melden uns zum Versand.</p>`
+        : `<p style="font-size:13px; margin:10px 0 0;">🎁 Deinen gratis NFC-Aufsteller schicken wir nach der ersten Abbuchung los.</p>`;
+      const te = shop.access && shop.access.trialEndsAt;
+      const freeLeft = te && te * 1000 > Date.now()
+        ? `<p style="font-size:13px; margin:6px 0 10px; color:#6b4b10;">Dein Gratismonat läuft noch bis ${new Date(te * 1000).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })} — bis dahin hast du alle Funktionen, abgebucht wird erst danach.</p>` : '';
       planPanel.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:16px;">
           <div>
             <h4 style="color:#299267;">✓ Dein Abonnement ist aktiv</h4>
-            <p style="font-size:16px; font-weight:700; margin:6px 0;">Paket: ${shop.plan === 'premium' ? 'Premium' : 'Basic'} (${shop.billing_interval === 'yearly' ? 'Jährlich' : 'Monatlich'})</p>
-            <p style="color:var(--muted); font-size:13px; margin:0;">Alle Stempel- und Kundenfunktionen sind unbegrenzt freigeschaltet.</p>
+            <p style="font-size:16px; font-weight:700; margin:6px 0;">Paket: ${isPremium ? 'Premium' : 'Basic'} (${shop.billing_interval === 'yearly' ? 'Jährlich' : 'Monatlich'})</p>
+            ${freeLeft}
+            ${featList(feats(isPremium ? 'premium' : 'basic'))}${stand}
+            ${isPremium ? '' : `<a class="btn btn-coral" style="font-size:13px; padding:9px 16px;" href="mailto:anfrage@tapstern.de?subject=${encodeURIComponent('Wechsel zu Premium: ' + shop.name)}">Zu Premium wechseln</a>`}
           </div>
           <a class="btn btn-ghost" href="mailto:anfrage@tapstern.de?subject=Kündigung%20Tapstempel%20${encodeURIComponent(shop.name)}" style="font-size:12px; color:#c0392b; border-color:#f1a89c;">Abo kündigen / Support</a>
         </div>
@@ -1107,29 +1142,32 @@
     } else {
       planPanel.innerHTML = `
         <h4 style="margin-bottom:6px;">Paket wählen &amp; freischalten</h4>
-        <p style="color:var(--muted); font-size:13px; margin:0 0 16px;">Wähle dein Paket, um Karten zu bestellen und das Treueprogramm dauerhaft zu nutzen.</p>
-        
+        <p style="color:var(--muted); font-size:13px; margin:0 0 16px;">${shop.access && shop.access.state === 'trial'
+          ? 'Du nutzt gerade den <b>Gratismonat mit allen Premium-Funktionen</b>. Wähle schon jetzt dein Paket, damit nach dem Gratismonat alles ohne Pause weiterläuft.'
+          : 'Wähle dein Paket, um dein Treueprogramm dauerhaft zu nutzen. Deine Kunden und Einstellungen bleiben erhalten.'}</p>
         <div class="plan-grid">
           <div class="plan-box">
             <h4>Basic</h4>
-            <p style="font-size:12px; color:var(--muted);">Bis zu 5 Mitarbeiter-PINs</p>
-            <div class="plan-price">19,99 € <small>/ Monat</small></div>
+            <p style="font-size:12px; color:var(--muted);">Für kleine Läden, die einfach starten wollen</p>
+            <div class="plan-price">8,99 € <small>/ Monat</small></div>
+            ${featList(BASIC_FEATS)}
             <div style="display:flex; gap:8px; flex-direction:column;">
               <button class="btn btn-coral" onclick="sub('basic', 'monthly')">Monatlich buchen</button>
-              <button class="btn btn-ghost" onclick="sub('basic', 'yearly')">Jährlich (199,90 € — 2 Mon. gratis)</button>
+              <button class="btn btn-ghost" onclick="sub('basic', 'yearly')">Jährlich (89,90 € — 2 Mon. gratis)</button>
             </div>
           </div>
-          
           <div class="plan-box featured">
-            <h4>Premium</h4>
-            <p style="font-size:12px; color:var(--muted);">Unbegrenzte Mitarbeiter &amp; Geofencing</p>
-            <div class="plan-price">29,99 € <small>/ Monat</small></div>
+            <h4>Premium <span class="plan-tag">+ Aufsteller gratis</span></h4>
+            <p style="font-size:12px; color:var(--muted);">Alles drin — für Läden, die Stammkunden aktiv zurückholen</p>
+            <div class="plan-price">19,99 € <small>/ Monat</small></div>
+            ${featList(PREMIUM_FEATS)}
             <div style="display:flex; gap:8px; flex-direction:column;">
               <button class="btn btn-coral" onclick="sub('premium', 'monthly')">Monatlich buchen</button>
-              <button class="btn btn-ghost" onclick="sub('premium', 'yearly')">Jährlich (299,90 € — 2 Mon. gratis)</button>
+              <button class="btn btn-ghost" onclick="sub('premium', 'yearly')">Jährlich (199,90 € — 2 Mon. gratis)</button>
             </div>
           </div>
         </div>
+        <p style="color:var(--muted); font-size:12px; margin:0;">Monatlich kündbar. Beim Premium-Abo fragen wir im Bezahlschritt die Lieferadresse für deinen gratis NFC-Aufsteller ab.</p>
       `;
     }
 
@@ -1430,7 +1468,35 @@
     preview.style.backgroundRepeat = layers.repeat;
   }
 
+  /* VORBEILAUF-MITTEILUNG (Geofencing, Premium) */
+  function renderGeo() {
+    const f = shop.features || {}, g = shop.geo;
+    $('geoBox').classList.toggle('locked', !f.geofence);
+    $('geo-text').value = g && g.text ? g.text : '';
+    $('geo-text').disabled = $('geoSet').disabled = !f.geofence;
+    $('geoClear').classList.toggle('hide', !g || !f.geofence);
+    $('geoStatus').textContent = !f.geofence
+      ? 'Im Basic-Paket nicht enthalten — mit Premium schaltest du es frei.'
+      : g ? `✓ Aktiv für ${g.latitude.toFixed(5)}, ${g.longitude.toFixed(5)}` : 'Noch kein Standort hinterlegt.';
+  }
+  $('geoSet').onclick = () => {
+    if (!navigator.geolocation) { $('geoStatus').textContent = 'Dein Browser kann den Standort nicht bestimmen.'; return; }
+    $('geoStatus').textContent = 'Standort wird bestimmt …';
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        const r = await api('/api/stempel/location', { method: 'PUT', body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, text: $('geo-text').value.trim() }) });
+        shop.geo = r.geo; renderGeo(); $('geoStatus').textContent += ' — Karten werden aktualisiert.';
+      } catch (e) { $('geoStatus').textContent = e.message; }
+    }, err => { $('geoStatus').textContent = err.code === 1 ? 'Standort-Zugriff wurde nicht erlaubt — bitte im Browser erlauben.' : 'Standort konnte nicht bestimmt werden.'; },
+    { enableHighAccuracy: true, timeout: 15000 });
+  };
+  $('geoClear').onclick = async () => {
+    try { await api('/api/stempel/location', { method: 'PUT', body: JSON.stringify({ clear: true }) }); shop.geo = null; renderGeo(); }
+    catch (e) { $('geoStatus').textContent = e.message; }
+  };
+
   function loadSettingsForm() {
+    renderGeo();
     $('set-threshold').value = shop.reward_threshold || 8;
     $('set-reward').value = shop.reward_text || '';
     $('set-cooldown').value = shop.min_stamp_interval_minutes || 240;
@@ -1587,6 +1653,9 @@
         + (reach.google === null ? '<br><span style="color:var(--muted);">Google-Wallet-Karten konnten gerade nicht gezählt werden — sie bekommen die Nachricht trotzdem.</span>' : '');
       const rest = Math.max(0, reach.customers - reach.wallet);
       $('reachWeb').innerHTML = '<strong>Auf der Kartenseite:</strong> ' + (rest === 1 ? '1 weiterer Kunde' : rest ? rest + ' weitere Kunden' : 'alle anderen') + ' beim nächsten Besuch';
+      $('msgRule').textContent = r.intervalDays > 1
+        ? `Im ${r.planLabel}-Paket kannst du alle ${r.intervalDays} Tage eine Nachricht senden — mit Premium täglich.`
+        : 'Du kannst eine Nachricht pro Tag senden, damit deine Kunden nicht genervt sind.';
       $('sendMsg').disabled = !!r.nextAllowedAt;
       $('sendMsg').style.opacity = r.nextAllowedAt ? '0.5' : '';
       if (r.nextAllowedAt) {

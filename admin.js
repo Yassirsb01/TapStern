@@ -490,6 +490,7 @@
     const writable = state.me.admin.role !== 'viewer';
     let filter = 'alle', q = '', tab = 'shops', notices = null;
     const tabs = () => `<div class="toolbar"><div class="chips"><button class="chip ${tab === 'shops' ? 'on' : ''}" data-tab="shops">Läden <b>${shops.length}</b></button><button class="chip ${tab === 'notices' ? 'on' : ''}" data-tab="notices">Nachrichten & Feedback${notices ? ` <b>${notices.answers.length}</b>` : ''}</button></div>
+      <a class="btn btn-ghost btn-sm" href="/api/admin/tapstempel/sticker" target="_blank" rel="noopener">🖨️ Sticker-Vorlage (für alle)</a>
       ${writable ? '<button class="btn btn-primary btn-sm" id="n-all">✉️ Nachricht an alle Läden</button>' : ''}</div>`;
     const wireTabs = () => {
       view.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { tab = b.dataset.tab; if (tab === 'notices') await loadNotices(); render(); });
@@ -522,7 +523,9 @@
                 <button class="btn btn-ghost btn-sm" data-a="extend" data-days="7" data-id="${esc(s.id)}">Test +7 Tage</button>
                 <button class="btn btn-ghost btn-sm" data-a="extend" data-days="30" data-id="${esc(s.id)}">Gratismonat +30 Tage</button>
                 <button class="btn btn-ghost btn-sm" data-a="note" data-id="${esc(s.id)}">Notiz</button>
-                <button class="btn btn-ghost btn-sm" data-msg="${esc(s.id)}">✉️ Nachricht</button></div>` : ''}
+                <button class="btn btn-ghost btn-sm" data-msg="${esc(s.id)}">✉️ Nachricht</button>
+                <a class="btn btn-ghost btn-sm" href="/api/admin/tapstempel/shops/${encodeURIComponent(s.id)}/qr-etikett" target="_blank" rel="noopener">🏷️ QR-Etikett</a>
+                <a class="btn btn-ghost btn-sm" href="/api/admin/tapstempel/sticker?laden=${encodeURIComponent(s.id)}" target="_blank" rel="noopener">🖨️ Sticker mit Logo</a></div>` : ''}
             </div><span class="pill ${s.verified ? ac : 'p-muted'}">${s.verified ? al : 'Unbestätigt'}</span></div>`;
         }).join('') : '<div class="empty"><b>Keine Läden</b>Passe Filter oder Suche an.</div>'}</div>`;
       view.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });

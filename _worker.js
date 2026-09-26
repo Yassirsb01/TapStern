@@ -99,6 +99,8 @@ async function routeRequest(request, env, ctx) {
       const appleWalletMatch = path.match(/^\/wallet\/apple\/([^/]+)$/);
       if (method === 'GET' && appleWalletMatch) return handleAppleWalletPass(request, env, appleWalletMatch[1]);
       if (method === 'POST' && path === '/api/stempel/staff-redeem') return handleStaffRedeemSubmit(request, env, ctx);
+      if (method === 'POST' && path === '/api/stempel/redeem-reward') return handleRedeemReward(request, env, ctx);
+      if (method === 'GET'  && path === '/api/stempel/redemptions') return handleStempelRedemptions(request, env);
 
 
       /* ── Business Hub ── */
@@ -1564,7 +1566,7 @@ async function grantStampToDevice(env, request, shop, customer, ctx) {
   }
   await ensureCardCode(env, customer);
   const result = await applyStampLogic(env, customer, shop, null, request, ctx);
-  return { customer: result.customer, cooldownHit: result.cooldownHit };
+  return { customer: result.customer, cooldownHit: result.cooldownHit, capHit: result.capHit };
 }
 
 /* Erhöht den Stempelstand eines bereits bekannten Kunden — genutzt vom NFC-Tap (bestehender Kunde)
@@ -1577,14 +1579,12 @@ async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
   let cooldownHit = false;
   let stampChanged = false;
 
+  let capHit = false;
   if (Date.now() - lastStamp < cooldownMs) {
     cooldownHit = true;
-  } else if (customer.stamps >= shop.reward_threshold) {
-    await env.DB.prepare(
-      `UPDATE stempel_customers SET stamps = 1, redeemed_count = redeemed_count + 1, last_stamp_at = datetime('now') WHERE id = ?`
-    ).bind(customer.id).run();
-    customer.stamps = 1; customer.redeemed_count += 1;
-    stampChanged = true;
+  } else if (customer.stamps >= shop.reward_threshold * REWARD_MAX_PENDING) {
+    // Schon zwei volle Karten offen: erst einlösen, dann weitersammeln
+    capHit = true;
   } else {
     await env.DB.prepare(
       `UPDATE stempel_customers SET stamps = stamps + 1, last_stamp_at = datetime('now') WHERE id = ?`
@@ -1605,13 +1605,13 @@ async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
     );
   }
 
-  return { customer, cooldownHit };
+  return { customer, cooldownHit, capHit };
 }
 
 async function grantStampToCustomer(env, customer, shop, employeeId, request, ctx) {
   await ensureCardCode(env, customer);
   const result = await applyStampLogic(env, customer, shop, employeeId, request, ctx);
-  return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit };
+  return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit, capHit: result.capHit };
 }
 
 /* GET /s/:slug — kennt das Gerät die Karte schon, gibt es direkt den Stempel.
@@ -1626,8 +1626,8 @@ async function handleStempelTap(request, env, slug, ctx) {
     return new Response(renderStempelStartPage(shop, {}), htmlHeaders());
   }
 
-  const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
-  return cardResponse(request, env, shop, customer, { isNew: false, cooldownHit });
+  const { cooldownHit, capHit } = await grantStampToDevice(env, request, shop, customer, ctx);
+  return cardResponse(request, env, shop, customer, { isNew: false, cooldownHit, capHit });
 }
 
 /* POST /s/:slug — Antwort auf die Auswahl aus der Startansicht */
@@ -1642,8 +1642,8 @@ async function handleStempelTapSubmit(request, env, slug, ctx) {
   /* Gerät hat inzwischen doch eine Karte (z. B. zweiter Tab) — dann normal stempeln */
   const known = await customerOfDevice(env, shop, deviceTokenOf(request));
   if (known) {
-    const { cooldownHit } = await grantStampToDevice(env, request, shop, known, ctx);
-    return cardResponse(request, env, shop, known, { isNew: false, cooldownHit });
+    const { cooldownHit, capHit } = await grantStampToDevice(env, request, shop, known, ctx);
+    return cardResponse(request, env, shop, known, { isNew: false, cooldownHit, capHit });
   }
 
   if (action === 'restore') return handleStempelRestore(request, env, shop, form, ctx);
@@ -1683,8 +1683,8 @@ async function handleStempelRestore(request, env, shop, form, ctx) {
   await clearFails(env, lockKey);
   /* Das Gerät hängt sich an den bestehenden device_token — künftige Taps
      landen damit wieder ganz normal auf dieser Karte. */
-  const { cooldownHit } = await grantStampToDevice(env, request, shop, customer, ctx);
-  return cardResponse(request, env, shop, customer, { isNew: false, cooldownHit, restored: true }, customer.device_token);
+  const { cooldownHit, capHit } = await grantStampToDevice(env, request, shop, customer, ctx);
+  return cardResponse(request, env, shop, customer, { isNew: false, cooldownHit, capHit, restored: true }, customer.device_token);
 }
 
 function htmlHeaders(status) {
@@ -1988,8 +1988,9 @@ function buildLoyaltyIds(env, shop, customer) {
 
 function buildRewardMessage(shop, customer) {
   const remaining = Math.max(0, shop.reward_threshold - customer.stamps);
+  const carry = customer.stamps - shop.reward_threshold;
   return remaining === 0
-    ? `Belohnung bereit: ${shop.reward_text}`
+    ? `🎁 Belohnung bereit: ${shop.reward_text} — zeig die Karte an der Kasse, das Personal bestätigt mit PIN.${carry > 0 ? ` Schon ${carry} Stempel für die nächste Karte.` : ''}`
     : `Noch ${remaining} Stempel bis zu: ${shop.reward_text}`;
 }
 
@@ -2013,7 +2014,7 @@ function buildLoyaltyObject(env, origin, shop, customer, classId, objectId) {
     accountName: shop.name,
     loyaltyPoints: {
       label: 'Stempel',
-      balance: { string: `${customer.stamps}/${shop.reward_threshold}` },
+      balance: { string: `${Math.min(customer.stamps, shop.reward_threshold)}/${shop.reward_threshold}` },
     },
     textModulesData: [
       { id: 'reward_info', header: 'Deine Belohnung', body: buildRewardMessage(shop, customer) },
@@ -2254,6 +2255,15 @@ function buildApplePassJson(origin, shop, customer, authToken, message, geo) {
           value: message ? message.text : 'Aktuell keine Neuigkeiten.',
           ...(message ? { changeMessage: '%@' } : {}),
         },
+        // Nur beim Wechsel auf „bereit“ gibt es eine Mitteilung; das Einlösen bleibt still
+        {
+          key: 'rewardstate', label: 'Belohnung',
+          value: remaining === 0
+            ? `🎁 Deine Belohnung ist bereit: ${shop.reward_text || ''}. Zeig die Karte an der Kasse.`
+            : `Sammle Stempel für: ${shop.reward_text || ''}`,
+          ...(remaining === 0 ? { changeMessage: '%@' } : {}),
+        },
+        ...(customer.stamps > total ? [{ key: 'carry', label: 'Für die nächste Karte', value: `${customer.stamps - total} Stempel schon gesammelt` }] : []),
         { key: 'cardcode', label: 'Karten-ID', value: `${customer.card_code || ''}\nMit dieser ID holst du die Karte auf einem neuen Handy zurück.` },
         { key: 'redeemed', label: 'Eingelöste Belohnungen', value: String(customer.redeemed_count || 0) },
         { key: 'asof', label: 'Stand', value: new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) },
@@ -3170,6 +3180,7 @@ async function handleStaffRedeemPage(request, env, token) {
   if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop);
 
   const accent = shop.accent_color || '#6366f1';
+  const ready = customer.stamps >= shop.reward_threshold;
   return new Response(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(shop.name)} — Stempel vergeben</title>
@@ -3181,16 +3192,42 @@ async function handleStaffRedeemPage(request, env, token) {
   input{width:100%; font-size:1.6rem; text-align:center; letter-spacing:0.3em; padding:14px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:#161421; color:#fff; margin-bottom:16px;}
   button{width:100%; padding:13px; border-radius:10px; border:none; background:${accent}; color:#fff; font-weight:600; font-size:0.95rem; cursor:pointer;}
   .err{color:#f2765a; font-size:0.85rem; margin-top:12px; display:none;}
+  .ready{background:rgba(255,255,255,0.06); border:1px solid ${accent}; border-radius:14px; padding:14px; margin:0 0 16px;}
+  .ready b{display:block; font-size:1.05rem; margin-top:4px;}
+  .ready small{color:#948d9c;}
+  .alt{background:transparent; border:1px solid rgba(255,255,255,0.18); margin-top:10px;}
+  .ok{background:#0f8a55; border-radius:16px; padding:22px 16px; display:none;}
+  .ok .c{font:800 2.2rem/1 system-ui; margin-bottom:8px;}
+  .ok .clock{font:800 1.7rem/1 ui-monospace, Menlo, monospace; margin-top:10px; font-variant-numeric:tabular-nums;}
 </style></head>
 <body>
   <div class="card">
     <h1>${escapeHtml(shop.name)}</h1>
-    <p>Für diesen Gast einen Stempel vergeben — gib deinen persönlichen Mitarbeiter-PIN ein</p>
-    <input type="text" inputmode="numeric" maxlength="6" id="pin" placeholder="••••">
-    <button id="go">Stempel vergeben</button>
+    <div id="form">
+    ${ready ? `<div class="ready"><small>🎁 Belohnung bereit · Karte ${escapeHtml(customer.card_code || '')}</small><b>${escapeHtml(shop.reward_text || 'Belohnung')}</b></div>
+    <p>Belohnung ausgeben oder einen Stempel für die nächste Karte vergeben — mit deinem Mitarbeiter-PIN.</p>`
+    : `<p>Für diesen Gast einen Stempel vergeben — gib deinen persönlichen Mitarbeiter-PIN ein (${customer.stamps}/${shop.reward_threshold})</p>`}
+    <input type="password" inputmode="numeric" maxlength="6" id="pin" placeholder="••••" autocomplete="off">
+    ${ready ? '<button id="redeem">Belohnung ausgeben</button><button id="go" class="alt">Nur Stempel vergeben</button>' : '<button id="go">Stempel vergeben</button>'}
     <div class="err" id="err"></div>
+    </div>
+    <div class="ok" id="ok"><div class="c">✓</div><div style="font-weight:700; font-size:1.1rem;">Belohnung ausgegeben</div><div id="okMeta" style="font-size:0.85rem; opacity:0.9; margin-top:6px;"></div><div class="clock" id="okClock"></div></div>
   </div>
 <script>
+  var redeemBtn = document.getElementById('redeem');
+  if (redeemBtn) redeemBtn.onclick = async function(){
+    var err = document.getElementById('err'); err.style.display = 'none'; redeemBtn.disabled = true;
+    try {
+      var res = await fetch('/api/stempel/redeem-reward', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ token: ${JSON.stringify(token)}, pin: document.getElementById('pin').value.trim() }) });
+      var d = await res.json().catch(function(){ return {}; });
+      if (!res.ok) { err.textContent = d.error || 'Das hat nicht geklappt'; err.style.display = 'block'; redeemBtn.disabled = false; return; }
+      document.getElementById('form').style.display = 'none';
+      document.getElementById('ok').style.display = 'block';
+      document.getElementById('okMeta').textContent = d.reward + ' · ' + new Date(d.redeemedAt * 1000).toLocaleTimeString('de-DE') + ' Uhr · ' + d.employee;
+      var c = document.getElementById('okClock'); var t = function(){ c.textContent = new Date().toLocaleTimeString('de-DE'); }; t(); setInterval(t, 1000);
+    } catch (e) { err.textContent = 'Verbindungsfehler'; err.style.display = 'block'; redeemBtn.disabled = false; }
+  };
   document.getElementById('go').onclick = async function(){
     var pin = document.getElementById('pin').value.trim();
     var btn = this;
@@ -3198,7 +3235,7 @@ async function handleStaffRedeemPage(request, env, token) {
     try {
       var res = await fetch('/api/stempel/staff-redeem', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ token: '${token}', pin: pin })
+        body: JSON.stringify({ token: ${JSON.stringify(token)}, pin: pin })
       });
       if (!res.ok) {
         var data = await res.json().catch(function(){ return {}; });
@@ -3240,10 +3277,89 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
     return json({ error: 'PIN falsch' }, 401);
   }
 
-  const { customer: updated, isNew, cooldownHit } = await grantStampToCustomer(env, customer, shop, employee.id, request, ctx);
+  const { customer: updated, cooldownHit, capHit } = await grantStampToCustomer(env, customer, shop, employee.id, request, ctx);
   const rewardReached = updated.stamps >= shop.reward_threshold;
-  const html = renderStempelTapPage(shop, updated, { isNew: false, cooldownHit, rewardReached }, new URL(request.url).origin);
+  const html = renderStempelTapPage(shop, updated, { isNew: false, cooldownHit, capHit, rewardReached, staffView: true }, new URL(request.url).origin);
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+/* ══ Belohnung einlösen ══
+   Volle Karte ≠ eingelöst. Erst wenn das Personal mit seinem PIN bestätigt, wird eine
+   Belohnung abgezogen — atomar (UPDATE … WHERE stamps >= Ziel), damit zwei gleichzeitige
+   Bestätigungen oder ein vorgezeigter Screenshot nie zu doppelter Ausgabe führen.
+   Stempel über dem Ziel bleiben für die nächste Karte erhalten. Jede Einlösung wird mit
+   Mitarbeiter, Zeit und Belohnungstext protokolliert. */
+const REWARD_MAX_PENDING = 2; // höchstens zwei volle Karten auf Vorrat
+
+let redemptionsTableReady = false;
+async function ensureRedemptionsTable(env) {
+  if (redemptionsTableReady) return;
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS stempel_redemptions (
+    id TEXT PRIMARY KEY, shop_id TEXT NOT NULL, customer_id TEXT NOT NULL, card_code TEXT, employee_id TEXT, employee_name TEXT,
+    reward_text TEXT, stamps_used INTEGER, created_at INTEGER NOT NULL)`).run();
+  await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_stempel_redemptions_shop ON stempel_redemptions(shop_id, created_at)').run();
+  redemptionsTableReady = true;
+}
+
+/* POST /api/stempel/redeem-reward — { token, pin } — Personal bestätigt die Ausgabe */
+async function handleRedeemReward(request, env, ctx) {
+  const data = await readJson(request);
+  const token = str(data?.token), pin = str(data?.pin);
+  const customer = token ? await env.DB.prepare('SELECT * FROM stempel_customers WHERE redeem_token = ?').bind(token).first() : null;
+  if (!customer) return json({ error: 'Karte nicht gefunden' }, 404);
+  const shop = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(customer.shop_id).first();
+  if (!shop) return json({ error: 'Laden nicht gefunden' }, 404);
+  if (!(await shopAccess(env, shop)).active) return inactiveShopResponse(shop, true);
+
+  const pinKeys = ['staffpin:' + token, 'staffpin-ip:' + clientIp(request)];
+  for (const k of pinKeys) { const gate = await checkLock(env, k); if (gate) return json({ error: gate }, 429); }
+  const employee = await env.DB.prepare('SELECT * FROM stempel_employees WHERE shop_id = ? AND pin_hash = ?').bind(shop.id, await sha256(pin)).first();
+  if (!employee) {
+    for (const k of pinKeys) await noteFail(env, k);
+    return json({ error: 'PIN falsch' }, 401);
+  }
+
+  const threshold = shop.reward_threshold;
+  const updated = await env.DB.prepare(
+    `UPDATE stempel_customers SET stamps = stamps - ?, redeemed_count = redeemed_count + 1
+     WHERE id = ? AND stamps >= ? RETURNING stamps, redeemed_count`
+  ).bind(threshold, customer.id, threshold).first();
+  await ensureRedemptionsTable(env);
+  if (!updated) {
+    const last = await env.DB.prepare('SELECT created_at, employee_name FROM stempel_redemptions WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1').bind(customer.id).first();
+    const when = last ? new Date(last.created_at * 1000).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
+    return json({ error: last && Date.now() / 1000 - last.created_at < 6 * 3600
+      ? `Schon eingelöst — am ${when} Uhr${last.employee_name ? ' von ' + last.employee_name : ''}. Keine Belohnung offen.`
+      : `Noch keine Belohnung offen (${customer.stamps}/${threshold} Stempel).` }, 409);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(`INSERT INTO stempel_redemptions (id, shop_id, customer_id, card_code, employee_id, employee_name, reward_text, stamps_used, created_at)
+                        VALUES (?,?,?,?,?,?,?,?,?)`)
+    .bind(crypto.randomUUID(), shop.id, customer.id, customer.card_code || null, employee.id, employee.name, shop.reward_text || '', threshold, now).run();
+  await clearFails(env, 'staffpin:' + token);
+
+  customer.stamps = updated.stamps; customer.redeemed_count = updated.redeemed_count;
+  if (ctx) {
+    const origin = new URL(request.url).origin;
+    ctx.waitUntil(pushGoogleWalletUpdate(env, origin, shop, customer).catch(e => console.error('Google Wallet Update fehlgeschlagen:', e)));
+    ctx.waitUntil(pushAppleWalletUpdate(env, customer).catch(e => console.error('Apple Wallet Update fehlgeschlagen:', e)));
+  }
+  return json({
+    success: true, reward: shop.reward_text || '', employee: employee.name, redeemedAt: now,
+    stamps: updated.stamps, threshold, rewardsLeft: Math.floor(updated.stamps / threshold),
+  });
+}
+
+/* GET /api/stempel/redemptions — letzte Einlösungen fürs Dashboard */
+async function handleStempelRedemptions(request, env) {
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
+  await ensureRedemptionsTable(env);
+  const { results } = await env.DB.prepare(
+    `SELECT card_code, employee_name, reward_text, created_at FROM stempel_redemptions WHERE shop_id = ? ORDER BY created_at DESC LIMIT 100`
+  ).bind(shop.id).all();
+  const since = Math.floor(Date.now() / 1000) - 30 * 86400;
+  return json({ redemptions: results || [], last30Days: (results || []).filter(r => r.created_at >= since).length });
 }
 
 /* ══ Karten-ID ══
@@ -3612,7 +3728,7 @@ function stampColumns(total) {
   return 5;
 }
 
-function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReached, platform, news }, origin) {
+function renderStempelTapPage(shop, customer, { isNew, cooldownHit, capHit, rewardReached, platform, news }, origin) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLightBg = luminanceOf(bg) > 0.55;
@@ -3642,15 +3758,19 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   const mutedColor = isLightBg ? '#6b6b6b' : '#9c96a6';
   const cardBorder = isLightBg ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.09)';
 
+  const total = shop.reward_threshold;
+  const carry = Math.max(0, customer.stamps - total);
   const message = cooldownHit
     ? 'Dieser Stempel wurde gerade schon erfasst — versuch es beim nächsten Besuch nochmal.'
-    : rewardReached
-      ? 'Belohnung erreicht!'
-      : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
-  const newestIndex = cooldownHit ? -1 : customer.stamps - 1;
-  const total = shop.reward_threshold;
+    : capHit
+      ? 'Du hast schon zwei volle Karten — lös zuerst eine Belohnung an der Kasse ein.'
+      : carry > 0
+        ? `Stempel für die nächste Karte gespeichert (${carry}).`
+        : rewardReached ? 'Karte voll — deine Belohnung wartet!' : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
+  const newestIndex = cooldownHit || capHit || carry > 0 ? -1 : customer.stamps - 1;
   const done = Math.min(customer.stamps, total);
   const remaining = Math.max(0, total - customer.stamps);
+  const rewardsReady = Math.floor(customer.stamps / total);
   const cols = stampColumns(total);
   const bannerHtml = shop.banner_key
     ? `<div class="banner" style="background-image:url('/photo/${escapeAttr(shop.banner_key)}')"></div>` : '';
@@ -3778,6 +3898,32 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   }
   .wallet-btn + .wallet-btn{margin-top:10px;}
   .wallet-apple{background:#000; color:#fff; box-shadow:0 10px 24px -12px rgba(0,0,0,0.6);}
+  .reward-ready{margin-top:16px; padding:18px 16px; border-radius:18px; text-align:center;
+    background:linear-gradient(160deg, ${mixHex(bg, accent, 0.26)}, ${mixHex(bg, accent, 0.12)}); border:1.5px solid ${withAlpha(accent, 0.7)};
+    box-shadow:0 14px 30px -16px ${accentSoft}; animation:rrPulse 2.4s ease-in-out infinite;}
+  @keyframes rrPulse{ 50%{box-shadow:0 14px 38px -10px ${accentSoft};} }
+  .rr-title{font-size:0.72rem; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; color:${accentText};}
+  .rr-reward{font-size:1.25rem; font-weight:800; margin:6px 0 8px; line-height:1.25; overflow-wrap:anywhere;}
+  .reward-ready p{font-size:0.82rem; line-height:1.45; color:${mutedColor}; margin:0 0 12px;}
+  [hidden]{display:none !important;}
+  .rr-btn{width:100%; padding:13px; border-radius:12px; border:0; font-family:inherit; font-weight:700; font-size:0.92rem; cursor:pointer; background:${accent}; color:${onAccent};}
+  .rr-btn:disabled{opacity:0.6;}
+  .rr-form{margin-top:12px; display:grid; gap:10px;}
+  .rr-form input{width:100%; font-size:1.5rem; text-align:center; letter-spacing:0.3em; padding:12px; border-radius:12px;
+    border:1px solid ${panelBorder}; background:${panelTop}; color:${textColor};}
+  .rr-err{color:#f2765a; font-size:0.84rem; min-height:1em;}
+  .rr-carry{font-size:0.8rem; margin:0 0 10px; color:${accentText}; font-weight:600;}
+  .redeemed{margin-top:16px; padding:22px 16px; border-radius:18px; text-align:center; background:#0f8a55; color:#fff;}
+  .redeemed .check{width:64px; height:64px; margin:0 auto 10px; border-radius:50%; background:#fff; color:#0f8a55; display:grid; place-items:center;
+    font-size:2rem; font-weight:900; animation:pop 0.5s cubic-bezier(.34,1.56,.64,1);}
+  @keyframes pop{ 0%{transform:scale(0.2); opacity:0;} 100%{transform:scale(1); opacity:1;} }
+  .redeemed h2{margin:0 0 4px; font-size:1.3rem;}
+  .redeemed .rd-reward{font-size:1.05rem; font-weight:700; margin-bottom:10px; overflow-wrap:anywhere;}
+  .redeemed .rd-meta{font-size:0.84rem; opacity:0.92; line-height:1.5;}
+  .redeemed .rd-clock{margin-top:12px; font:800 1.9rem/1 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing:0.04em; font-variant-numeric:tabular-nums;}
+  .redeemed .rd-live{font-size:0.7rem; letter-spacing:0.14em; text-transform:uppercase; opacity:0.85; margin-top:4px;}
+  .redeemed .rd-live i{display:inline-block; width:7px; height:7px; border-radius:50%; background:#8dffc6; margin-right:6px; animation:blink 1s infinite;}
+  @keyframes blink{ 50%{opacity:0.2;} }
   .qr-fallback{margin-top:14px; font-size:0.78rem; color:${mutedColor}; text-align:center;}
   .qr-fallback summary{cursor:pointer; color:${accentText};}
   .qr-fallback #myQr{background:#fff; padding:10px; border-radius:12px;}
@@ -3796,10 +3942,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
         </div>
         <div class="head-right">
           <span class="eyebrow">Fortschritt</span>
-          <span class="progress-value">${done}<span class="sep"> / </span><span class="of">${total}</span></span>
+          <span class="progress-value"><span id="pvDone">${done}</span><span class="sep"> / </span><span class="of">${total}</span></span>
         </div>
       </div>
-      <div class="msg">${escapeHtml(message)}</div>
+      <div class="msg" id="msgLine">${escapeHtml(message)}</div>
       ${news ? `<div class="news"><span class="eyebrow">Neuigkeit</span><p>${escapeHtml(news.text)}</p></div>` : ''}
       <div class="stamps-panel">
         <div class="stamps">
@@ -3818,7 +3964,27 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
           <div class="card-no-value">${escapeHtml(customer.card_code || '')}</div>
         </div>
       </div>
-      <div class="hint">${rewardReached ? 'Zeig diese Karte beim nächsten Besuch vor und lös deine Belohnung ein.' : `Noch ${remaining} ${remaining === 1 ? 'Stempel' : 'Stempel'} bis zur Belohnung.`}</div>
+      ${rewardReached ? `
+      <div class="reward-ready" id="rrBox">
+        <div class="rr-title">🎁 ${rewardsReady > 1 ? rewardsReady + ' Belohnungen bereit' : 'Deine Belohnung ist bereit'}</div>
+        <div class="rr-reward">${escapeHtml(shop.reward_text || 'Deine Belohnung')}</div>
+        <p>Zeig dein Handy an der Kasse. Das Personal bestätigt die Ausgabe mit seinem PIN — erst dann wird die Belohnung abgezogen.</p>
+        ${carry > 0 && carry < total ? `<div class="rr-carry">+ ${carry} Stempel schon für die nächste Karte</div>` : ''}
+        <button type="button" class="rr-btn" id="rrOpen">Personal: Belohnung ausgeben</button>
+        <div class="rr-form" id="rrForm" hidden>
+          <input type="password" inputmode="numeric" maxlength="6" id="rrPin" placeholder="PIN" autocomplete="off" aria-label="Mitarbeiter-PIN">
+          <button type="button" class="rr-btn" id="rrGo">Ausgabe bestätigen</button>
+          <div class="rr-err" id="rrErr" role="alert"></div>
+        </div>
+      </div>
+      <div class="redeemed" id="rdBox" hidden>
+        <div class="check">✓</div>
+        <h2>Eingelöst!</h2>
+        <div class="rd-reward" id="rdReward"></div>
+        <div class="rd-meta" id="rdMeta"></div>
+        <div class="rd-clock" id="rdClock"></div>
+        <div class="rd-live"><i></i>Live — kein Screenshot</div>
+      </div>` : `<div class="hint">Noch ${remaining} Stempel bis zur Belohnung.</div>`}
       <div class="hint hint-sub">Neues Handy? Mit dieser Karten-ID holst du die Karte zurück — notier sie dir am besten.</div>
       ${walletHtml}
       <details class="qr-fallback">
@@ -3830,6 +3996,36 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, rewardReache
   </div>
 <script>
   ${rewardReached ? `
+  (function(){
+    var token = ${JSON.stringify(customer.redeem_token || '')};
+    var open = document.getElementById('rrOpen'), form = document.getElementById('rrForm'), go = document.getElementById('rrGo'),
+        pin = document.getElementById('rrPin'), err = document.getElementById('rrErr');
+    open.onclick = function(){ form.hidden = false; open.hidden = true; pin.focus(); };
+    pin.onkeydown = function(e){ if (e.key === 'Enter') go.click(); };
+    go.onclick = async function(){
+      err.textContent = ''; go.disabled = true;
+      try {
+        var res = await fetch('/api/stempel/redeem-reward', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: token, pin: pin.value.trim() }) });
+        var d = await res.json().catch(function(){ return {}; });
+        if (!res.ok) { err.textContent = d.error || 'Das hat nicht geklappt'; go.disabled = false; pin.value = ''; pin.focus(); return; }
+        document.getElementById('rrBox').hidden = true;
+        var box = document.getElementById('rdBox'); box.hidden = false;
+        document.getElementById('rdReward').textContent = d.reward;
+        var at = new Date(d.redeemedAt * 1000).toLocaleTimeString('de-DE');
+        document.getElementById('rdMeta').textContent = 'um ' + at + ' Uhr · bestätigt von ' + d.employee
+          + (d.rewardsLeft > 0 ? ' · noch ' + d.rewardsLeft + ' Belohnung offen' : (d.stamps > 0 ? ' · ' + d.stamps + ' Stempel auf der neuen Karte' : ''));
+        var clock = document.getElementById('rdClock');
+        var tick = function(){ clock.textContent = new Date().toLocaleTimeString('de-DE'); };
+        tick(); setInterval(tick, 1000);
+        // Karte oben sofort auf den neuen Stand bringen
+        var total = ${total}, shown = Math.min(d.stamps, total);
+        document.getElementById('pvDone').textContent = shown;
+        document.querySelectorAll('.stamps .dot').forEach(function(el, i){ el.classList.toggle('filled', i < shown); el.classList.remove('newest'); });
+        document.getElementById('msgLine').textContent = d.rewardsLeft > 0 ? 'Eingelöst — eine weitere Belohnung wartet noch.' : 'Eingelöst — deine neue Karte läuft!';
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) { err.textContent = 'Keine Verbindung — bitte nochmal versuchen'; go.disabled = false; }
+    };
+  })();
   (function(){
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     var c = document.getElementById('confetti'), ctx = c.getContext('2d');
@@ -5507,7 +5703,7 @@ const EXPORT_TABLES = {
   businesscards: [], card_events: [],
   stempel_shops: ['password_hash', 'session_token_hash', 'verify_code_hash'],
   stempel_customers: ['device_token', 'redeem_token'],
-  stempel_events: [], stempel_employees: ['pin_hash'], stempel_card_orders: [], stempel_messages: [], stempel_shop_access: [],
+  stempel_events: [], stempel_employees: ['pin_hash'], stempel_card_orders: [], stempel_messages: [], stempel_shop_access: [], stempel_redemptions: [],
   hub_pages: ['preview_token'], hub_links: [],
   shop_orders: [], order_admin: [], platform_modules: [],
   admin_users: ['password_hash', 'totp_secret', 'totp_pending', 'recovery_codes'],

@@ -5840,6 +5840,7 @@ async function routeAdminApi(request, env, sub, method) {
   if (method === 'POST' && seg[0] === 'orders' && seg.length === 3) return handleAdminOrderUpdate(request, env, seg[1], seg[2]);
   if (R('GET', 'tapstempel/shops')) return handleAdminTapstempelShops(request, env);
   if (method === 'POST' && seg[0] === 'tapstempel' && seg[1] === 'shops' && seg[3] === 'access' && seg.length === 4) return handleAdminTapstempelAccess(request, env, seg[2]);
+  if (method === 'GET' && seg[0] === 'tapstempel' && seg[1] === 'shops' && seg[3] === 'sticker' && seg.length === 4) return handleAdminSticker(request, env, seg[2]);
   if (R('GET', 'hub/pages')) return handleAdminHubPages(request, env);
   if (method === 'POST' && seg[0] === 'hub' && seg[1] === 'pages' && seg.length === 4) return handleAdminHubAction(request, env, seg[2], seg[3]);
   if (R('GET', 'visitenkarten')) return handleAdminCards(request, env);
@@ -6032,4 +6033,108 @@ async function createFreeStandOrder(env, shopId) {
     console.error('Gratis-Aufsteller konnte nicht angelegt werden:', e);
     return null;
   }
+}
+
+
+/* ══ Aufsteller-Sticker (Druckvorlage) ══
+   120 × 140 mm Endformat + 3 mm Beschnitt = 126 × 146 mm. Standard-Design für jeden
+   Laden: NFC-Feld (dahinter klebt der NTAG 424 DNA) und QR-Code — beide führen zu
+   /s/<slug>. Im Browser „Drucken → Als PDF speichern“ ergibt die fertige Druckdatei. */
+async function handleAdminSticker(request, env, shopId) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  const shop = await env.DB.prepare('SELECT id, slug, name FROM stempel_shops WHERE id = ?').bind(shopId).first();
+  if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+  const url = new URL(request.url);
+  const html = renderStickerHtml(shop, url.origin, { guides: url.searchParams.get('hilfslinien') === '1' });
+  return new Response(html, { headers: {
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'",
+  } });
+}
+
+function renderStickerHtml(shop, origin, { guides = false } = {}) {
+  const link = `${origin}/s/${shop.slug}`;
+  const qr = generateQrSvg(link, 4);
+  const name = shop.name || '';
+  const nameSize = name.length > 26 ? 3.6 : name.length > 18 ? 4.4 : 5.2; // mm
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>Sticker ${escapeHtml(name)} — 120×140 mm</title>
+<style>
+  @page { size: 126mm 146mm; margin: 0; }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:#6b6b6b;}
+  body{font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  .page{width:126mm; height:146mm; margin:10mm auto; position:relative; overflow:hidden; background:#121116; color:#f5f1e8;}
+  @media print { html,body{background:none;} .page{margin:0;} .no-print{display:none;} }
+  /* Hintergrund: ruhig, dunkel, mit warmem Licht — passt zu Café, Friseur, Bäckerei … */
+  .glow{position:absolute; inset:0;
+    background:radial-gradient(70mm 60mm at 100% 0%, rgba(229,84,61,.34), transparent 70%),
+               radial-gradient(60mm 50mm at 0% 100%, rgba(229,84,61,.16), transparent 70%);}
+  .dots{position:absolute; inset:0; opacity:.12; background-image:radial-gradient(#f5f1e8 .25mm, transparent .3mm); background-size:4mm 4mm;}
+  /* Endformat beginnt 3 mm innen, Inhalt nochmal 6 mm innen (Sicherheitsabstand) */
+  .safe{position:absolute; left:9mm; right:9mm; top:9mm; bottom:9mm; display:flex; flex-direction:column;}
+  .eyebrow{font-size:2.5mm; font-weight:700; letter-spacing:.45mm; text-transform:uppercase; color:#ff7a5f;}
+  .shop{font-size:${nameSize}mm; font-weight:800; line-height:1.1; margin-top:1.2mm; letter-spacing:-.1mm; overflow-wrap:anywhere;}
+  h1{font-size:8.6mm; line-height:.98; font-weight:900; letter-spacing:-.35mm; margin-top:4.5mm;}
+  h1 em{font-style:normal; color:#ff6a4d;}
+  .row{display:flex; align-items:center; justify-content:space-between; margin-top:7mm;}
+  .col{display:flex; flex-direction:column; align-items:center; text-align:center; width:48mm;}
+  .visual{height:47mm; display:grid; place-items:center;}
+  /* NFC-Feld: Mitte = Position des Chips auf der Rückseite */
+  .nfc{width:45mm; height:45mm; border-radius:50%; position:relative; display:grid; place-items:center;
+    background:radial-gradient(circle at 50% 40%, #2a2630, #1a171f); border:.9mm solid #e5543d;
+    box-shadow:0 0 0 2.4mm rgba(229,84,61,.18), 0 0 0 4.6mm rgba(229,84,61,.08);}
+  .nfc svg{width:24mm; height:24mm;}
+  .or{font-size:3mm; font-weight:700; color:#a49d94; text-transform:uppercase; letter-spacing:.3mm;}
+  .qr{width:37mm; height:37mm; background:#fff; border-radius:3.5mm; padding:2.2mm; display:grid; place-items:center;}
+  .qr svg{width:100%; height:100%; display:block;}
+  .label{margin-top:3.6mm; font-size:3.3mm; font-weight:800; line-height:1.2;}
+  .label small{display:block; font-size:2.6mm; font-weight:500; color:#b9b2a8; margin-top:.6mm;}
+  .num{display:inline-grid; place-items:center; width:4.6mm; height:4.6mm; border-radius:50%; background:#e5543d; color:#fff; font-size:2.8mm; font-weight:800; margin-right:1.2mm; vertical-align:.3mm;}
+  .steps{margin-top:auto; display:flex; gap:2.5mm;}
+  .step{flex:1; background:rgba(245,241,232,.07); border:.25mm solid rgba(245,241,232,.14); border-radius:2.8mm; padding:2.4mm 2.2mm; font-size:2.55mm; line-height:1.3; color:#e9e3d9;}
+  .step b{display:block; color:#fff; font-size:2.8mm; margin-bottom:.4mm;}
+  .foot{display:flex; justify-content:space-between; align-items:center; margin-top:3.2mm; font-size:2.35mm; color:#a49d94;}
+  .brand{display:flex; align-items:center; gap:1.4mm; color:#f5f1e8; font-weight:800; font-size:2.9mm; letter-spacing:.1mm;}
+  .seal{width:4.6mm; height:4.6mm; border:.35mm solid #e5543d; border-radius:50%; display:grid; place-items:center; color:#e5543d; font-size:1.7mm; font-weight:900; transform:rotate(-10deg);}
+  /* Hilfslinien nur zur Kontrolle (?hilfslinien=1): rot = Schnitt, grün = Sicherheitsabstand, blau = Chip-Mitte */
+  .g-trim{position:absolute; inset:3mm; border:.2mm dashed #ff2d2d; pointer-events:none;}
+  .g-safe{position:absolute; inset:9mm; border:.2mm dashed #2dd27a; pointer-events:none;}
+  .hint{max-width:126mm; margin:0 auto 10mm; color:#fff; font:13px/1.5 system-ui, sans-serif;}
+</style></head><body>
+<div class="page">
+  <div class="glow"></div><div class="dots"></div>
+  <div class="safe">
+    <div class="eyebrow">✦ Digitale Stempelkarte</div>
+    <div class="shop">${escapeHtml(name)}</div>
+    <h1>Stempel sammeln.<br><em>Belohnung holen.</em></h1>
+    <div class="row">
+      <div class="col">
+        <div class="visual"><div class="nfc">
+          <svg viewBox="0 0 64 64" fill="none" stroke="#f5f1e8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="14" y="10" width="22" height="40" rx="5"/><path d="M22 44h6"/>
+            <path d="M42 24c3 2.4 3 13.6 0 16" stroke="#ff7a5f"/><path d="M47 19c6 5 6 21 0 26" stroke="#ff7a5f"/><path d="M52 14c9 7.5 9 28.5 0 36" stroke="#ff7a5f" opacity=".6"/>
+          </svg>
+        </div></div>
+        <div class="label"><span class="num">1</span>Handy hier dranhalten<small>entsperrt, oben ans Feld</small></div>
+      </div>
+      <div class="or">oder</div>
+      <div class="col">
+        <div class="visual"><div class="qr">${qr}</div></div>
+        <div class="label"><span class="num">2</span>QR-Code scannen<small>mit der Kamera-App</small></div>
+      </div>
+    </div>
+    <div class="steps">
+      <div class="step"><b>Keine App</b>Deine Karte öffnet sich sofort</div>
+      <div class="step"><b>Bei jedem Besuch</b>einen Stempel sammeln</div>
+      <div class="step"><b>Karte voll?</b>An der Kasse zeigen &amp; Belohnung holen</div>
+    </div>
+    <div class="foot"><span class="brand"><span class="seal">TS</span>tapstempel</span><span>Auch in Apple Wallet &amp; Google Wallet</span></div>
+  </div>
+  ${guides ? '<div class="g-trim"></div><div class="g-safe"></div>' : ''}
+</div>
+<p class="hint no-print"><b>Druckdatei:</b> Strg/Cmd + P → „Als PDF speichern“, Papierformat wird automatisch 126 × 146 mm (120 × 140 mm + 3 mm Beschnitt), Ränder „Keine“, Hintergrundgrafiken an.
+Den NTAG 424 DNA mittig hinter den roten Kreis kleben. Link: ${escapeHtml(link)}</p>
+</body></html>`;
 }

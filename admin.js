@@ -522,7 +522,8 @@
                 <button class="btn btn-ghost btn-sm" data-a="extend" data-days="7" data-id="${esc(s.id)}">Test +7 Tage</button>
                 <button class="btn btn-ghost btn-sm" data-a="extend" data-days="30" data-id="${esc(s.id)}">Gratismonat +30 Tage</button>
                 <button class="btn btn-ghost btn-sm" data-a="note" data-id="${esc(s.id)}">Notiz</button>
-                <button class="btn btn-ghost btn-sm" data-msg="${esc(s.id)}">✉️ Nachricht</button></div>` : ''}
+                <button class="btn btn-ghost btn-sm" data-msg="${esc(s.id)}">✉️ Nachricht</button>
+                <a class="btn btn-ghost btn-sm" href="/api/admin/tapstempel/shops/${encodeURIComponent(s.id)}/sticker" target="_blank" rel="noopener">🖨️ Sticker</a></div>` : ''}
             </div><span class="pill ${s.verified ? ac : 'p-muted'}">${s.verified ? al : 'Unbestätigt'}</span></div>`;
         }).join('') : '<div class="empty"><b>Keine Läden</b>Passe Filter oder Suche an.</div>'}</div>`;
       view.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; render(); });

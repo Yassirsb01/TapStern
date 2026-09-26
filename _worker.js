@@ -5840,7 +5840,8 @@ async function routeAdminApi(request, env, sub, method) {
   if (method === 'POST' && seg[0] === 'orders' && seg.length === 3) return handleAdminOrderUpdate(request, env, seg[1], seg[2]);
   if (R('GET', 'tapstempel/shops')) return handleAdminTapstempelShops(request, env);
   if (method === 'POST' && seg[0] === 'tapstempel' && seg[1] === 'shops' && seg[3] === 'access' && seg.length === 4) return handleAdminTapstempelAccess(request, env, seg[2]);
-  if (method === 'GET' && seg[0] === 'tapstempel' && seg[1] === 'shops' && seg[3] === 'sticker' && seg.length === 4) return handleAdminSticker(request, env, seg[2]);
+  if (R('GET', 'tapstempel/sticker')) return handleAdminSticker(request, env);
+  if (method === 'GET' && seg[0] === 'tapstempel' && seg[1] === 'shops' && seg[3] === 'qr-etikett' && seg.length === 4) return handleAdminQrLabel(request, env, seg[2]);
   if (R('GET', 'hub/pages')) return handleAdminHubPages(request, env);
   if (method === 'POST' && seg[0] === 'hub' && seg[1] === 'pages' && seg.length === 4) return handleAdminHubAction(request, env, seg[2], seg[3]);
   if (R('GET', 'visitenkarten')) return handleAdminCards(request, env);
@@ -6037,91 +6038,102 @@ async function createFreeStandOrder(env, shopId) {
 
 
 /* ══ Aufsteller-Sticker (Druckvorlage) ══
-   120 × 140 mm Endformat + 3 mm Beschnitt = 126 × 146 mm. Standard-Design für jeden
-   Laden: NFC-Feld (dahinter klebt der NTAG 424 DNA) und QR-Code — beide führen zu
-   /s/<slug>. Im Browser „Drucken → Als PDF speichern“ ergibt die fertige Druckdatei. */
-async function handleAdminSticker(request, env, shopId) {
+   Ein Sticker für ALLE Läden (120 × 140 mm + 3 mm Beschnitt), hell, ohne Namen — lässt
+   sich auf Vorrat drucken. Im weißen Feld klebt später das QR-Etikett des jeweiligen
+   Ladens (40 × 40 mm), hinter dem roten Kreis der NFC-Chip. Beide führen zu /s/<slug>.
+   Im Browser „Drucken → Als PDF speichern“ ergibt die Druckdatei. */
+const STICKER_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'";
+function printHtmlResponse(html) {
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Content-Security-Policy': STICKER_CSP } });
+}
+
+/* GET /api/admin/tapstempel/sticker — die Vorlage für alle Läden */
+async function handleAdminSticker(request, env) {
+  const ctx = await adminSession(env, request);
+  if (ctx.denied) return ctx.denied;
+  return printHtmlResponse(renderStickerHtml({ guides: new URL(request.url).searchParams.get('hilfslinien') === '1' }));
+}
+
+/* GET /api/admin/tapstempel/shops/:id/qr-etikett — QR-Etikett 40 × 40 mm für einen Laden */
+async function handleAdminQrLabel(request, env, shopId) {
   const ctx = await adminSession(env, request);
   if (ctx.denied) return ctx.denied;
   const shop = await env.DB.prepare('SELECT id, slug, name FROM stempel_shops WHERE id = ?').bind(shopId).first();
   if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
-  const url = new URL(request.url);
-  const html = renderStickerHtml(shop, url.origin, { guides: url.searchParams.get('hilfslinien') === '1' });
-  return new Response(html, { headers: {
-    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex',
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'",
-  } });
+  return printHtmlResponse(renderQrLabelHtml(shop, new URL(request.url).origin));
 }
 
-function renderStickerHtml(shop, origin, { guides = false } = {}) {
-  const link = `${origin}/s/${shop.slug}`;
-  const qr = generateQrSvg(link, 4);
-  const name = shop.name || '';
-  const nameSize = name.length > 26 ? 3.6 : name.length > 18 ? 4.4 : 5.2; // mm
+const STICKER_BASE_CSS = `
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:#8a8a8a;}
+  body{font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  @media print { html,body{background:none;} .page{margin:0 !important; box-shadow:none !important;} .no-print{display:none;} }
+  .hint{max-width:140mm; margin:0 auto 10mm; color:#fff; font:13px/1.5 system-ui, sans-serif;}`;
+
+function renderStickerHtml({ guides = false } = {}) {
   return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
-<title>Sticker ${escapeHtml(name)} — 120×140 mm</title>
+<title>Tapstempel Sticker 120×140 mm — für alle Läden</title>
 <style>
   @page { size: 126mm 146mm; margin: 0; }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  html,body{background:#6b6b6b;}
-  body{font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
-  .page{width:126mm; height:146mm; margin:10mm auto; position:relative; overflow:hidden; background:#121116; color:#f5f1e8;}
-  @media print { html,body{background:none;} .page{margin:0;} .no-print{display:none;} }
-  /* Hintergrund: ruhig, dunkel, mit warmem Licht — passt zu Café, Friseur, Bäckerei … */
+  ${STICKER_BASE_CSS}
+  .page{width:126mm; height:146mm; margin:10mm auto; position:relative; overflow:hidden; background:#fbf8f3; color:#17151c; box-shadow:0 10px 40px rgba(0,0,0,.25);}
+  /* Hell und ruhig mit warmem Akzent — passt zu Café, Friseur, Bäckerei, Studio … */
   .glow{position:absolute; inset:0;
-    background:radial-gradient(70mm 60mm at 100% 0%, rgba(229,84,61,.34), transparent 70%),
-               radial-gradient(60mm 50mm at 0% 100%, rgba(229,84,61,.16), transparent 70%);}
-  .dots{position:absolute; inset:0; opacity:.12; background-image:radial-gradient(#f5f1e8 .25mm, transparent .3mm); background-size:4mm 4mm;}
-  /* Endformat beginnt 3 mm innen, Inhalt nochmal 6 mm innen (Sicherheitsabstand) */
+    background:radial-gradient(75mm 55mm at 100% 0%, rgba(229,84,61,.16), transparent 70%),
+               radial-gradient(60mm 45mm at 0% 100%, rgba(229,84,61,.10), transparent 70%);}
+  .dots{position:absolute; inset:0; opacity:.5; background-image:radial-gradient(#e6ddd0 .28mm, transparent .32mm); background-size:4mm 4mm;}
   .safe{position:absolute; left:9mm; right:9mm; top:9mm; bottom:9mm; display:flex; flex-direction:column;}
-  .eyebrow{font-size:2.5mm; font-weight:700; letter-spacing:.45mm; text-transform:uppercase; color:#ff7a5f;}
-  .shop{font-size:${nameSize}mm; font-weight:800; line-height:1.1; margin-top:1.2mm; letter-spacing:-.1mm; overflow-wrap:anywhere;}
-  h1{font-size:8.6mm; line-height:.98; font-weight:900; letter-spacing:-.35mm; margin-top:4.5mm;}
-  h1 em{font-style:normal; color:#ff6a4d;}
-  .row{display:flex; align-items:center; justify-content:space-between; margin-top:7mm;}
+  .eyebrow{display:inline-flex; align-items:center; gap:1.4mm; font-size:2.6mm; font-weight:800; letter-spacing:.45mm; text-transform:uppercase; color:#d9472f;}
+  .eyebrow i{width:1.6mm; height:1.6mm; border-radius:50%; background:#e5543d; display:inline-block;}
+  h1{font-size:9.4mm; line-height:.98; font-weight:900; letter-spacing:-.35mm; margin-top:3.5mm;}
+  h1 em{font-style:normal; color:#e5543d;}
+  .lead{font-size:3.1mm; line-height:1.35; color:#5d5750; margin-top:2.6mm; max-width:92mm;}
+  .row{display:flex; align-items:flex-start; justify-content:space-between; margin-top:6mm;}
   .col{display:flex; flex-direction:column; align-items:center; text-align:center; width:48mm;}
-  .visual{height:47mm; display:grid; place-items:center;}
+  .visual{height:46mm; display:grid; place-items:center;}
+  .or{align-self:center; margin-top:-8mm; font-size:3mm; font-weight:800; color:#a39a8f; text-transform:uppercase; letter-spacing:.3mm;}
   /* NFC-Feld: Mitte = Position des Chips auf der Rückseite */
-  .nfc{width:45mm; height:45mm; border-radius:50%; position:relative; display:grid; place-items:center;
-    background:radial-gradient(circle at 50% 40%, #2a2630, #1a171f); border:.9mm solid #e5543d;
-    box-shadow:0 0 0 2.4mm rgba(229,84,61,.18), 0 0 0 4.6mm rgba(229,84,61,.08);}
+  .nfc{width:44mm; height:44mm; border-radius:50%; display:grid; place-items:center; background:#fff; border:.9mm solid #e5543d;
+    box-shadow:0 0 0 2.4mm rgba(229,84,61,.14), 0 0 0 4.6mm rgba(229,84,61,.06);}
   .nfc svg{width:24mm; height:24mm;}
-  .or{font-size:3mm; font-weight:700; color:#a49d94; text-transform:uppercase; letter-spacing:.3mm;}
-  .qr{width:37mm; height:37mm; background:#fff; border-radius:3.5mm; padding:2.2mm; display:grid; place-items:center;}
-  .qr svg{width:100%; height:100%; display:block;}
-  .label{margin-top:3.6mm; font-size:3.3mm; font-weight:800; line-height:1.2;}
-  .label small{display:block; font-size:2.6mm; font-weight:500; color:#b9b2a8; margin-top:.6mm;}
+  /* Weißes Feld für das QR-Etikett des Ladens (40 × 40 mm) */
+  .qrslot{width:42mm; height:42mm; border-radius:3.6mm; background:#fff; border:.35mm solid #e4dccf; position:relative; display:grid; place-items:center;}
+  .qrslot .corner{position:absolute; width:5mm; height:5mm; border:.7mm solid #e5543d;}
+  .qrslot .tl{left:-.9mm; top:-.9mm; border-right:0; border-bottom:0; border-radius:2mm 0 0 0;}
+  .qrslot .tr{right:-.9mm; top:-.9mm; border-left:0; border-bottom:0; border-radius:0 2mm 0 0;}
+  .qrslot .bl{left:-.9mm; bottom:-.9mm; border-right:0; border-top:0; border-radius:0 0 0 2mm;}
+  .qrslot .br{right:-.9mm; bottom:-.9mm; border-left:0; border-top:0; border-radius:0 0 2mm 0;}
+  .label{margin-top:3.2mm; font-size:3.4mm; font-weight:800; line-height:1.2;}
+  .label small{display:block; font-size:2.6mm; font-weight:500; color:#7a736a; margin-top:.6mm;}
   .num{display:inline-grid; place-items:center; width:4.6mm; height:4.6mm; border-radius:50%; background:#e5543d; color:#fff; font-size:2.8mm; font-weight:800; margin-right:1.2mm; vertical-align:.3mm;}
   .steps{margin-top:auto; display:flex; gap:2.5mm;}
-  .step{flex:1; background:rgba(245,241,232,.07); border:.25mm solid rgba(245,241,232,.14); border-radius:2.8mm; padding:2.4mm 2.2mm; font-size:2.55mm; line-height:1.3; color:#e9e3d9;}
-  .step b{display:block; color:#fff; font-size:2.8mm; margin-bottom:.4mm;}
-  .foot{display:flex; justify-content:space-between; align-items:center; margin-top:3.2mm; font-size:2.35mm; color:#a49d94;}
-  .brand{display:flex; align-items:center; gap:1.4mm; color:#f5f1e8; font-weight:800; font-size:2.9mm; letter-spacing:.1mm;}
+  .step{flex:1; background:#fff; border:.25mm solid #ebe3d7; border-radius:2.8mm; padding:2.4mm 2.2mm; font-size:2.55mm; line-height:1.3; color:#5d5750;}
+  .step b{display:block; color:#17151c; font-size:2.8mm; margin-bottom:.4mm;}
+  .foot{display:flex; justify-content:space-between; align-items:center; margin-top:3mm; font-size:2.35mm; color:#8a8278;}
+  .brand{display:flex; align-items:center; gap:1.4mm; color:#17151c; font-weight:800; font-size:2.9mm; letter-spacing:.1mm;}
   .seal{width:4.6mm; height:4.6mm; border:.35mm solid #e5543d; border-radius:50%; display:grid; place-items:center; color:#e5543d; font-size:1.7mm; font-weight:900; transform:rotate(-10deg);}
-  /* Hilfslinien nur zur Kontrolle (?hilfslinien=1): rot = Schnitt, grün = Sicherheitsabstand, blau = Chip-Mitte */
-  .g-trim{position:absolute; inset:3mm; border:.2mm dashed #ff2d2d; pointer-events:none;}
-  .g-safe{position:absolute; inset:9mm; border:.2mm dashed #2dd27a; pointer-events:none;}
-  .hint{max-width:126mm; margin:0 auto 10mm; color:#fff; font:13px/1.5 system-ui, sans-serif;}
+  .g-trim{position:absolute; inset:3mm; border:.2mm dashed #ff2d2d;}
+  .g-safe{position:absolute; inset:9mm; border:.2mm dashed #1fae63;}
 </style></head><body>
 <div class="page">
   <div class="glow"></div><div class="dots"></div>
   <div class="safe">
-    <div class="eyebrow">✦ Digitale Stempelkarte</div>
-    <div class="shop">${escapeHtml(name)}</div>
+    <div class="eyebrow"><i></i>Digitale Stempelkarte</div>
     <h1>Stempel sammeln.<br><em>Belohnung holen.</em></h1>
+    <p class="lead">Deine Treuekarte direkt aufs Handy — ohne App, ohne Anmeldung, ohne Papier.</p>
     <div class="row">
       <div class="col">
         <div class="visual"><div class="nfc">
-          <svg viewBox="0 0 64 64" fill="none" stroke="#f5f1e8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" stroke="#17151c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="14" y="10" width="22" height="40" rx="5"/><path d="M22 44h6"/>
-            <path d="M42 24c3 2.4 3 13.6 0 16" stroke="#ff7a5f"/><path d="M47 19c6 5 6 21 0 26" stroke="#ff7a5f"/><path d="M52 14c9 7.5 9 28.5 0 36" stroke="#ff7a5f" opacity=".6"/>
+            <path d="M42 24c3 2.4 3 13.6 0 16" stroke="#e5543d"/><path d="M47 19c6 5 6 21 0 26" stroke="#e5543d"/><path d="M52 14c9 7.5 9 28.5 0 36" stroke="#e5543d" opacity=".55"/>
           </svg>
         </div></div>
         <div class="label"><span class="num">1</span>Handy hier dranhalten<small>entsperrt, oben ans Feld</small></div>
       </div>
       <div class="or">oder</div>
       <div class="col">
-        <div class="visual"><div class="qr">${qr}</div></div>
+        <div class="visual"><div class="qrslot"><span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span></div></div>
         <div class="label"><span class="num">2</span>QR-Code scannen<small>mit der Kamera-App</small></div>
       </div>
     </div>
@@ -6134,7 +6146,22 @@ function renderStickerHtml(shop, origin, { guides = false } = {}) {
   </div>
   ${guides ? '<div class="g-trim"></div><div class="g-safe"></div>' : ''}
 </div>
-<p class="hint no-print"><b>Druckdatei:</b> Strg/Cmd + P → „Als PDF speichern“, Papierformat wird automatisch 126 × 146 mm (120 × 140 mm + 3 mm Beschnitt), Ränder „Keine“, Hintergrundgrafiken an.
-Den NTAG 424 DNA mittig hinter den roten Kreis kleben. Link: ${escapeHtml(link)}</p>
+<p class="hint no-print"><b>Druckdatei für alle Läden:</b> Strg/Cmd + P → „Als PDF speichern“ (126 × 146 mm = 120 × 140 mm + 3 mm Beschnitt, Ränder „Keine“, Hintergrundgrafiken an).
+Pro Laden: QR-Etikett (40 × 40 mm) ins weiße Feld kleben, NFC-Chip mittig hinter den roten Kreis.</p>
+</body></html>`;
+}
+
+function renderQrLabelHtml(shop, origin) {
+  const link = `${origin}/s/${shop.slug}`;
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>QR-Etikett ${escapeHtml(shop.name || '')} — 40×40 mm</title>
+<style>
+  @page { size: 40mm 40mm; margin: 0; }
+  ${STICKER_BASE_CSS}
+  .page{width:40mm; height:40mm; margin:10mm auto; background:#fff; display:grid; place-items:center; box-shadow:0 10px 40px rgba(0,0,0,.25);}
+  .page svg{width:36mm; height:36mm; display:block;}
+</style></head><body>
+<div class="page">${generateQrSvg(link, 4)}</div>
+<p class="hint no-print" style="max-width:120mm; text-align:center;"><b>QR-Etikett für ${escapeHtml(shop.name || '')}</b><br>Strg/Cmd + P → „Als PDF speichern“ (40 × 40 mm) oder direkt auf dem Etikettendrucker drucken.<br>Führt zu ${escapeHtml(link)} — denselben Link auf den NFC-Chip schreiben.</p>
 </body></html>`;
 }

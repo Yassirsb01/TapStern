@@ -495,6 +495,14 @@
       <div id="p-customers" class="hide">
         <h3>Kundenkartei</h3>
         <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Alle Gäste, die deine digitale Stempelkarte besitzen.</p>
+        <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:18px 20px; margin-bottom:18px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;">
+            <h4 style="margin:0;">🎁 Letzte Einlösungen</h4>
+            <span id="redeemStat" style="font-size:13px; color:var(--muted);"></span>
+          </div>
+          <p style="font-size:12.5px; color:var(--muted); margin:6px 0 12px; line-height:1.5;">So läuft's: Ist die Karte voll, zeigt der Gast sein Handy. Dein Team tippt „Belohnung ausgeben“ und bestätigt mit dem eigenen PIN — erst dann wird sie abgezogen. Jede Ausgabe steht hier mit Uhrzeit und Mitarbeiter.</p>
+          <div id="redeemRows" style="font-size:13px;"></div>
+        </div>
         <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; overflow-x:auto;">
           <table>
             <thead><tr><th>Karten-ID</th><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
@@ -1053,8 +1061,9 @@
   async function loadCustomers() {
     const th = shop.reward_threshold || 8;
     $('customerRows').innerHTML = allCustomers.map(c => {
-      const dots = Array.from({length: th}, (_, i) => `<span class="dot-stamp ${i < c.stamps ? 'on' : ''}"></span>`).join('');
-      const status = c.stamps >= th ? '<strong style="color:var(--coral);">Belohnung bereit</strong>' : `${c.stamps}/${th}`;
+      const dots = Array.from({length: th}, (_, i) => `<span class="dot-stamp ${i < Math.min(c.stamps, th) ? 'on' : ''}"></span>`).join('');
+      const ready = Math.floor(c.stamps / th), carry = c.stamps - th;
+      const status = ready ? `<strong style="color:var(--coral);">🎁 ${ready > 1 ? ready + ' Belohnungen' : 'Belohnung'} bereit</strong>${carry > 0 && ready === 1 ? ` <span style="color:var(--muted);">(+${carry})</span>` : ''}` : `${c.stamps}/${th}`;
       return `<tr>
         <td style="font:600 12px 'DM Mono',monospace; letter-spacing:0.08em;">${c.card_code || '—'}</td>
         <td><div class="dot-row">${dots}</div></td>
@@ -1063,6 +1072,19 @@
         <td>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleDateString('de-DE') : '—'}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="5" style="color:var(--muted); padding:20px;">Noch keine Kunden verzeichnet.</td></tr>';
+    loadRedemptions();
+  }
+  async function loadRedemptions() {
+    try {
+      const { redemptions, last30Days } = await api('/api/stempel/redemptions');
+      $('redeemStat').textContent = `${last30Days} in den letzten 30 Tagen`;
+      $('redeemRows').innerHTML = redemptions.slice(0, 15).map(r => `
+        <div style="display:grid; grid-template-columns:auto 1fr auto; gap:12px; padding:8px 0; border-top:1px solid var(--line); align-items:center;">
+          <span style="font:600 12px 'DM Mono',monospace; letter-spacing:0.08em;">${escH(r.card_code || '—')}</span>
+          <span>${escH(r.reward_text)} <span style="color:var(--muted);">· ${escH(r.employee_name || '')}</span></span>
+          <span style="color:var(--muted); white-space:nowrap;">${new Date(r.created_at * 1000).toLocaleString('de-DE', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        </div>`).join('') || '<p style="color:var(--muted); margin:0;">Noch keine Belohnung ausgegeben.</p>';
+    } catch (e) { $('redeemRows').textContent = ''; }
   }
 
   /* CARD & QR */

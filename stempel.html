@@ -257,6 +257,13 @@
 
   /* Nachricht an Kunden */
   .msg-grid{display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start;}
+  .design-grid{display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:24px; align-items:start;}
+  .design-form{background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; display:grid; gap:18px; min-width:0;}
+  .design-preview{position:sticky; top:24px;}
+  .m-preview-head{display:flex; justify-content:space-between; align-items:center; margin:0 0 10px;}
+  .m-preview-close{display:none; border:0; background:#ece6dc; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; color:var(--ink);}
+  .preview-fab{display:none;}
+  .preview-backdrop{display:none;}
   .msg-panel{background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;}
   .field textarea{
     border:1px solid #d5d0c9; border-radius:8px; padding:12px; background:#fffefa; font-size:14px; color:var(--ink);
@@ -337,11 +344,11 @@
     .dash-panel{grid-template-columns:1fr; border-radius:14px;}
     .dash-mobile-bar{display:flex;}
     
-    /* Die Seitenleiste wird zum Slide-Out-Drawer */
+    /* Die Seitenleiste wird zum Drawer — von rechts, wo auch der Menü-Knopf sitzt */
     .dash-panel aside{
-      position:fixed; top:0; left:0; bottom:0; width:280px; z-index:300;
-      box-shadow:12px 0 35px rgba(0,0,0,0.25);
-      transform:translateX(-100%); transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position:fixed; top:0; right:0; left:auto; bottom:0; width:min(300px, 86vw); z-index:300;
+      box-shadow:-12px 0 35px rgba(0,0,0,0.25); overflow-y:auto;
+      transform:translateX(100%); transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .dash-panel aside.mobile-open{transform:translateX(0);}
     .aside-close-btn{display:block;}
@@ -356,6 +363,20 @@
     .plan-grid{grid-template-columns:1fr;}
     .time-filter{width:100%; justify-content:space-between;}
     .msg-grid{grid-template-columns:1fr;}
+    /* Eine Spalte; Vorschau als Blatt von unten, über den schwebenden Knopf */
+    .design-grid{grid-template-columns:minmax(0,1fr);}
+    .design-form, .msg-panel{padding:18px;}
+    .m-preview{position:fixed; left:0; right:0; bottom:0; top:auto; z-index:420; background:var(--cream); border-radius:22px 22px 0 0;
+      padding:14px 16px calc(22px + env(safe-area-inset-bottom)); max-height:86vh; overflow-y:auto; box-shadow:0 -14px 40px rgba(0,0,0,0.22);
+      transform:translateY(105%); transition:transform 0.28s cubic-bezier(0.16, 1, 0.3, 1); visibility:hidden;}
+    .m-preview.open{transform:translateY(0); visibility:visible;}
+    .m-preview-close{display:grid; place-items:center;}
+    .m-preview .card-preview, .m-preview .lock-screen{max-width:360px; margin:0 auto;}
+    .preview-backdrop.open{display:block; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:410;}
+    .preview-fab.show{display:inline-flex; position:fixed; right:16px; bottom:calc(18px + env(safe-area-inset-bottom)); z-index:250;
+      align-items:center; gap:8px; border:0; border-radius:100px; padding:13px 18px; background:var(--ink); color:#fff; font-family:inherit; font-weight:600; font-size:14px;
+      box-shadow:0 10px 26px rgba(0,0,0,0.28); cursor:pointer;}
+    #p-settings, #p-messages{padding-bottom:70px;}
   }
 </style>
 </head>
@@ -673,8 +694,8 @@
             <p class="msg-note"><span id="msgRule">Du kannst eine Nachricht pro Tag senden, damit deine Kunden nicht genervt sind.</span> Wer die Karte nur im Browser nutzt, sieht die Nachricht beim nächsten Öffnen der Kartenseite. Kunden können Mitteilungen für deine Karte in Wallet jederzeit abschalten.</p>
           </div>
 
-          <div>
-            <p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:0 0 10px;">So sieht's auf dem Handy aus</p>
+          <div class="m-preview" id="msgPreview">
+            <div class="m-preview-head"><p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:0;">So sieht's auf dem Handy aus</p><button type="button" class="m-preview-close" aria-label="Vorschau schließen">✕</button></div>
             <div class="lock-screen">
               <div class="lock-time" id="lockTime">9:41</div>
               <div class="lock-date" id="lockDate"></div>
@@ -693,10 +714,10 @@
       <!-- SEITE 6: STEMPELKARTE GESTALTEN -->
       <div id="p-settings" class="hide">
         <h3>Stempelkarte gestalten</h3>
-        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Personalisiere das Design und die Regeln deiner digitalen Treuekarte — die Vorschau rechts zeigt sofort, wie's beim Kunden aussieht.</p>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Personalisiere das Design und die Regeln deiner digitalen Treuekarte — die Vorschau zeigt sofort, wie's beim Kunden aussieht.</p>
 
-        <div style="display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start;">
-          <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; display:grid; gap:18px;">
+        <div class="design-grid">
+          <div class="design-form">
 
             <div class="field">
               <label>Stempel bis zur Belohnung</label>
@@ -803,8 +824,8 @@
             </div>
           </div>
 
-          <div style="position:sticky; top:24px;">
-            <p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:0 0 10px;">Live-Vorschau</p>
+          <div class="design-preview m-preview" id="designPreview">
+            <div class="m-preview-head"><p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:0;">Live-Vorschau</p><button type="button" class="m-preview-close" aria-label="Vorschau schließen">✕</button></div>
             <div id="cardPreview" class="card-preview">
               <div class="cp-banner" id="cpBanner"></div>
               <div class="cp-body">
@@ -842,6 +863,10 @@
     </main>
   </div>
 </div>
+
+<!-- Handy: Vorschau als Blatt von unten -->
+<div class="preview-backdrop" id="previewBackdrop"></div>
+<button type="button" class="preview-fab" id="previewFab">👁 Vorschau</button>
 
 <!-- Als App installieren (iPhone: Anleitung, Android: echtes Installieren) -->
 <div id="installWrap" class="hide">
@@ -911,6 +936,7 @@
       ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
       
       toggleMobileAside(false); // Auf Mobile nach Klick schließen!
+      updatePreviewFab(target);
 
       if (target === 'customers') loadCustomers();
       if (target === 'card') loadCard();
@@ -920,6 +946,27 @@
       if (target === 'messages') loadMessages();
     };
   });
+
+  /* HANDY-VORSCHAU: auf „Gestalten“ und „Nachricht“ per Knopf einblenden */
+  const PREVIEW_OF = { settings: 'designPreview', messages: 'msgPreview' };
+  let currentPreview = null;
+  function closePreview() {
+    document.querySelectorAll('.m-preview.open').forEach(x => x.classList.remove('open'));
+    $('previewBackdrop').classList.remove('open');
+  }
+  function updatePreviewFab(target) {
+    closePreview();
+    currentPreview = PREVIEW_OF[target] || null;
+    $('previewFab').classList.toggle('show', !!currentPreview);
+  }
+  $('previewFab').onclick = () => {
+    if (!currentPreview) return;
+    $(currentPreview).classList.add('open');
+    $('previewBackdrop').classList.add('open');
+  };
+  $('previewBackdrop').onclick = closePreview;
+  document.querySelectorAll('.m-preview-close').forEach(b => b.onclick = closePreview);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
 
   function goTo(target) { document.querySelector('aside a[data-go="' + target + '"]').click(); }
 
@@ -1308,7 +1355,7 @@
   function loadCard() {
     const url = location.origin + '/s/' + shop.slug;
     $('tapLink').textContent = url;
-    QRCode.toCanvas(url, { width: 160, margin: 1 }, (err, canvas) => {
+    if (window.QRCode) QRCode.toCanvas(url, { width: 160, margin: 1 }, (err, canvas) => {
       if (!err) { $('qr').innerHTML = ''; $('qr').appendChild(canvas); }
     });
   }

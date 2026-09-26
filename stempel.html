@@ -239,6 +239,20 @@
   .geo-box{border:1px dashed #dfd9d0; border-radius:12px; padding:16px; background:#fcfaf6;}
   .geo-box.locked{opacity:0.7;}
   .geo-status{font-size:13px; margin:8px 0 0; color:var(--muted);}
+  .geo-status.warn{color:#b4540b; font-weight:600;}
+  .geo-input{width:100%; box-sizing:border-box; padding:11px 12px; border:1px solid var(--line); border-radius:10px; font:inherit; font-size:14px; background:#fff;}
+  .geo-lbl{display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin:12px 0 6px;}
+  .geo-search{display:flex; gap:8px;}
+  .geo-search .btn{font-size:13px; padding:9px 16px; flex:none;}
+  .geo-results{display:grid; gap:6px; margin-top:8px;}
+  .geo-results button{text-align:left; border:1px solid var(--line); background:#fff; border-radius:10px; padding:9px 12px; font:inherit; font-size:13px; cursor:pointer;}
+  .geo-results button:hover{border-color:var(--coral);}
+  .geo-map{position:relative; height:190px; border-radius:12px; overflow:hidden; background:#e8e2d7; margin-top:12px; border:1px solid var(--line);}
+  .geo-map img{position:absolute; width:256px; height:256px; max-width:none; user-select:none; pointer-events:none;}
+  .geo-ring{position:absolute; border-radius:50%; border:2px solid rgba(229,84,61,0.9); background:rgba(229,84,61,0.13); transform:translate(-50%,-50%);}
+  .geo-pin{position:absolute; width:18px; height:18px; border-radius:50% 50% 50% 0; background:var(--coral); border:3px solid #fff; transform:translate(-50%,-100%) rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,0.35);}
+  .geo-attr{position:absolute; right:0; bottom:0; background:rgba(255,255,255,0.85); font-size:10px; padding:2px 6px; border-top-left-radius:6px; color:#555;}
+  .geo-where{font-size:13.5px; font-weight:600; margin:8px 0 0;}
   .plan-price small{font-size:12px; font-family:"DM Sans"; color:var(--muted); font-weight:400;}
 
   /* Nachricht an Kunden */
@@ -764,10 +778,20 @@
 
             <div class="geo-box" id="geoBox">
               <label style="display:block; font-weight:600; margin-bottom:4px;">📍 Vorbeilauf-Mitteilung <span class="plan-tag">Premium</span></label>
-              <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px; line-height:1.5;">Kommen Kunden mit deiner Karte in Apple Wallet an deinem Laden vorbei, zeigt ihr iPhone die Karte auf dem Sperrbildschirm — mit deinem Text. Drück den Knopf am besten, während du im Laden stehst.</p>
-              <input type="text" id="geo-text" maxlength="80" placeholder="Text auf dem Sperrbildschirm, z. B. Lust auf Kaffee? Hol dir deinen Stempel!" style="width:100%; box-sizing:border-box; padding:11px 12px; border:1px solid var(--line); border-radius:10px; font:inherit; font-size:14px; background:#fff; margin-bottom:10px;">
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button class="btn btn-dark" type="button" id="geoSet" style="font-size:13px; padding:9px 16px;">Standort des Ladens übernehmen</button>
+              <p style="font-size:12.5px; color:var(--muted); margin:0; line-height:1.5;">Kommt ein Kunde mit deiner Karte in <b>Apple Wallet</b> in die Nähe deines Ladens (ca. 100 m), schlägt sein iPhone die Karte unten auf dem <b>gesperrten Bildschirm</b> vor — mit deinem Text. Das ist ein dezenter Hinweis ohne Ton, kein Push; wann er erscheint, entscheidet das iPhone. Für eine echte Mitteilung an alle nutze „Nachricht an Kunden“.</p>
+              <span class="geo-lbl">Adresse des Ladens</span>
+              <div class="geo-search">
+                <input type="search" id="geo-q" class="geo-input" maxlength="200" placeholder="z. B. Domplatz 1, Regensburg" autocomplete="street-address">
+                <button class="btn btn-dark" type="button" id="geoSearch">Suchen</button>
+              </div>
+              <div class="geo-results" id="geoResults"></div>
+              <button class="btn btn-ghost" type="button" id="geoHere" style="font-size:12.5px; padding:8px 14px; margin-top:8px;">📍 Oder aktuellen Standort verwenden (im Laden, am Handy)</button>
+              <div class="geo-map hide" id="geoMap"></div>
+              <p class="geo-where" id="geoWhere"></p>
+              <span class="geo-lbl">Text auf dem Sperrbildschirm</span>
+              <input type="text" id="geo-text" class="geo-input" maxlength="80" placeholder="z. B. Lust auf Kaffee? Hol dir deinen Stempel!">
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <button class="btn btn-coral" type="button" id="geoSave" style="font-size:13px; padding:9px 16px;">Standort speichern</button>
                 <button class="btn btn-ghost" type="button" id="geoClear" style="font-size:13px; padding:9px 16px;">Entfernen</button>
               </div>
               <p class="geo-status" id="geoStatus"></p>
@@ -1683,31 +1707,87 @@
     preview.style.backgroundRepeat = layers.repeat;
   }
 
-  /* VORBEILAUF-MITTEILUNG (Geofencing, Premium) */
+  /* VORBEILAUF-MITTEILUNG (Geofencing, Premium)
+     Adresse suchen oder Gerätestandort nehmen → Vorschau auf der Karte → speichern.
+     Adresssuche und Kartenkacheln laufen über unseren Server (OpenStreetMap). */
+  let geoDraft = null; // { latitude, longitude, label, accuracy }
+  function drawGeoMap(p) {
+    const el = $('geoMap');
+    if (!p) { el.classList.add('hide'); el.innerHTML = ''; return; }
+    el.classList.remove('hide');
+    const W = el.clientWidth || 360, H = el.clientHeight || 190, rad = p.latitude * Math.PI / 180;
+    // Zoom so wählen, dass der 100-m-Bereich etwa 30 % der kürzeren Kartenseite einnimmt
+    const GEO_ZOOM = Math.max(14, Math.min(18, Math.floor(Math.log2(0.3 * Math.min(W, H) * 156543.03392 * Math.cos(rad) / 100))));
+    const n = 256 * 2 ** GEO_ZOOM;
+    const cx = (p.longitude + 180) / 360 * n, cy = (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n;
+    const left = cx - W / 2, top = cy - H / 2;
+    let html = '';
+    for (let tx = Math.floor(left / 256); tx <= Math.floor((left + W) / 256); tx++)
+      for (let ty = Math.floor(top / 256); ty <= Math.floor((top + H) / 256); ty++)
+        html += `<img alt="" src="/api/stempel/tile/${GEO_ZOOM}/${tx}/${ty}.png" style="left:${Math.round(tx * 256 - left)}px; top:${Math.round(ty * 256 - top)}px">`;
+    const mpp = 156543.03392 * Math.cos(rad) / 2 ** GEO_ZOOM, r = Math.round(100 / mpp);
+    html += `<div class="geo-ring" style="left:${W / 2}px; top:${H / 2}px; width:${2 * r}px; height:${2 * r}px"></div><div class="geo-pin" style="left:${W / 2}px; top:${H / 2}px"></div><div class="geo-attr">© OpenStreetMap-Mitwirkende</div>`;
+    el.innerHTML = html;
+  }
+  function geoStatus(msg, warn) { $('geoStatus').textContent = msg; $('geoStatus').classList.toggle('warn', !!warn); }
   function renderGeo() {
     const f = shop.features || {}, g = shop.geo;
+    geoDraft = null;
     $('geoBox').classList.toggle('locked', !f.geofence);
+    ['geo-q', 'geoSearch', 'geoHere', 'geo-text', 'geoSave'].forEach(id => { $(id).disabled = !f.geofence; });
     $('geo-text').value = g && g.text ? g.text : '';
-    $('geo-text').disabled = $('geoSet').disabled = !f.geofence;
+    $('geoResults').innerHTML = '';
     $('geoClear').classList.toggle('hide', !g || !f.geofence);
-    $('geoStatus').textContent = !f.geofence
-      ? 'Im Basic-Paket nicht enthalten — mit Premium schaltest du es frei.'
-      : g ? `✓ Aktiv für ${g.latitude.toFixed(5)}, ${g.longitude.toFixed(5)}` : 'Noch kein Standort hinterlegt.';
+    $('geoSave').textContent = 'Standort speichern';
+    $('geoWhere').textContent = g ? '✓ Aktiv für: ' + (g.label || `${g.latitude.toFixed(5)}, ${g.longitude.toFixed(5)}`) : '';
+    drawGeoMap(f.geofence ? g : null);
+    if (!f.geofence) geoStatus('Im Basic-Paket nicht enthalten — mit Premium schaltest du es frei.');
+    else geoStatus(g ? 'Prüf auf der Karte, ob die Nadel auf deinem Laden steht.' : 'Noch kein Standort hinterlegt — such deine Adresse oder nimm deinen Standort.');
   }
-  $('geoSet').onclick = () => {
-    if (!navigator.geolocation) { $('geoStatus').textContent = 'Dein Browser kann den Standort nicht bestimmen.'; return; }
-    $('geoStatus').textContent = 'Standort wird bestimmt …';
+  function previewGeo(p, note, warn) {
+    geoDraft = p;
+    $('geoWhere').textContent = 'Vorschau: ' + (p.label || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`);
+    drawGeoMap(p);
+    $('geoSave').textContent = warn ? 'Trotzdem speichern' : 'Diesen Standort speichern';
+    geoStatus(note, warn);
+  }
+  async function geoSearch() {
+    const q = $('geo-q').value.trim();
+    if (q.length < 3) return geoStatus('Bitte Straße, Hausnummer und Ort eingeben.', true);
+    geoStatus('Suche …'); $('geoResults').innerHTML = '';
+    try {
+      const { results } = await api('/api/stempel/geocode?q=' + encodeURIComponent(q));
+      if (!results.length) return geoStatus('Nichts gefunden — prüf die Schreibweise oder nimm „Straße Hausnummer, Ort“.', true);
+      if (results.length === 1) return previewGeo(results[0], 'Gefunden. Stimmt die Nadel? Dann speichern.');
+      geoStatus('Mehrere Treffer — wähle den richtigen:');
+      $('geoResults').innerHTML = results.map((r, i) => `<button type="button" data-i="${i}">📍 ${escH(r.label)}</button>`).join('');
+      $('geoResults').querySelectorAll('button').forEach(b => b.onclick = () => { $('geoResults').innerHTML = ''; previewGeo(results[+b.dataset.i], 'Stimmt die Nadel? Dann speichern.'); });
+    } catch (e) { geoStatus(e.message, true); }
+  }
+  $('geoSearch').onclick = geoSearch;
+  $('geo-q').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); geoSearch(); } };
+  $('geoHere').onclick = () => {
+    if (!navigator.geolocation) return geoStatus('Dein Browser kann den Standort nicht bestimmen — bitte Adresse suchen.', true);
+    geoStatus('Standort wird bestimmt …');
     navigator.geolocation.getCurrentPosition(async pos => {
-      try {
-        const r = await api('/api/stempel/location', { method: 'PUT', body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, text: $('geo-text').value.trim() }) });
-        shop.geo = r.geo; renderGeo(); $('geoStatus').textContent += ' — Karten werden aktualisiert.';
-      } catch (e) { $('geoStatus').textContent = e.message; }
-    }, err => { $('geoStatus').textContent = err.code === 1 ? 'Standort-Zugriff wurde nicht erlaubt — bitte im Browser erlauben.' : 'Standort konnte nicht bestimmt werden.'; },
-    { enableHighAccuracy: true, timeout: 15000 });
+      const p = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy || 0), label: '' };
+      try { const { results } = await api(`/api/stempel/geocode?lat=${p.latitude}&lng=${p.longitude}`); if (results[0]) p.label = results[0].label; } catch (e) {}
+      if (p.accuracy > 100) previewGeo(p, `Ungenau: ± ${p.accuracy} m. Dein Gerät kennt seinen Standort nur grob (typisch bei Laptops). Besser die Adresse suchen oder im Laden am Handy übernehmen.`, true);
+      else previewGeo(p, `Genauigkeit ± ${p.accuracy} m. Stimmt die Nadel? Dann speichern.`);
+    }, err => geoStatus(err.code === 1 ? 'Standort-Zugriff wurde nicht erlaubt — bitte im Browser erlauben oder Adresse suchen.' : 'Standort konnte nicht bestimmt werden — bitte Adresse suchen.', true),
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  };
+  $('geoSave').onclick = async () => {
+    const p = geoDraft || shop.geo;
+    if (!p) return geoStatus('Erst Adresse suchen oder Standort nehmen.', true);
+    try {
+      const r = await api('/api/stempel/location', { method: 'PUT', body: JSON.stringify({ latitude: p.latitude, longitude: p.longitude, label: p.label || '', text: $('geo-text').value.trim() }) });
+      shop.geo = r.geo; renderGeo(); geoStatus('✓ Gespeichert — die Karten deiner Kunden werden aktualisiert.');
+    } catch (e) { geoStatus(e.message, true); }
   };
   $('geoClear').onclick = async () => {
     try { await api('/api/stempel/location', { method: 'PUT', body: JSON.stringify({ clear: true }) }); shop.geo = null; renderGeo(); }
-    catch (e) { $('geoStatus').textContent = e.message; }
+    catch (e) { geoStatus(e.message, true); }
   };
 
   function loadSettingsForm() {

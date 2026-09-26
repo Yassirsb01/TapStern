@@ -70,6 +70,9 @@ async function routeRequest(request, env, ctx) {
       if (method === 'POST' && stempelNoticeMatch) return handleStempelNoticeAction(request, env, stempelNoticeMatch[1], ctx);
       if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env, ctx);
       if (method === 'PUT'  && path === '/api/stempel/location') return handleStempelLocation(request, env, ctx);
+      if (method === 'GET'  && path === '/api/stempel/geocode') return handleStempelGeocode(request, env);
+      const tileMatch = path.match(/^\/api\/stempel\/tile\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.png$/);
+      if (method === 'GET' && tileMatch) return handleStempelTile(request, env, tileMatch[1], tileMatch[2], tileMatch[3]);
       if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
       if (method === 'GET'  && path === '/api/stempel/stats') return handleStempelStats(request, env);
       if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' }, ctx);
@@ -1263,12 +1266,14 @@ async function ensureShopExtrasTables(env) {
     shop_id TEXT PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, text TEXT, updated_at INTEGER)`).run();
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS stempel_perks (
     shop_id TEXT PRIMARY KEY, free_stand_order_id TEXT, claimed_at INTEGER, pending_address TEXT)`).run();
+  // Spalte für die lesbare Adresse (ältere Tabellen haben sie noch nicht)
+  try { await env.DB.prepare('ALTER TABLE stempel_shop_geo ADD COLUMN label TEXT').run(); } catch (e) { /* gibt es schon */ }
   geoTableReady = true;
 }
 async function shopGeo(env, shopId) {
   try {
     await ensureShopExtrasTables(env);
-    const g = await env.DB.prepare('SELECT latitude, longitude, text FROM stempel_shop_geo WHERE shop_id = ?').bind(shopId).first();
+    const g = await env.DB.prepare('SELECT latitude, longitude, text, label FROM stempel_shop_geo WHERE shop_id = ?').bind(shopId).first();
     return g || null;
   } catch (e) { return null; }
 }
@@ -1280,7 +1285,69 @@ async function freeStandClaim(env, shopId) {
   } catch (e) { return null; }
 }
 
-/* PUT /api/stempel/location — { latitude, longitude, text } oder { clear: true } */
+/* ── Adresssuche und Kartenausschnitt über OpenStreetMap ──
+   Läuft über unseren Server: Die IP-Adresse des Ladens geht nicht an Dritte, wir senden
+   einen eindeutigen User-Agent (Nominatim-Richtlinie) und cachen Antworten. */
+const OSM_UA = 'Tapstern/1.0 (https://tapstern.de; anfrage@tapstern.de)';
+
+function osmLabel(r) {
+  const a = r.address || {};
+  const street = [a.road || a.pedestrian || a.footway || a.square, a.house_number].filter(Boolean).join(' ');
+  const place = [a.postcode, a.city || a.town || a.village || a.municipality].filter(Boolean).join(' ');
+  const name = r.name && r.name !== a.road ? r.name : '';
+  return [name, street, place].filter(Boolean).join(', ') || r.display_name || '';
+}
+
+/* GET /api/stempel/geocode?q=Adresse  oder  ?lat=…&lng=…  (Rückwärtssuche) */
+async function handleStempelGeocode(request, env) {
+  const { shop, access, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
+  if (!shopFeatures(shop, access).geofence) return json({ error: 'Die Vorbeilauf-Mitteilung gibt es im Premium-Paket.' }, 403);
+  const key = 'geocode:' + shop.id;
+  if (await checkLock(env, key)) return json({ error: 'Zu viele Suchen — bitte in ein paar Minuten nochmal.' }, 429);
+  await noteFail(env, key); // zählt Suchen, nicht Fehler
+  const u = new URL(request.url);
+  const q = str(u.searchParams.get('q')).slice(0, 200);
+  const hasPoint = u.searchParams.has('lat') && u.searchParams.has('lng');
+  const lat = Number(u.searchParams.get('lat')), lng = Number(u.searchParams.get('lng'));
+  let api;
+  if (q.length >= 3) {
+    api = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=de,at,ch&q=${encodeURIComponent(q)}`;
+  } else if (hasPoint && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)) {
+    api = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&lat=${lat.toFixed(6)}&lon=${lng.toFixed(6)}`;
+  } else return json({ error: 'Bitte eine Adresse eingeben' }, 400);
+  try {
+    const res = await fetch(api, { headers: { 'User-Agent': OSM_UA, 'Accept-Language': 'de' }, cf: { cacheTtl: 86400, cacheEverything: true } });
+    if (!res.ok) throw new Error('Nominatim ' + res.status);
+    const data = await res.json();
+    const list = (Array.isArray(data) ? data : data && data.lat ? [data] : [])
+      .map(r => ({ label: osmLabel(r), latitude: Math.round(+r.lat * 1e6) / 1e6, longitude: Math.round(+r.lon * 1e6) / 1e6 }))
+      .filter(r => r.label && Number.isFinite(r.latitude) && Number.isFinite(r.longitude));
+    return json({ results: list });
+  } catch (e) {
+    console.error('Adresssuche fehlgeschlagen:', e);
+    return json({ error: 'Adresssuche gerade nicht erreichbar — bitte später nochmal.' }, 502);
+  }
+}
+
+/* GET /api/stempel/tile/:z/:x/:y.png — Kartenkacheln über uns (gecacht, mit Namensnennung im Dashboard) */
+async function handleStempelTile(request, env, z, x, y) {
+  const shop = await currentShop(env, request);
+  if (!shop) return new Response('Nicht angemeldet', { status: 401 });
+  z = +z; x = +x; y = +y;
+  const n = 2 ** z;
+  if (!(z >= 12 && z <= 18) || x < 0 || y < 0 || x >= n || y >= n) return new Response('Ungültig', { status: 400 });
+  const cache = typeof caches !== 'undefined' ? caches.default : null;
+  const cacheKey = new Request(`https://tapstern-tiles.local/${z}/${x}/${y}.png`);
+  if (cache) { const hit = await cache.match(cacheKey); if (hit) return hit; }
+  const res = await fetch(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`, { headers: { 'User-Agent': OSM_UA } });
+  if (!res.ok) return new Response('Karte nicht verfügbar', { status: 502 });
+  const out = new Response(res.body, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=604800' } });
+  if (cache) await cache.put(cacheKey, new Response(out.clone().body, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=604800' } }));
+  return out;
+}
+
+/* PUT /api/stempel/location — { latitude, longitude, text, label } oder { clear: true } */
 async function handleStempelLocation(request, env, ctx) {
   const { shop, access, denied } = await requireActiveShop(env, request);
   if (denied) return denied;
@@ -1295,9 +1362,10 @@ async function handleStempelLocation(request, env, ctx) {
       return json({ error: 'Ungültiger Standort' }, 400);
     }
     const text = str(data?.text).replace(/\s+/g, ' ').slice(0, 80) || `Du bist in der Nähe von ${shop.name} — hol dir deinen Stempel!`;
-    await env.DB.prepare(`INSERT INTO stempel_shop_geo (shop_id, latitude, longitude, text, updated_at) VALUES (?,?,?,?,?)
-                          ON CONFLICT(shop_id) DO UPDATE SET latitude = excluded.latitude, longitude = excluded.longitude, text = excluded.text, updated_at = excluded.updated_at`)
-      .bind(shop.id, Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, text, Math.floor(Date.now() / 1000)).run();
+    const label = str(data?.label).replace(/\s+/g, ' ').slice(0, 200) || null;
+    await env.DB.prepare(`INSERT INTO stempel_shop_geo (shop_id, latitude, longitude, text, label, updated_at) VALUES (?,?,?,?,?,?)
+                          ON CONFLICT(shop_id) DO UPDATE SET latitude = excluded.latitude, longitude = excluded.longitude, text = excluded.text, label = excluded.label, updated_at = excluded.updated_at`)
+      .bind(shop.id, Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, text, label, Math.floor(Date.now() / 1000)).run();
   }
   await markShopWalletChanged(env, shop.id, ctx); // iPhones laden die Karte mit dem neuen Standort
   return json({ success: true, geo: await shopGeo(env, shop.id) });

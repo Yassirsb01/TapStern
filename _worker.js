@@ -71,6 +71,7 @@ async function routeRequest(request, env, ctx) {
       if (method === 'PUT'  && path === '/api/stempel/settings') return handleStempelSettings(request, env, ctx);
       if (method === 'PUT'  && path === '/api/stempel/location') return handleStempelLocation(request, env, ctx);
       if (method === 'GET'  && path === '/api/stempel/customers') return handleStempelCustomers(request, env);
+      if (method === 'GET'  && path === '/api/stempel/stats') return handleStempelStats(request, env);
       if (method === 'POST' && path === '/api/stempel/upload-logo') return handleStempelUploadImage(request, env, { formField: 'logo', column: 'logo_key', prefix: 'stempel-logo', resultKey: 'logoUrl' }, ctx);
       if (method === 'POST' && path === '/api/stempel/upload-banner') return handleStempelUploadImage(request, env, { formField: 'banner', column: 'banner_key', prefix: 'stempel-banner', resultKey: 'bannerUrl' });
       if (method === 'POST' && path === '/api/stempel/remove-logo') return handleStempelRemoveImage(request, env, 'logo_key', ctx);
@@ -1520,10 +1521,47 @@ async function handleStempelRemoveImage(request, env, column, ctx) {
 async function handleStempelCustomers(request, env) {
   const { shop, denied } = await requireActiveShop(env, request);
   if (denied) return denied;
+  const q = normalizeCardCode(new URL(request.url).searchParams.get('q'));
   const { results } = await env.DB.prepare(
-    `SELECT id, card_code, stamps, redeemed_count, created_at, last_stamp_at FROM stempel_customers WHERE shop_id = ? ORDER BY last_stamp_at DESC LIMIT 200`
-  ).bind(shop.id).all();
-  return json({ customers: results });
+    `SELECT id, card_code, stamps, redeemed_count, created_at, last_stamp_at FROM stempel_customers
+     WHERE shop_id = ? ${q ? "AND card_code LIKE ? " : ''}ORDER BY last_stamp_at DESC LIMIT 2000`
+  ).bind(...(q ? [shop.id, q + '%'] : [shop.id])).all();
+  const total = q ? (results || []).length : (await env.DB.prepare('SELECT COUNT(*) AS n FROM stempel_customers WHERE shop_id = ?').bind(shop.id).first())?.n || 0;
+  return json({ customers: (results || []).map(({ id, ...c }) => c), total });
+}
+
+/* GET /api/stempel/stats?days=30 — Zahlen für die Statistik im Dashboard.
+   Stempel kommen aus stempel_events (jeder Stempel eine Zeile), Stunden werden im
+   Browser in Berliner Zeit umgerechnet. */
+async function handleStempelStats(request, env) {
+  const { shop, denied } = await requireActiveShop(env, request);
+  if (denied) return denied;
+  const days = Math.max(1, Math.min(365, parseInt(new URL(request.url).searchParams.get('days'), 10) || 30));
+  const since = `-${days} days`;
+  const one = async (sql, ...a) => (await env.DB.prepare(sql).bind(...a).first()) || {};
+  const all = async (sql, ...a) => (await env.DB.prepare(sql).bind(...a).all()).results || [];
+  await ensureRedemptionsTable(env);
+  const [customers, fresh, stamps, returning, active, hours, newDaily, progress, redeemed, staff] = await Promise.all([
+    one('SELECT COUNT(*) AS n FROM stempel_customers WHERE shop_id = ?', shop.id),
+    one(`SELECT COUNT(*) AS n FROM stempel_customers WHERE shop_id = ? AND created_at >= datetime('now', ?)`, shop.id, since),
+    one(`SELECT COUNT(*) AS n FROM stempel_events WHERE shop_id = ? AND created_at >= datetime('now', ?)`, shop.id, since),
+    one(`SELECT COUNT(*) AS n FROM (SELECT customer_id FROM stempel_events WHERE shop_id = ? GROUP BY customer_id HAVING COUNT(DISTINCT date(created_at)) >= 2)`, shop.id),
+    one(`SELECT SUM(CASE WHEN last_stamp_at >= datetime('now','-30 days') THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN last_stamp_at < datetime('now','-30 days') THEN 1 ELSE 0 END) AS inactive
+         FROM stempel_customers WHERE shop_id = ?`, shop.id),
+    all(`SELECT strftime('%Y-%m-%dT%H', created_at) AS h, COUNT(*) AS n FROM stempel_events WHERE shop_id = ? AND created_at >= datetime('now', ?) GROUP BY h`, shop.id, since),
+    all(`SELECT date(created_at) AS d, COUNT(*) AS n FROM stempel_customers WHERE shop_id = ? AND created_at >= datetime('now', ?) GROUP BY d`, shop.id, since),
+    all(`SELECT stamps, COUNT(*) AS n FROM stempel_customers WHERE shop_id = ? GROUP BY stamps`, shop.id),
+    one(`SELECT COUNT(*) AS n FROM stempel_redemptions WHERE shop_id = ? AND created_at >= ?`, shop.id, Math.floor(Date.now() / 1000) - days * 86400),
+    all(`SELECT COALESCE(e.name, 'Selbst angetippt') AS name, COUNT(*) AS n FROM stempel_events ev LEFT JOIN stempel_employees e ON e.id = ev.employee_id
+         WHERE ev.shop_id = ? AND ev.created_at >= datetime('now', ?) GROUP BY name ORDER BY n DESC LIMIT 10`, shop.id, since),
+  ]);
+  return json({
+    days, threshold: shop.reward_threshold,
+    totals: { customers: customers.n || 0, newCustomers: fresh.n || 0, stamps: stamps.n || 0, returning: returning.n || 0,
+      active30: active.active || 0, inactive30: active.inactive || 0, redemptions: redeemed.n || 0 },
+    stampsByHour: hours, newByDay: newDaily, progress, staff,
+  });
 }
 
 /* Der Kern: NFC-Tap an der Laden-Karte, GET /s/:slug */
@@ -1573,25 +1611,34 @@ async function grantStampToDevice(env, request, shop, customer, ctx) {
    und vom Personal-Scan-Weg (Kunde per redeem_token bereits ermittelt). employeeId ist null bei NFC.
    Stößt danach (per ctx.waitUntil, blockiert die Response nicht) einen Live-Update-Push an Google
    Wallet an, damit bereits gespeicherte Karten den neuen Stempelstand zeigen. */
-async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
+async function applyStampLogic(env, customer, shop, employeeId, request, ctx, count = 1) {
   const lastStamp = customer.last_stamp_at ? new Date(customer.last_stamp_at + 'Z').getTime() : 0;
   const cooldownMs = (shop.min_stamp_interval_minutes || 240) * 60 * 1000;
   let cooldownHit = false;
   let stampChanged = false;
+  let added = 0;
 
+  // Selbst antippen: 1 Stempel mit Sperrzeit. Personal (mit PIN) darf mehrere vergeben,
+  // z. B. für 3 Kaffees — ohne Sperrzeit, dafür mit Namen im Verlauf.
+  const cap = shop.reward_threshold * REWARD_MAX_PENDING;
+  const wanted = employeeId ? Math.max(1, Math.min(STAFF_MAX_STAMPS, parseInt(count, 10) || 1)) : 1;
   let capHit = false;
-  if (Date.now() - lastStamp < cooldownMs) {
+  if (!employeeId && Date.now() - lastStamp < cooldownMs) {
     cooldownHit = true;
-  } else if (customer.stamps >= shop.reward_threshold * REWARD_MAX_PENDING) {
+  } else if (customer.stamps >= cap) {
     // Schon zwei volle Karten offen: erst einlösen, dann weitersammeln
     capHit = true;
   } else {
+    added = Math.min(wanted, cap - customer.stamps);
     await env.DB.prepare(
-      `UPDATE stempel_customers SET stamps = stamps + 1, last_stamp_at = datetime('now') WHERE id = ?`
-    ).bind(customer.id).run();
-    customer.stamps += 1;
-    await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id, employee_id) VALUES (?, ?, ?, ?)`)
-      .bind(crypto.randomUUID(), customer.id, shop.id, employeeId).run();
+      `UPDATE stempel_customers SET stamps = stamps + ?, last_stamp_at = datetime('now') WHERE id = ?`
+    ).bind(added, customer.id).run();
+    customer.stamps += added;
+    for (let i = 0; i < added; i++) {
+      await env.DB.prepare(`INSERT INTO stempel_events (id, customer_id, shop_id, employee_id) VALUES (?, ?, ?, ?)`)
+        .bind(crypto.randomUUID(), customer.id, shop.id, employeeId).run();
+    }
+    capHit = added < wanted;
     stampChanged = true;
   }
 
@@ -1605,13 +1652,13 @@ async function applyStampLogic(env, customer, shop, employeeId, request, ctx) {
     );
   }
 
-  return { customer, cooldownHit, capHit };
+  return { customer, cooldownHit, capHit, added };
 }
 
-async function grantStampToCustomer(env, customer, shop, employeeId, request, ctx) {
+async function grantStampToCustomer(env, customer, shop, employeeId, request, ctx, count = 1) {
   await ensureCardCode(env, customer);
-  const result = await applyStampLogic(env, customer, shop, employeeId, request, ctx);
-  return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit, capHit: result.capHit };
+  const result = await applyStampLogic(env, customer, shop, employeeId, request, ctx, count);
+  return { customer: result.customer, isNew: false, cooldownHit: result.cooldownHit, capHit: result.capHit, added: result.added };
 }
 
 /* GET /s/:slug — kennt das Gerät die Karte schon, gibt es direkt den Stempel.
@@ -3196,6 +3243,10 @@ async function handleStaffRedeemPage(request, env, token) {
   .ready b{display:block; font-size:1.05rem; margin-top:4px;}
   .ready small{color:#948d9c;}
   .alt{background:transparent; border:1px solid rgba(255,255,255,0.18); margin-top:10px;}
+  .qty{display:flex; align-items:center; justify-content:center; gap:14px; margin:0 0 16px;}
+  .qty button{width:46px; height:46px; border-radius:50%; padding:0; font-size:1.4rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18);}
+  .qty b{font-size:1.8rem; min-width:2ch; display:inline-block;}
+  .qty small{display:block; color:#948d9c; font-size:0.72rem;}
   .ok{background:#0f8a55; border-radius:16px; padding:22px 16px; display:none;}
   .ok .c{font:800 2.2rem/1 system-ui; margin-bottom:8px;}
   .ok .clock{font:800 1.7rem/1 ui-monospace, Menlo, monospace; margin-top:10px; font-variant-numeric:tabular-nums;}
@@ -3207,13 +3258,19 @@ async function handleStaffRedeemPage(request, env, token) {
     ${ready ? `<div class="ready"><small>🎁 Belohnung bereit · Karte ${escapeHtml(customer.card_code || '')}</small><b>${escapeHtml(shop.reward_text || 'Belohnung')}</b></div>
     <p>Belohnung ausgeben oder einen Stempel für die nächste Karte vergeben — mit deinem Mitarbeiter-PIN.</p>`
     : `<p>Für diesen Gast einen Stempel vergeben — gib deinen persönlichen Mitarbeiter-PIN ein (${customer.stamps}/${shop.reward_threshold})</p>`}
+    <div class="qty"><button type="button" id="minus" aria-label="Weniger">−</button><div><b id="qty">1</b><small>Stempel</small></div><button type="button" id="plus" aria-label="Mehr">+</button></div>
     <input type="password" inputmode="numeric" maxlength="6" id="pin" placeholder="••••" autocomplete="off">
-    ${ready ? '<button id="redeem">Belohnung ausgeben</button><button id="go" class="alt">Nur Stempel vergeben</button>' : '<button id="go">Stempel vergeben</button>'}
+    ${ready ? '<button id="redeem">Belohnung ausgeben</button><button id="go" class="alt">1 Stempel vergeben</button>' : '<button id="go">1 Stempel vergeben</button>'}
     <div class="err" id="err"></div>
     </div>
     <div class="ok" id="ok"><div class="c">✓</div><div style="font-weight:700; font-size:1.1rem;">Belohnung ausgegeben</div><div id="okMeta" style="font-size:0.85rem; opacity:0.9; margin-top:6px;"></div><div class="clock" id="okClock"></div></div>
   </div>
 <script>
+  var qty = 1, maxQty = ${Math.max(1, Math.min(STAFF_MAX_STAMPS, shop.reward_threshold * REWARD_MAX_PENDING - customer.stamps))};
+  function setQty(n){ qty = Math.max(1, Math.min(maxQty, n)); document.getElementById('qty').textContent = qty;
+    document.getElementById('go').textContent = qty + (qty === 1 ? ' Stempel' : ' Stempel') + ' vergeben'; }
+  document.getElementById('minus').onclick = function(){ setQty(qty - 1); };
+  document.getElementById('plus').onclick = function(){ setQty(qty + 1); };
   var redeemBtn = document.getElementById('redeem');
   if (redeemBtn) redeemBtn.onclick = async function(){
     var err = document.getElementById('err'); err.style.display = 'none'; redeemBtn.disabled = true;
@@ -3235,7 +3292,7 @@ async function handleStaffRedeemPage(request, env, token) {
     try {
       var res = await fetch('/api/stempel/staff-redeem', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ token: ${JSON.stringify(token)}, pin: pin })
+        body: JSON.stringify({ token: ${JSON.stringify(token)}, pin: pin, count: qty })
       });
       if (!res.ok) {
         var data = await res.json().catch(function(){ return {}; });
@@ -3277,9 +3334,9 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
     return json({ error: 'PIN falsch' }, 401);
   }
 
-  const { customer: updated, cooldownHit, capHit } = await grantStampToCustomer(env, customer, shop, employee.id, request, ctx);
+  const { customer: updated, cooldownHit, capHit, added } = await grantStampToCustomer(env, customer, shop, employee.id, request, ctx, data?.count);
   const rewardReached = updated.stamps >= shop.reward_threshold;
-  const html = renderStempelTapPage(shop, updated, { isNew: false, cooldownHit, capHit, rewardReached, staffView: true }, new URL(request.url).origin);
+  const html = renderStempelTapPage(shop, updated, { isNew: false, cooldownHit, capHit, rewardReached, added }, new URL(request.url).origin);
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
@@ -3290,6 +3347,7 @@ async function handleStaffRedeemSubmit(request, env, ctx) {
    Stempel über dem Ziel bleiben für die nächste Karte erhalten. Jede Einlösung wird mit
    Mitarbeiter, Zeit und Belohnungstext protokolliert. */
 const REWARD_MAX_PENDING = 2; // höchstens zwei volle Karten auf Vorrat
+const STAFF_MAX_STAMPS = 10;  // so viele Stempel darf das Personal auf einmal vergeben
 
 let redemptionsTableReady = false;
 async function ensureRedemptionsTable(env) {
@@ -3728,7 +3786,7 @@ function stampColumns(total) {
   return 5;
 }
 
-function renderStempelTapPage(shop, customer, { isNew, cooldownHit, capHit, rewardReached, platform, news }, origin) {
+function renderStempelTapPage(shop, customer, { isNew, cooldownHit, capHit, rewardReached, platform, news, added }, origin) {
   const accent = shop.accent_color || '#6366f1';
   const bg = shop.card_bg_color || '#14131a';
   const isLightBg = luminanceOf(bg) > 0.55;
@@ -3766,8 +3824,10 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, capHit, rewa
       ? 'Du hast schon zwei volle Karten — lös zuerst eine Belohnung an der Kasse ein.'
       : carry > 0
         ? `Stempel für die nächste Karte gespeichert (${carry}).`
-        : rewardReached ? 'Karte voll — deine Belohnung wartet!' : isNew ? 'Willkommen! Dein erster Stempel ist da.' : 'Stempel hinzugefügt!';
-  const newestIndex = cooldownHit || capHit || carry > 0 ? -1 : customer.stamps - 1;
+        : rewardReached ? (added > 1 ? `${added} Stempel — Karte voll, deine Belohnung wartet!` : 'Karte voll — deine Belohnung wartet!')
+        : isNew ? 'Willkommen! Dein erster Stempel ist da.' : added > 1 ? `${added} Stempel hinzugefügt!` : 'Stempel hinzugefügt!';
+  const newestIndex = cooldownHit || (capHit && !added) || carry > 0 ? -1 : customer.stamps - 1;
+  const newestFrom = newestIndex < 0 ? -1 : Math.max(0, customer.stamps - Math.max(1, added || 1));
   const done = Math.min(customer.stamps, total);
   const remaining = Math.max(0, total - customer.stamps);
   const rewardsReady = Math.floor(customer.stamps / total);
@@ -3950,7 +4010,7 @@ function renderStempelTapPage(shop, customer, { isNew, cooldownHit, capHit, rewa
       <div class="stamps-panel">
         <div class="stamps">
           ${Array.from({ length: total }, (_, i) =>
-            stampIconShape(shop.stamp_icon, accent, `${i < customer.stamps ? 'filled' : ''} ${i === newestIndex ? 'newest' : ''}`)
+            stampIconShape(shop.stamp_icon, accent, `${i < customer.stamps ? 'filled' : ''} ${newestFrom >= 0 && i >= newestFrom && i <= newestIndex ? 'newest' : ''}`)
           ).join('')}
         </div>
       </div>

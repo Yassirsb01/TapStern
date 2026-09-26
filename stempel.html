@@ -112,6 +112,46 @@
 
   /* METRIKEN KACHELN */
   .metrics{display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:14px; margin-bottom:28px;}
+  /* Kunden: Liste / Statistik */
+  .seg{display:flex; gap:4px; background:#e8e2d7; padding:3px; border-radius:10px; margin:0 0 18px; width:max-content; max-width:100%;}
+  .seg button{border:0; background:transparent; padding:9px 16px; border-radius:8px; font-family:inherit; font-weight:600; font-size:13px; color:#625d57; cursor:pointer;}
+  .seg button.on{background:#fffefa; color:var(--ink); box-shadow:0 1px 4px rgba(0,0,0,0.06);}
+  .cust-tools{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px;}
+  .cust-tools input{flex:1 1 220px; min-width:0; padding:11px 12px; border:1px solid #dfd9d0; border-radius:10px; font:inherit; font-size:14px; background:#fff; text-transform:uppercase; letter-spacing:0.06em;}
+  .cust-tools input::placeholder{text-transform:none; letter-spacing:0;}
+  .chipset{display:flex; gap:6px; flex-wrap:wrap;}
+  .chipset button{border:1px solid #dfd9d0; background:#fff; border-radius:100px; padding:7px 12px; font-family:inherit; font-weight:600; font-size:12px; color:#625d57; cursor:pointer;}
+  .chipset button.on{border-color:var(--coral); color:var(--coral); background:#fff5f3;}
+  .chipset button b{margin-left:4px; font-variant-numeric:tabular-nums;}
+  .cust-count{font-size:12px; color:var(--muted); margin:0 0 8px;}
+  .kpis{display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin:0 0 16px;}
+  .kpi{background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:16px;}
+  .kpi small{display:block; color:var(--muted); font:11px "DM Mono";}
+  .kpi strong{display:block; font:700 26px "Roboto Slab"; letter-spacing:-.04em; margin-top:6px; font-variant-numeric:tabular-nums;}
+  .kpi p{margin:4px 0 0; font-size:12px; color:#78726b;}
+  .chart-card{background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:18px 18px 14px; margin:0 0 16px; position:relative;}
+  .chart-card h4{margin:0; font-size:15px;}
+  .chart-card .sub{font-size:12px; color:var(--muted); margin:3px 0 14px;}
+  .chart-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  .vbars{position:relative;}
+  .vbars svg{display:block; width:100%; height:auto; overflow:visible;}
+  .vbars .bar{fill:var(--coral);}
+  .vbars .bar.dim{opacity:0.35;}
+  .vbars .hit{fill:transparent; cursor:default;}
+  .vbars .grid{stroke:#ece6dc; stroke-width:1;}
+  .vbars .ax{fill:#8a847c; font-size:10px; font-family:"DM Mono", monospace;}
+  .ctip{position:absolute; pointer-events:none; transform:translate(-50%, -100%); background:#111114; color:#fff; font-size:12px; padding:6px 9px; border-radius:8px; white-space:nowrap; z-index:5;}
+  .ctip b{display:block; font-size:13px;}
+  .hbars{display:grid; gap:7px;}
+  .hbar{display:grid; grid-template-columns:118px 1fr 44px; gap:10px; align-items:center; font-size:12.5px;}
+  .hbar .track{height:14px; background:#f3eee6; border-radius:0 7px 7px 0; overflow:hidden;}
+  .hbar .fill{height:100%; background:var(--coral); border-radius:0 7px 7px 0; min-width:2px;}
+  .hbar.ready .fill{background:#299267;}
+  .hbar .v{text-align:right; font-variant-numeric:tabular-nums; font-weight:600;}
+  .insights{display:grid; gap:10px; margin:0 0 16px;}
+  .insight{display:grid; grid-template-columns:28px 1fr auto; gap:10px; align-items:center; background:#fffaf2; border:1px solid #f0dfbf; border-radius:12px; padding:12px 14px; font-size:13.5px; line-height:1.45;}
+  .insight .btn{font-size:12px; padding:7px 12px;}
+  @media (max-width:900px){ .kpis{grid-template-columns:1fr 1fr;} .chart-grid{grid-template-columns:1fr;} .hbar{grid-template-columns:92px 1fr 38px;} }
   .metric-card{background:#ffffff; border:1px solid #dfd9d0; padding:20px; border-radius:12px;}
   .metric-card small{color:var(--muted); font:11px "DM Mono";}
   .metric-card strong{display:block; font:700 32px "Roboto Slab"; letter-spacing:-.05em; margin-top:8px;}
@@ -494,7 +534,25 @@
       <!-- SEITE 2: KUNDEN -->
       <div id="p-customers" class="hide">
         <h3>Kundenkartei</h3>
-        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Alle Gäste, die deine digitale Stempelkarte besitzen.</p>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 16px;">Alle Gäste mit deiner digitalen Stempelkarte — und wie dein Treueprogramm läuft.</p>
+        <div class="seg" id="custTabs"><button data-ct="list" class="on">📋 Kundenliste</button><button data-ct="stats">📊 Statistik</button></div>
+
+        <div id="ct-stats" class="hide">
+          <div class="time-filter" id="statRange">
+            <button data-sd="7">7 Tage</button><button data-sd="30" class="on">30 Tage</button><button data-sd="90">90 Tage</button><button data-sd="365">1 Jahr</button>
+          </div>
+          <div class="insights" id="insights"></div>
+          <div class="kpis" id="statKpis"></div>
+          <div class="chart-card"><h4>Stempel pro Tag</h4><div class="sub" id="dailySub"></div><div class="vbars" id="chartDaily"></div></div>
+          <div class="chart-card"><h4>Wo stehen deine Kunden?</h4><div class="sub">So verteilen sich alle Karten gerade auf dem Weg zur Belohnung</div><div class="hbars" id="chartProgress"></div></div>
+          <div class="chart-grid">
+            <div class="chart-card"><h4>Beliebteste Tage</h4><div class="sub">Stempel nach Wochentag im Zeitraum</div><div class="vbars" id="chartWeekday"></div></div>
+            <div class="chart-card"><h4>Beliebteste Uhrzeiten</h4><div class="sub">Stempel nach Uhrzeit im Zeitraum</div><div class="vbars" id="chartHour"></div></div>
+          </div>
+          <div class="chart-card"><h4>Wer stempelt?</h4><div class="sub">Selbst angetippt oder vom Team vergeben (mit PIN)</div><div class="hbars" id="chartStaff"></div></div>
+        </div>
+
+        <div id="ct-list">
         <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:18px 20px; margin-bottom:18px;">
           <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;">
             <h4 style="margin:0;">🎁 Letzte Einlösungen</h4>
@@ -503,11 +561,22 @@
           <p style="font-size:12.5px; color:var(--muted); margin:6px 0 12px; line-height:1.5;">So läuft's: Ist die Karte voll, zeigt der Gast sein Handy. Dein Team tippt „Belohnung ausgeben“ und bestätigt mit dem eigenen PIN — erst dann wird sie abgezogen. Jede Ausgabe steht hier mit Uhrzeit und Mitarbeiter.</p>
           <div id="redeemRows" style="font-size:13px;"></div>
         </div>
+        <div class="cust-tools">
+          <input type="search" id="custSearch" placeholder="Karten-ID suchen, z. B. KVEJ" maxlength="8" autocomplete="off" aria-label="Karten-ID suchen">
+          <div class="chipset" id="custFilter">
+            <button data-cf="all" class="on">Alle<b id="cfAll"></b></button>
+            <button data-cf="ready">🎁 Belohnung bereit<b id="cfReady"></b></button>
+            <button data-cf="active">Aktiv (30 T.)<b id="cfActive"></b></button>
+            <button data-cf="away">Lange nicht da<b id="cfAway"></b></button>
+          </div>
+        </div>
+        <p class="cust-count" id="custCount"></p>
         <div style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; overflow-x:auto;">
           <table>
-            <thead><tr><th>Karten-ID</th><th>Stempel</th><th>Status</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
+            <thead><tr><th>Karten-ID</th><th>Stempel</th><th>Status</th><th>Eingelöst</th><th>Dabei seit</th><th>Letzter Besuch</th></tr></thead>
             <tbody id="customerRows"></tbody>
           </table>
+        </div>
         </div>
       </div>
 
@@ -1033,8 +1102,10 @@
     const now = Date.now();
     const msLimit = currentFilterDays * 86400000;
     const filtered = allCustomers.filter(c => c.last_stamp_at && (now - new Date(c.last_stamp_at + 'Z').getTime()) <= msLimit);
-    
-    $('m-period-stamps').innerHTML = filtered.length + ' <i>↗ aktiv</i>';
+    $('m-period-stamps').innerHTML = '… <i>↗ aktiv</i>';
+    api('/api/stempel/stats?days=' + Math.min(365, currentFilterDays)).then(st => {
+      $('m-period-stamps').innerHTML = st.totals.stamps + ` <i>↗ ${filtered.length} ${filtered.length === 1 ? 'Kunde' : 'Kunden'}</i>`;
+    }).catch(() => { $('m-period-stamps').innerHTML = filtered.length + ' <i>↗ aktiv</i>'; });
     $('m-stamp-label').textContent = currentFilterDays === 1 ? 'Stempel heute' : (currentFilterDays > 365 ? 'Stempel gesamt' : `Stempel letzte ${currentFilterDays} Tage`);
 
     const daysToShow = currentFilterDays === 1 ? 1 : Math.min(14, currentFilterDays);
@@ -1058,21 +1129,143 @@
   }
 
   /* KUNDEN */
+  let custFilter = 'all', custQuery = '';
+  const DAY = 86400000;
+  const lastVisit = c => c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').getTime() : 0;
+  const custMatches = {
+    all: () => true,
+    ready: c => c.stamps >= (shop.reward_threshold || 8),
+    active: c => Date.now() - lastVisit(c) <= 30 * DAY,
+    away: c => Date.now() - lastVisit(c) > 30 * DAY,
+  };
   async function loadCustomers() {
+    try { const res = await api('/api/stempel/customers'); allCustomers = res.customers || []; } catch (e) {}
+    renderCustomers();
+    loadRedemptions();
+  }
+  function renderCustomers() {
     const th = shop.reward_threshold || 8;
-    $('customerRows').innerHTML = allCustomers.map(c => {
+    const counts = k => allCustomers.filter(custMatches[k]).length;
+    $('cfAll').textContent = allCustomers.length; $('cfReady').textContent = counts('ready');
+    $('cfActive').textContent = counts('active'); $('cfAway').textContent = counts('away');
+    const q = custQuery.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const list = allCustomers.filter(c => custMatches[custFilter](c) && (!q || (c.card_code || '').includes(q)));
+    $('custCount').textContent = q || custFilter !== 'all' ? `${list.length} von ${allCustomers.length} Kunden` : `${allCustomers.length} Kunden`;
+    $('customerRows').innerHTML = list.slice(0, 500).map(c => {
       const dots = Array.from({length: th}, (_, i) => `<span class="dot-stamp ${i < Math.min(c.stamps, th) ? 'on' : ''}"></span>`).join('');
       const ready = Math.floor(c.stamps / th), carry = c.stamps - th;
       const status = ready ? `<strong style="color:var(--coral);">🎁 ${ready > 1 ? ready + ' Belohnungen' : 'Belohnung'} bereit</strong>${carry > 0 && ready === 1 ? ` <span style="color:var(--muted);">(+${carry})</span>` : ''}` : `${c.stamps}/${th}`;
+      const code = escH(c.card_code || '—');
+      const hl = q && c.card_code ? `<mark style="background:#ffe3dc; color:inherit;">${escH(c.card_code.slice(0, q.length))}</mark>${escH(c.card_code.slice(q.length))}` : code;
       return `<tr>
-        <td style="font:600 12px 'DM Mono',monospace; letter-spacing:0.08em;">${c.card_code || '—'}</td>
+        <td style="font:600 12px 'DM Mono',monospace; letter-spacing:0.08em;">${hl}</td>
         <td><div class="dot-row">${dots}</div></td>
         <td>${status}</td>
+        <td>${c.redeemed_count || 0}×</td>
         <td>${new Date(c.created_at + 'Z').toLocaleDateString('de-DE')}</td>
         <td>${c.last_stamp_at ? new Date(c.last_stamp_at + 'Z').toLocaleDateString('de-DE') : '—'}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="5" style="color:var(--muted); padding:20px;">Noch keine Kunden verzeichnet.</td></tr>';
-    loadRedemptions();
+    }).join('') || `<tr><td colspan="6" style="color:var(--muted); padding:20px;">${allCustomers.length ? 'Keine Karte passt zu Suche oder Filter.' : 'Noch keine Kunden verzeichnet.'}</td></tr>`;
+  }
+  $('custSearch').oninput = () => { custQuery = $('custSearch').value; renderCustomers(); };
+  document.querySelectorAll('#custFilter [data-cf]').forEach(b => b.onclick = () => {
+    custFilter = b.dataset.cf; document.querySelectorAll('#custFilter [data-cf]').forEach(x => x.classList.toggle('on', x === b)); renderCustomers();
+  });
+  document.querySelectorAll('#custTabs [data-ct]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#custTabs [data-ct]').forEach(x => x.classList.toggle('on', x === b));
+    $('ct-list').classList.toggle('hide', b.dataset.ct !== 'list'); $('ct-stats').classList.toggle('hide', b.dataset.ct !== 'stats');
+    if (b.dataset.ct === 'stats') loadStats();
+  });
+
+  /* STATISTIK — eine Farbe, schmale Balken mit runden Enden, Tooltip beim Überfahren */
+  let statDays = 30;
+  document.querySelectorAll('#statRange [data-sd]').forEach(b => b.onclick = () => {
+    statDays = +b.dataset.sd; document.querySelectorAll('#statRange [data-sd]').forEach(x => x.classList.toggle('on', x === b)); loadStats();
+  });
+  const berlin = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', weekday: 'short', hourCycle: 'h23' });
+  function berlinParts(isoHour) {
+    const p = Object.fromEntries(berlin.formatToParts(new Date(isoHour + ':00:00Z')).map(x => [x.type, x.value]));
+    return { day: `${p.year}-${p.month}-${p.day}`, hour: +p.hour, weekday: p.weekday.replace('.', '') };
+  }
+  function vbars(el, data, { labelEvery = 1, tip, W } = {}) {
+    // Zeichenbreite ≈ echte Breite, damit Beschriftungen auf dem Handy lesbar bleiben
+    W = W || (el.clientWidth && el.clientWidth < 500 ? 340 : 640);
+    if (W < 500 && data.length > 14) labelEvery = Math.max(labelEvery, Math.ceil(data.length / 5));
+    const H = W < 500 ? 190 : 170, padL = 30, padB = 22, padT = 8;
+    const max = Math.max(1, ...data.map(d => d.v));
+    const niceMax = max <= 4 ? max : Math.ceil(max / 4) * 4;
+    const slot = (W - padL) / data.length, bw = Math.max(3, Math.min(16, slot * 0.6));
+    const y = v => padT + (H - padT - padB) * (1 - v / niceMax);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+    [0, 0.5, 1].forEach(f => { const v = Math.round(niceMax * f), yy = y(v);
+      svg += `<line class="grid" x1="${padL}" x2="${W}" y1="${yy}" y2="${yy}"/><text class="ax" x="${padL - 6}" y="${yy + 3}" text-anchor="end">${v}</text>`; });
+    data.forEach((d, i) => {
+      const x = padL + i * slot + (slot - bw) / 2, yy = y(d.v), h = H - padB - yy, r = Math.min(4, bw / 2, h);
+      if (d.v > 0) svg += `<path class="bar" data-i="${i}" d="M${x},${H - padB} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + bw - r} Q${x + bw},${yy} ${x + bw},${yy + r} V${H - padB} Z"/>`;
+      if (i % labelEvery === 0) svg += `<text class="ax" x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${escH(d.label)}</text>`;
+      svg += `<rect class="hit" data-i="${i}" x="${padL + i * slot}" y="${padT}" width="${slot}" height="${H - padT - padB}"/>`;
+    });
+    el.innerHTML = svg + '</svg><div class="ctip hide"></div>';
+    const t = el.querySelector('.ctip'), svgEl = el.querySelector('svg');
+    el.querySelectorAll('.hit').forEach(h => {
+      h.onmouseenter = () => {
+        const i = +h.dataset.i, d = data[i], sr = svgEl.getBoundingClientRect(), er = el.getBoundingClientRect(), k = sr.width / W;
+        el.querySelectorAll('.bar').forEach(b => b.classList.toggle('dim', +b.dataset.i !== i));
+        t.innerHTML = `<span>${escH(d.full || d.label)}</span><b>${escH(tip ? tip(d.v) : String(d.v))}</b>`;
+        t.style.left = (sr.left - er.left + (padL + i * slot + slot / 2) * k) + 'px';
+        t.style.top = (sr.top - er.top + (y(d.v) - 6) * k) + 'px';
+        t.classList.remove('hide');
+      };
+      h.onmouseleave = () => { t.classList.add('hide'); el.querySelectorAll('.bar').forEach(b => b.classList.remove('dim')); };
+    });
+  }
+  function hbars(el, rows) {
+    const max = Math.max(1, ...rows.map(r => r.v));
+    el.innerHTML = rows.map(r => `<div class="hbar ${r.cls || ''}"><span>${escH(r.label)}</span><div class="track"><div class="fill" style="width:${(r.v / max) * 100}%"></div></div><span class="v">${r.v}</span></div>`).join('')
+      || '<p style="color:var(--muted); font-size:12.5px; margin:0;">Noch keine Daten.</p>';
+  }
+  async function loadStats() {
+    let d;
+    try { d = await api('/api/stempel/stats?days=' + statDays); } catch (e) { return; }
+    const t = d.totals, th = d.threshold;
+    const rate = t.customers ? Math.round(t.returning / t.customers * 100) : 0;
+    $('statKpis').innerHTML = [
+      ['Stempel', t.stamps, `in ${statDays} Tagen`], ['Neue Kunden', t.newCustomers, `in ${statDays} Tagen`],
+      ['Wiederkommer', rate + ' %', `${t.returning} von ${t.customers} kamen an 2+ Tagen`], ['Belohnungen', t.redemptions, `eingelöst in ${statDays} Tagen`],
+    ].map(([k, v, p]) => `<div class="kpi"><small>${k}</small><strong>${v}</strong><p>${p}</p></div>`).join('');
+
+    // Stempel pro Tag (Berliner Zeit), fehlende Tage als 0
+    const byDay = {}, byWd = {}, byHour = Array(24).fill(0);
+    d.stampsByHour.forEach(r => { const b = berlinParts(r.h); byDay[b.day] = (byDay[b.day] || 0) + r.n; byWd[b.weekday] = (byWd[b.weekday] || 0) + r.n; byHour[b.hour] += r.n; });
+    const span = Math.min(statDays, 90), daily = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const dt = new Date(Date.now() - i * DAY);
+      const key = berlinParts(dt.toISOString().slice(0, 13)).day;
+      daily.push({ label: dt.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' }), full: dt.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }), v: byDay[key] || 0 });
+    }
+    $('dailySub').textContent = statDays > 90 ? 'Letzte 90 Tage' : `Letzte ${statDays} Tage`;
+    vbars($('chartDaily'), daily, { labelEvery: Math.ceil(span / 8), tip: v => v === 1 ? '1 Stempel' : v + ' Stempel' });
+    const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    vbars($('chartWeekday'), WD.map(w => ({ label: w, v: byWd[w] || 0 })), { tip: v => v + ' Stempel', W: 340 });
+    const hours = byHour.map((v, h) => ({ label: String(h), full: `${h}–${h + 1} Uhr`, v }));
+    const first = Math.max(0, hours.findIndex(x => x.v) - 1), last = Math.min(23, 23 - [...hours].reverse().findIndex(x => x.v) + 1);
+    vbars($('chartHour'), hours.slice(first < 0 ? 6 : first, (last < first ? 22 : last) + 1), { labelEvery: 2, tip: v => v + ' Stempel', W: 340 });
+
+    // Fortschritt: wie viele Karten stehen bei 1, 2, … Stempeln bzw. haben eine Belohnung offen
+    const prog = Array(th).fill(0); let ready = 0;
+    d.progress.forEach(r => { if (r.stamps >= th) ready += r.n; else prog[r.stamps] += r.n; });
+    hbars($('chartProgress'), [
+      ...prog.map((v, i) => ({ label: i === 0 ? 'Neue Runde (0)' : `${i} von ${th}`, v })).filter((r, i) => i > 0 || r.v > 0),
+      { label: '🎁 Belohnung bereit', v: ready, cls: 'ready' },
+    ]);
+    hbars($('chartStaff'), d.staff.map(r => ({ label: r.name, v: r.n })));
+
+    // Konkrete Hinweise
+    const almost = prog[th - 1] || 0, tips = [];
+    if (t.inactive30) tips.push(['💤', `<b>${t.inactive30} ${t.inactive30 === 1 ? 'Kunde war' : 'Kunden waren'}</b> seit über 30 Tagen nicht mehr da. Eine kleine Nachricht holt viele zurück.`, `<button class="btn btn-coral" onclick="goTo('messages')">Nachricht senden</button>`]);
+    if (almost) tips.push(['🔥', `<b>${almost} ${almost === 1 ? 'Kunde ist' : 'Kunden sind'}</b> nur noch 1 Stempel von der Belohnung entfernt.`, '']);
+    if (ready) tips.push(['🎁', `<b>${ready} ${ready === 1 ? 'Belohnung wartet' : 'Belohnungen warten'}</b> aufs Einlösen — dein Team bestätigt sie mit PIN an der Kasse.`, '']);
+    $('insights').innerHTML = tips.map(([i, txt, act]) => `<div class="insight"><span style="font-size:20px;">${i}</span><span>${txt}</span>${act}</div>`).join('');
   }
   async function loadRedemptions() {
     try {

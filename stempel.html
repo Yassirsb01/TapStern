@@ -1401,11 +1401,20 @@
 
   function loadBilling() {
     const active = shop.subscription_status === 'active';
+    // Von Tapstern im Admin freigeschaltet: alle Funktionen, kein Abo nötig, Karten bestellbar
+    const unlocked = !!(shop.access && shop.access.state === 'unlocked');
     const planPanel = $('planPanel');
 
     const feats = plan => plan === 'premium' ? PREMIUM_FEATS : BASIC_FEATS;
     const featList = list => `<ul class="plan-feats">${list.map(([ok, t]) => `<li class="${ok ? '' : 'no'}"><span>${ok ? '✓' : '–'}</span><span>${t}</span></li>`).join('')}</ul>`;
-    if (active) {
+    if (unlocked && !active) {
+      planPanel.innerHTML = `
+        <h4 style="color:#299267;">✓ Von Tapstern freigeschaltet</h4>
+        <p style="font-size:16px; font-weight:700; margin:6px 0;">Alle Premium-Funktionen — ohne Abo</p>
+        <p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Dein Zugang wurde vom Tapstern-Team freigeschaltet. Du musst kein Paket buchen; NFC-Aufsteller kannst du unten direkt bestellen.</p>
+        ${featList(PREMIUM_FEATS.filter(([, t]) => !/Aufsteller gratis/.test(t)))}
+        <a class="btn btn-ghost" style="font-size:12px;" href="mailto:anfrage@tapstern.de?subject=${encodeURIComponent('Frage zu meinem Zugang: ' + shop.name)}">Fragen? Schreib uns</a>`;
+    } else if (active) {
       const isPremium = shop.plan === 'premium';
       const stand = !isPremium ? '' : shop.freeStand
         ? `<p style="font-size:13px; margin:10px 0 0;">🎁 Dein gratis NFC-Aufsteller ist bestellt — wir melden uns zum Versand.</p>`
@@ -1458,7 +1467,7 @@
     }
 
     const cardPanel = $('cardPanel');
-    if (!active) {
+    if (!active && !unlocked) {
       cardPanel.innerHTML = `<h4 style="color:var(--muted);">NFC-Aufsteller bestellen</h4><p style="font-size:13px; color:var(--muted);">Die Kartenbestellung wird sofort nach Abschluss eines Abos freigeschaltet.</p>`;
     } else {
       cardPanel.innerHTML = `

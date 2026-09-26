@@ -502,7 +502,7 @@
       const verified = shops.filter(s => s.verified);
       const cnt = k => k === 'alle' ? verified.length : k === 'unbestaetigt' ? shops.length - verified.length : verified.filter(s => s.access.state === k).length;
       const list = shops.filter(s => (filter === 'unbestaetigt' ? !s.verified : s.verified && (filter === 'alle' || s.access.state === filter)) &&
-        (!q || [s.name, s.email, s.phone, s.first_name, s.last_name, s.slug, s.branche].some(x => String(x || '').toLowerCase().includes(q))));
+        (!q || [s.name, s.email, s.phone, s.first_name, s.last_name, s.slug, s.branche, s.address_city].some(x => String(x || '').toLowerCase().includes(q))));
       view.innerHTML = tabs() + `
         <div class="toolbar"><input class="input" id="t-q" placeholder="Laden, E-Mail, Telefon …" value="${esc(q)}">
           <div class="chips">${[['alle', 'Alle'], ...Object.entries(ACCESS).map(([k, [l]]) => [k, l]), ['unbestaetigt', 'Unbestätigt']].map(([k, l]) => `<button class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${l} <b>${cnt(k)}</b></button>`).join('')}</div></div>
@@ -513,6 +513,7 @@
           return `<div class="row-item"><div>
               <div class="cell-main">${esc(s.name)} <a href="/s/${encodeURIComponent(s.slug)}" target="_blank" rel="noopener noreferrer" class="cell-sub">Karte ↗</a></div>
               <div class="cell-sub">${esc([[s.first_name, s.last_name].filter(Boolean).join(' '), s.email, s.phone].filter(Boolean).join(' · '))}</div>
+              ${s.address_street || s.address_city ? `<div class="cell-sub">📍 ${esc([s.address_street, [s.address_zip, s.address_city].filter(Boolean).join(' ')].filter(Boolean).join(', '))}</div>` : ''}
               <div class="cell-sub">${esc(s.branche || 'keine Branche')} · ${esc(s.customers)} Kunden · ${s.subscription_status === 'active' ? `Abo ${s.plan === 'premium' ? 'Premium' : 'Basic'}` : 'kein Abo'}${esc(trial)}${manual ? ' · manuell ' + (s.override === 'locked' ? 'gesperrt' : 'freigeschaltet') : ''}</div>
               ${s.note ? `<div class="note">📝 ${esc(s.note)}</div>` : ''}
               ${writable && s.verified ? `<div class="row-actions">

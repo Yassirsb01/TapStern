@@ -6074,7 +6074,7 @@ async function handleAdminSticker(request, env) {
       if (obj && /^image\/(png|jpe?g|webp|gif)$/.test(type)) customerLogo = toDataUri(await obj.arrayBuffer(), type);
     } catch (e) { /* ohne Logo weiter */ }
   }
-  return printHtmlResponse(renderStickerHtml({ guides: url.searchParams.get('hilfslinien') === '1', brandIcon, customerLogo, logoMissing: !!shopId && !customerLogo }));
+  return printHtmlResponse(renderStickerHtml({ guides: url.searchParams.get('hilfslinien') === '1', logoPlaceholder: url.searchParams.get('logo-platzhalter') === '1', brandIcon, customerLogo, logoMissing: !!shopId && !customerLogo }));
 }
 
 /* GET /api/admin/tapstempel/shops/:id/qr-etikett — QR-Etikett 40 × 40 mm für einen Laden */
@@ -6102,7 +6102,7 @@ const STEP_ICONS = {
   gift: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8.5" width="17" height="4.5" rx="1"/><path d="M5 13v7.5h14V13M12 8.5v12M12 8.5c-1.5-3.5-5.5-4-5.5-1.5 0 1.5 2.5 1.5 5.5 1.5zm0 0c1.5-3.5 5.5-4 5.5-1.5 0 1.5-2.5 1.5-5.5 1.5z"/></svg>`,
 };
 
-function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = null, logoMissing = false } = {}) {
+function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = null, logoMissing = false, logoPlaceholder = false } = {}) {
   return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
 <title>Tapstempel Sticker 120×140 mm${customerLogo ? ' mit Kundenlogo' : ' — für alle Läden'}</title>
 <style>
@@ -6112,7 +6112,8 @@ function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = nu
   .glow{position:absolute; inset:0;
     background:radial-gradient(75mm 55mm at 100% 0%, rgba(229,84,61,.14), transparent 70%),
                radial-gradient(60mm 45mm at 0% 100%, rgba(229,84,61,.10), transparent 70%);}
-  .dots{position:absolute; inset:0; opacity:.5; background-image:radial-gradient(#e6ddd0 .28mm, transparent .32mm); background-size:4mm 4mm;}
+  /* Punktmuster als Vektor (CSS-Muster/Schatten stellen manche PDF-Betrachter falsch dar) */
+  .dots{position:absolute; inset:0; width:126mm; height:146mm;}
   .safe{position:absolute; left:9mm; right:9mm; top:9mm; bottom:9mm; display:flex; flex-direction:column;}
   .head{display:flex; justify-content:space-between; align-items:flex-start; gap:4mm;}
   .head-text{flex:1; min-width:0;}
@@ -6124,14 +6125,15 @@ function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = nu
   /* Feld oben rechts für das Logo des Ladens (26 × 26 mm) */
   .logo-slot{width:26mm; height:26mm; flex:none; display:grid; place-items:center; border-radius:3mm;}
   .logo-slot img{max-width:100%; max-height:100%; object-fit:contain; display:block;}
-  .logo-slot.filled{background:#fff; padding:2mm; box-shadow:0 .4mm 1.6mm rgba(23,21,28,.10);}
+  .logo-slot.filled{background:#fff; padding:2mm; border:.3mm solid #ece4d8;}
   .logo-slot.guide{border:.25mm dashed #c9bfb1; color:#b3a998; font-size:2.3mm; text-align:center; line-height:1.3;}
   .row{display:flex; align-items:flex-start; justify-content:space-between; margin-top:3.2mm;}
   .col{display:flex; flex-direction:column; align-items:center; text-align:center; width:48mm;}
   .visual{height:43mm; display:grid; place-items:center;}
   .or{align-self:center; margin-top:-8mm; font-size:3mm; font-weight:800; color:#a39a8f; text-transform:uppercase; letter-spacing:.3mm;}
-  .nfc{width:42mm; height:42mm; border-radius:50%; display:grid; place-items:center; background:#fff; border:.9mm solid #e5543d;
-    box-shadow:0 0 0 2.4mm rgba(229,84,61,.14), 0 0 0 4.6mm rgba(229,84,61,.06);}
+  .ring1{width:51.2mm; height:51.2mm; border-radius:50%; background:#f9ece6; display:grid; place-items:center;}
+  .ring2{width:46.8mm; height:46.8mm; border-radius:50%; background:#f5d8cf; display:grid; place-items:center;}
+  .nfc{width:42mm; height:42mm; border-radius:50%; display:grid; place-items:center; background:#fff; border:.9mm solid #e5543d;}
   .nfc svg{width:23mm; height:23mm;}
   .qrslot{width:42mm; height:42mm; border-radius:3.6mm; background:#fff; border:.35mm solid #e4dccf; position:relative;}
   .qrslot .corner{position:absolute; width:5mm; height:5mm; border:.7mm solid #e5543d;}
@@ -6145,18 +6147,14 @@ function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = nu
   /* Drei Schritte: glänzende Karten mit Symbol, gut sichtbar aus der Entfernung */
   .steps{margin-top:auto; padding-top:3.5mm; display:flex; gap:2.4mm;}
   .step{flex:1; position:relative; overflow:hidden; border-radius:3mm; padding:2.4mm 2.2mm; display:grid; grid-template-columns:6.2mm 1fr; column-gap:1.7mm; align-items:start; font-size:2.5mm; line-height:1.3; color:#4e4841;
-    background:linear-gradient(160deg, #ffffff 0%, #fff6f2 100%); border:.3mm solid #f1d4ca;
-    box-shadow:0 .6mm 1.8mm rgba(229,84,61,.16), inset 0 .3mm 0 #fff;}
-  .step::before{content:''; position:absolute; left:0; right:0; top:0; height:45%; background:linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,0));}
-  .step > *{position:relative;}
-  .step .ic{width:6.2mm; height:6.2mm; border-radius:1.8mm; background:linear-gradient(150deg, #ef6a4f, #d63f27); display:grid; place-items:center;
-    box-shadow:0 .5mm 1.2mm rgba(214,63,39,.35);}
+    background:linear-gradient(180deg, #ffffff 0%, #ffffff 45%, #fff1ec 100%); border:.35mm solid #efcabe; border-bottom-width:.7mm;}
+  .step .ic{width:6.2mm; height:6.2mm; border-radius:1.8mm; background:linear-gradient(150deg, #ef6a4f, #d63f27); display:grid; place-items:center;}
   .step .ic svg{width:4.2mm; height:4.2mm;}
   .step b{display:block; color:#17151c; font-size:2.85mm; margin-bottom:.4mm;}
   /* Fuß: Tapstempel · by Tapstern mit Logo | Wallet-Symbole */
   .foot{display:flex; justify-content:space-between; align-items:center; margin-top:3mm; gap:3mm;}
   .brand{display:flex; align-items:center; gap:1.8mm;}
-  .brand img, .brand .ph{width:7.4mm; height:7.4mm; border-radius:1.8mm; display:block; box-shadow:0 .4mm 1mm rgba(214,63,39,.3);}
+  .brand img, .brand .ph{width:7.4mm; height:7.4mm; border-radius:1.8mm; display:block;}
   .brand .ph{background:linear-gradient(150deg,#ef6a4f,#d63f27);}
   .brand b{display:block; font-size:3.2mm; font-weight:900; letter-spacing:.05mm; line-height:1.05;}
   .brand small{display:block; font-size:2.2mm; color:#7a736a; margin-top:.3mm;}
@@ -6168,7 +6166,8 @@ function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = nu
   .g-safe{position:absolute; inset:9mm; border:.2mm dashed #1fae63;}
 </style></head><body>
 <div class="page">
-  <div class="glow"></div><div class="dots"></div>
+  <div class="glow"></div>
+  <svg class="dots" viewBox="0 0 126 146" aria-hidden="true"><defs><pattern id="dp" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".3" fill="#e9e1d5"/></pattern></defs><rect width="126" height="146" fill="url(#dp)"/></svg>
   <div class="safe">
     <div class="head">
       <div class="head-text">
@@ -6177,16 +6176,16 @@ function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = nu
         <p class="lead">Deine Treuekarte direkt aufs Handy — ohne App, ohne Anmeldung, ohne Papier.</p>
       </div>
       ${customerLogo ? `<div class="logo-slot filled"><img src="${customerLogo}" alt=""></div>`
-        : guides || logoMissing ? `<div class="logo-slot guide">${logoMissing ? 'Laden hat<br>noch kein Logo' : 'Platz für<br>Kundenlogo<br>26 × 26 mm'}</div>` : '<div class="logo-slot"></div>'}
+        : guides || logoMissing || logoPlaceholder ? `<div class="logo-slot guide">${logoMissing ? 'Laden hat<br>noch kein Logo' : 'Platz für<br>Kundenlogo<br>26 × 26 mm'}</div>` : '<div class="logo-slot"></div>'}
     </div>
     <div class="row">
       <div class="col">
-        <div class="visual"><div class="nfc">
+        <div class="visual"><div class="ring1"><div class="ring2"><div class="nfc">
           <svg viewBox="0 0 64 64" fill="none" stroke="#17151c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="14" y="10" width="22" height="40" rx="5"/><path d="M22 44h6"/>
             <path d="M42 24c3 2.4 3 13.6 0 16" stroke="#e5543d"/><path d="M47 19c6 5 6 21 0 26" stroke="#e5543d"/><path d="M52 14c9 7.5 9 28.5 0 36" stroke="#e5543d" opacity=".55"/>
           </svg>
-        </div></div>
+        </div></div></div></div>
         <div class="label"><span class="num">1</span>Handy hier dranhalten<small>entsperrt, oben ans Feld</small></div>
       </div>
       <div class="or">oder</div>

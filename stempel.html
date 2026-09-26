@@ -82,6 +82,23 @@
   .dash-panel aside a:hover{color:var(--ink); background:#eae4db;}
   .dash-panel aside a.active{background:#eae4db; color:var(--ink); font-weight:700;}
   .aside-footer{margin-top:auto; padding-top:20px; border-top:1px solid var(--line);}
+  .dash-panel aside a.aside-contact{display:block; font-size:12px; color:var(--muted); text-decoration:none; margin:0 0 10px; padding:8px 14px; line-height:1.5; word-break:break-word;}
+  .dash-panel aside a.aside-contact b{display:block; color:var(--ink); font-size:12px;}
+  .dash-panel aside a.aside-contact:hover b{color:var(--coral);}
+  .acc-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;}
+  .acc-box{background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:22px; min-width:0;}
+  .acc-box h4{margin-bottom:14px;}
+  .acc-row{display:grid; grid-template-columns:1fr 1fr; gap:0 12px;}
+  .acc-row.zip{grid-template-columns:110px 1fr;}
+  .acc-msg{font-size:12px; margin-top:10px; min-height:1em;}
+  .acc-msg.ok{color:#299267;} .acc-msg.bad{color:#c0392b;}
+  .field input[readonly]{background:#f4f0ea; color:var(--muted);}
+  .acc-sub{display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid #efe9e1; font-size:14px;}
+  .acc-sub:last-of-type{border-bottom:0;}
+  .acc-sub span:first-child{color:var(--muted);}
+  .acc-sub span:last-child{font-weight:600; text-align:right;}
+  @media (max-width:900px){ .acc-grid{grid-template-columns:1fr;} }
+  @media (max-width:480px){ .acc-row{grid-template-columns:1fr;} .acc-row.zip{grid-template-columns:90px 1fr;} }
   .aside-close-btn{display:none; background:transparent; border:none; font-size:22px; cursor:pointer; color:var(--ink);}
 
   /* HAUPTINHALT */
@@ -507,8 +524,10 @@
         <a data-go="billing">💳 Abo &amp; Karten</a>
         <a data-go="settings">◌ Stempelkarte gestalten</a>
         <a data-go="messages">✉ Nachricht an Kunden</a>
+        <a data-go="account">👤 Mein Konto</a>
       </nav>
       <div class="aside-footer">
+        <a class="aside-contact" href="mailto:webmaster@tapstern.de">Fragen oder Probleme?<b>✉ webmaster@tapstern.de</b></a>
         <button class="btn btn-coral hide" id="installMenuBtn" type="button">📲 Als App installieren</button>
         <button class="btn btn-ghost" id="logout" style="width:100%; font-size:12px; padding:8px;">Abmelden</button>
       </div>
@@ -521,7 +540,7 @@
           <small id="dashDate">Heute</small>
           <h2 id="dashGreeting">Guten Tag</h2>
         </div>
-        <div class="dash-avatar" id="dashAvatar">TS</div>
+        <button type="button" class="dash-avatar" id="dashAvatar" title="Mein Konto" style="border:0; padding:0; cursor:pointer; color:inherit; font-family:inherit;">TS</button>
       </div>
 
       <div id="accessBanner" class="access-banner hide"></div>
@@ -654,6 +673,59 @@
         
         <div id="planPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px; margin-bottom:20px;"></div>
         <div id="cardPanel" style="background:#fff; border:1px solid #dfd9d0; border-radius:12px; padding:24px;"></div>
+      </div>
+
+      <!-- SEITE 8: MEIN KONTO -->
+      <div id="p-account" class="hide">
+        <h3>Mein Konto</h3>
+        <p style="color:var(--muted); font-size:13px; margin:4px 0 20px;">Deine Daten, dein Passwort und dein aktuelles Paket auf einen Blick.</p>
+
+        <div class="acc-grid">
+          <div class="acc-box">
+            <h4>Deine Daten</h4>
+            <div class="field"><label for="acc-name">Name des Ladens</label><input id="acc-name" maxlength="80" autocomplete="organization"></div>
+            <div class="acc-row">
+              <div class="field"><label for="acc-first">Vorname</label><input id="acc-first" maxlength="60" autocomplete="given-name"></div>
+              <div class="field"><label for="acc-last">Nachname</label><input id="acc-last" maxlength="60" autocomplete="family-name"></div>
+            </div>
+            <div class="field">
+              <label for="acc-email">E-Mail (Anmeldung)</label>
+              <input id="acc-email" type="email" readonly>
+              <small style="font-size:11px; color:var(--muted);">Ändern? Schreib uns an <a href="mailto:webmaster@tapstern.de" style="color:var(--coral);">webmaster@tapstern.de</a>.</small>
+            </div>
+            <div class="field"><label for="acc-phone">Telefon</label><input id="acc-phone" type="tel" maxlength="40" autocomplete="tel"></div>
+            <div class="field"><label for="acc-street">Straße und Hausnummer</label><input id="acc-street" maxlength="120" autocomplete="street-address"></div>
+            <div class="acc-row zip">
+              <div class="field"><label for="acc-zip">PLZ</label><input id="acc-zip" maxlength="10" inputmode="numeric" autocomplete="postal-code"></div>
+              <div class="field"><label for="acc-city">Ort</label><input id="acc-city" maxlength="80" autocomplete="address-level2"></div>
+            </div>
+            <button class="btn btn-coral" id="accSave" type="button">Daten speichern</button>
+            <div class="acc-msg" id="accMsg"></div>
+          </div>
+
+          <div style="display:grid; gap:20px; min-width:0;">
+            <div class="acc-box">
+              <h4>Dein Paket</h4>
+              <div id="accPlan"></div>
+              <button class="btn btn-ghost" type="button" style="font-size:13px; padding:9px 16px; margin-top:14px;" onclick="goTo('billing')">Zu Abo &amp; Karten</button>
+            </div>
+
+            <div class="acc-box">
+              <h4>Passwort ändern</h4>
+              <div class="field"><label for="pw-current">Aktuelles Passwort</label><input id="pw-current" type="password" autocomplete="current-password"></div>
+              <div class="field"><label for="pw-next">Neues Passwort (mind. 8 Zeichen)</label><input id="pw-next" type="password" autocomplete="new-password" minlength="8"></div>
+              <div class="field"><label for="pw-repeat">Neues Passwort wiederholen</label><input id="pw-repeat" type="password" autocomplete="new-password"></div>
+              <button class="btn btn-dark" id="pwSave" type="button">Passwort ändern</button>
+              <div class="acc-msg" id="pwMsg"></div>
+            </div>
+
+            <div class="acc-box">
+              <h4>Kontakt</h4>
+              <p style="font-size:13px; color:var(--muted); margin:0 0 12px;">Fragen zu deinem Konto, deinem Paket oder deinen Karten? Wir helfen dir gern.</p>
+              <a class="btn btn-coral" href="mailto:webmaster@tapstern.de" style="font-size:13px; padding:9px 16px;">✉ webmaster@tapstern.de</a>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- SEITE 7: NACHRICHT AN KUNDEN -->
@@ -921,19 +993,22 @@
       $('auth-err').style.display = 'block';
     }
   };
-  $('logout').onclick = () => { document.cookie = 'stempel_session=; Max-Age=0; Path=/'; location.reload(); };
+  $('logout').onclick = async () => {
+    try { await fetch('/api/stempel/logout', { method: 'POST' }); } catch (e) {}
+    location.reload();
+  };
 
   /* NAVIGATION */
   document.querySelectorAll('aside a[data-go]').forEach(b => {
     b.onclick = () => {
       let target = b.dataset.go;
-      if (shop && shop.access && !shop.access.active && target !== 'billing') {
+      if (shop && shop.access && !shop.access.active && target !== 'billing' && target !== 'account') {
         target = 'billing'; // ohne Test/Abo bleibt nur „Abo & Karten“
         b = document.querySelector('aside a[data-go="billing"]');
       }
       document.querySelectorAll('aside a').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
+      ['home', 'customers', 'card', 'employees', 'billing', 'settings', 'messages', 'account'].forEach(p => $('p-' + p).classList.toggle('hide', p !== target));
       
       toggleMobileAside(false); // Auf Mobile nach Klick schließen!
       updatePreviewFab(target);
@@ -944,6 +1019,7 @@
       if (target === 'billing') loadBilling();
       if (target === 'settings') loadSettingsForm();
       if (target === 'messages') loadMessages();
+      if (target === 'account') loadAccount();
     };
   });
 
@@ -974,7 +1050,7 @@
   function renderAccess() {
     const a = shop.access || { state: 'subscribed', active: true };
     const el = $('accessBanner');
-    document.querySelectorAll('aside nav a[data-go]').forEach(x => x.classList.toggle('locked', !a.active && x.dataset.go !== 'billing'));
+    document.querySelectorAll('aside nav a[data-go]').forEach(x => x.classList.toggle('locked', !a.active && x.dataset.go !== 'billing' && x.dataset.go !== 'account'));
     if (a.state === 'trial') {
       const left = a.trialEndsAt ? Math.max(0, a.trialEndsAt * 1000 - Date.now()) : 0;
       const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60, d = Math.floor(left / 86400000);
@@ -988,7 +1064,7 @@
         <button class="btn btn-coral" style="font-size:13px; padding:9px 16px;" onclick="goTo('billing')">Abo wählen</button>`;
     } else if (a.state === 'locked') {
       el.className = 'access-banner locked';
-      el.innerHTML = `<div><b>Dein Konto ist gesperrt</b>Deine Stempelkarte ist gerade pausiert. Bitte melde dich bei uns: <a href="mailto:anfrage@tapstern.de" style="color:inherit;">anfrage@tapstern.de</a></div>`;
+      el.innerHTML = `<div><b>Dein Konto ist gesperrt</b>Deine Stempelkarte ist gerade pausiert. Bitte melde dich bei uns: <a href="mailto:webmaster@tapstern.de" style="color:inherit;">webmaster@tapstern.de</a></div>`;
     } else {
       el.className = 'access-banner hide';
     }
@@ -1392,6 +1468,68 @@
     } catch(e){ $('empError').textContent = e.message; }
   };
 
+  /* MEIN KONTO */
+  $('dashAvatar').onclick = () => goTo('account');
+
+  function planSummary() {
+    const a = shop.access || {};
+    const date = ts => new Date(ts * 1000).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
+    const rows = [];
+    if (a.state === 'unlocked') rows.push(['Status', '✓ Von Tapstern freigeschaltet'], ['Funktionen', 'Alle Premium-Funktionen']);
+    else if (a.state === 'locked') rows.push(['Status', 'Gesperrt — bitte melde dich bei uns']);
+    else if (shop.subscription_status === 'active') {
+      rows.push(['Paket', shop.plan === 'premium' ? 'Premium' : 'Basic'], ['Abrechnung', shop.billing_interval === 'yearly' ? 'Jährlich' : 'Monatlich'], ['Status', '✓ Aktiv']);
+      if (a.trialEndsAt && a.trialEndsAt * 1000 > Date.now()) rows.push(['Gratismonat bis', date(a.trialEndsAt)]);
+    } else if (a.state === 'trial') rows.push(['Paket', 'Gratismonat (alle Funktionen)'], ['Läuft bis', a.trialEndsAt ? date(a.trialEndsAt) : '–'], ['Danach', 'Noch kein Paket gewählt']);
+    else rows.push(['Status', 'Testphase abgelaufen'], ['Paket', 'Noch keins gewählt']);
+    if (shop.created_at) rows.push(['Kunde seit', new Date(String(shop.created_at).replace(' ', 'T') + 'Z').toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })]);
+    return rows.map(([k, v]) => `<div class="acc-sub"><span>${escH(k)}</span><span>${escH(v)}</span></div>`).join('');
+  }
+
+  function loadAccount() {
+    $('acc-name').value = shop.name || '';
+    $('acc-first').value = shop.first_name || '';
+    $('acc-last').value = shop.last_name || '';
+    $('acc-email').value = shop.email || '';
+    $('acc-phone').value = shop.phone || '';
+    $('acc-street').value = shop.address_street || '';
+    $('acc-zip').value = shop.address_zip || '';
+    $('acc-city').value = shop.address_city || '';
+    $('accPlan').innerHTML = planSummary();
+    $('accMsg').textContent = ''; $('pwMsg').textContent = '';
+  }
+
+  function accMsg(id, text, ok) { const el = $(id); el.textContent = text; el.className = 'acc-msg ' + (ok ? 'ok' : 'bad'); }
+
+  $('accSave').onclick = async () => {
+    const btn = $('accSave'); btn.disabled = true;
+    try {
+      const r = await api('/api/stempel/account', { method: 'PUT', body: JSON.stringify({
+        name: $('acc-name').value, first_name: $('acc-first').value, last_name: $('acc-last').value, phone: $('acc-phone').value,
+        address_street: $('acc-street').value, address_zip: $('acc-zip').value, address_city: $('acc-city').value,
+      }) });
+      shop = r.shop;
+      $('dashGreeting').textContent = 'Guten Tag, ' + (shop.first_name || shop.name);
+      $('dashAvatar').textContent = (shop.name || 'TS').slice(0, 2).toUpperCase();
+      loadAccount();
+      accMsg('accMsg', '✓ Gespeichert', true);
+    } catch (e) { accMsg('accMsg', e.message, false); }
+    btn.disabled = false;
+  };
+
+  $('pwSave').onclick = async () => {
+    const next = $('pw-next').value;
+    if (next.length < 8) return accMsg('pwMsg', 'Das neue Passwort braucht mindestens 8 Zeichen', false);
+    if (next !== $('pw-repeat').value) return accMsg('pwMsg', 'Die beiden neuen Passwörter stimmen nicht überein', false);
+    const btn = $('pwSave'); btn.disabled = true;
+    try {
+      await api('/api/stempel/password', { method: 'POST', body: JSON.stringify({ current: $('pw-current').value, next }) });
+      ['pw-current', 'pw-next', 'pw-repeat'].forEach(id => $(id).value = '');
+      accMsg('pwMsg', '✓ Passwort geändert. Andere Geräte wurden abgemeldet.', true);
+    } catch (e) { accMsg('pwMsg', e.message, false); }
+    btn.disabled = false;
+  };
+
   /* ABO & KARTENVERWALTUNG */
   /* Paket-Inhalte — gleiche Werte wie PLAN_FEATURES im Server */
   const BASIC_FEATS = [[1, 'Digitale Stempelkarte in Apple &amp; Google Wallet — ohne App'], [1, 'Unbegrenzt viele Kunden'], [1, 'Eigenes Design, Logo &amp; Farben'],
@@ -1413,7 +1551,7 @@
         <p style="font-size:16px; font-weight:700; margin:6px 0;">Alle Premium-Funktionen — ohne Abo</p>
         <p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Dein Zugang wurde vom Tapstern-Team freigeschaltet. Du musst kein Paket buchen; NFC-Aufsteller kannst du unten direkt bestellen.</p>
         ${featList(PREMIUM_FEATS.filter(([, t]) => !/Aufsteller gratis/.test(t)))}
-        <a class="btn btn-ghost" style="font-size:12px;" href="mailto:anfrage@tapstern.de?subject=${encodeURIComponent('Frage zu meinem Zugang: ' + shop.name)}">Fragen? Schreib uns</a>`;
+        <a class="btn btn-ghost" style="font-size:12px;" href="mailto:webmaster@tapstern.de?subject=${encodeURIComponent('Frage zu meinem Zugang: ' + shop.name)}">Fragen? Schreib uns</a>`;
     } else if (active) {
       const isPremium = shop.plan === 'premium';
       const stand = !isPremium ? '' : shop.freeStand
@@ -1429,9 +1567,9 @@
             <p style="font-size:16px; font-weight:700; margin:6px 0;">Paket: ${isPremium ? 'Premium' : 'Basic'} (${shop.billing_interval === 'yearly' ? 'Jährlich' : 'Monatlich'})</p>
             ${freeLeft}
             ${featList(feats(isPremium ? 'premium' : 'basic'))}${stand}
-            ${isPremium ? '' : `<a class="btn btn-coral" style="font-size:13px; padding:9px 16px;" href="mailto:anfrage@tapstern.de?subject=${encodeURIComponent('Wechsel zu Premium: ' + shop.name)}">Zu Premium wechseln</a>`}
+            ${isPremium ? '' : `<a class="btn btn-coral" style="font-size:13px; padding:9px 16px;" href="mailto:webmaster@tapstern.de?subject=${encodeURIComponent('Wechsel zu Premium: ' + shop.name)}">Zu Premium wechseln</a>`}
           </div>
-          <a class="btn btn-ghost" href="mailto:anfrage@tapstern.de?subject=Kündigung%20Tapstempel%20${encodeURIComponent(shop.name)}" style="font-size:12px; color:#c0392b; border-color:#f1a89c;">Abo kündigen / Support</a>
+          <a class="btn btn-ghost" href="mailto:webmaster@tapstern.de?subject=Kündigung%20Tapstempel%20${encodeURIComponent(shop.name)}" style="font-size:12px; color:#c0392b; border-color:#f1a89c;">Abo kündigen / Support</a>
         </div>
       `;
     } else {

@@ -65,6 +65,9 @@ async function routeRequest(request, env, ctx) {
       if (method === 'POST' && path === '/api/stempel/verify-email') return handleStempelVerifyEmail(request, env);
       if (method === 'POST' && path === '/api/stempel/login') return handleStempelLogin(request, env);
       if (method === 'GET'  && path === '/api/stempel/me') return handleStempelMe(request, env);
+      if (method === 'PUT'  && path === '/api/stempel/account') return handleStempelAccount(request, env, ctx);
+      if (method === 'POST' && path === '/api/stempel/password') return handleStempelPassword(request, env);
+      if (method === 'POST' && path === '/api/stempel/logout') return handleStempelLogout(request, env);
       if (method === 'GET'  && path === '/api/stempel/notices') return handleStempelNotices(request, env);
       const stempelNoticeMatch = path.match(/^\/api\/stempel\/notices\/([a-f0-9-]{36})$/);
       if (method === 'POST' && stempelNoticeMatch) return handleStempelNoticeAction(request, env, stempelNoticeMatch[1], ctx);
@@ -1503,9 +1506,95 @@ async function handleStempelLogin(request, env) {
 }
 
 async function handleStempelMe(request, env) {
+  await ensureShopProfileColumns(env);
   const shop = await currentShop(env, request);
   if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
   return json({ shop: await publicShop(env, shop) });
+}
+
+/* ── Konto: eigene Daten, Passwort, Abmelden ──
+   Geht auch bei abgelaufenem Test oder gesperrtem Konto, damit ein Laden seine Daten
+   immer sehen und sein Passwort ändern kann. Die E-Mail ist die Anmeldung und bleibt
+   hier fest (Änderung über den Support, weil sie bestätigt werden müsste). */
+let profileColumnsReady = false;
+async function ensureShopProfileColumns(env) {
+  if (profileColumnsReady) return;
+  for (const col of ['address_street', 'address_zip', 'address_city']) {
+    try { await env.DB.prepare(`ALTER TABLE stempel_shops ADD COLUMN ${col} TEXT`).run(); } catch (e) { /* gibt es schon */ }
+  }
+  profileColumnsReady = true;
+}
+
+async function handleStempelAccount(request, env, ctx) {
+  await ensureShopProfileColumns(env);
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const data = await readJson(request);
+  if (!data) return json({ error: 'Ungültige Anfrage' }, 400);
+
+  const field = (key, max) => str(data[key]).replace(/\s+/g, ' ').slice(0, max);
+  const name = field('name', 80);
+  const zip = field('address_zip', 10);
+  if (!name) return json({ error: 'Bitte gib den Namen deines Ladens an' }, 400);
+  if (zip && !/^[0-9A-Za-z -]{3,10}$/.test(zip)) return json({ error: 'Bitte eine gültige Postleitzahl angeben' }, 400);
+  const phone = field('phone', 40);
+  if (phone && !/^[0-9+()\/ .-]{4,40}$/.test(phone)) return json({ error: 'Bitte eine gültige Telefonnummer angeben' }, 400);
+
+  await env.DB.prepare(
+    `UPDATE stempel_shops SET name = ?, first_name = ?, last_name = ?, phone = ?, address_street = ?, address_zip = ?, address_city = ? WHERE id = ?`
+  ).bind(name, field('first_name', 60) || null, field('last_name', 60) || null, phone || null,
+    field('address_street', 120) || null, zip || null, field('address_city', 80) || null, shop.id).run();
+
+  // Der Ladenname steht auf der Wallet-Karte
+  if (name !== shop.name) {
+    await markShopWalletChanged(env, shop.id, ctx);
+    syncGoogleWalletShop(env, request, shop.id, ctx);
+  }
+  const fresh = await env.DB.prepare('SELECT * FROM stempel_shops WHERE id = ?').bind(shop.id).first();
+  return json({ success: true, shop: await publicShop(env, fresh) });
+}
+
+async function handleStempelPassword(request, env) {
+  const shop = await currentShop(env, request);
+  if (!shop) return json({ error: 'Nicht angemeldet' }, 401);
+  const data = await readJson(request);
+  const current = str(data?.current);
+  const next = str(data?.next);
+
+  const lockKey = 'stempel-pw:' + shop.id;
+  const gate = await checkLock(env, lockKey);
+  if (gate) return json({ error: gate }, 429);
+  if (!(await verifyPassword(current, shop.password_hash))) {
+    await noteFail(env, lockKey);
+    return json({ error: 'Das aktuelle Passwort stimmt nicht' }, 401);
+  }
+  await clearFails(env, lockKey);
+  if (next.length < 8) return json({ error: 'Das neue Passwort braucht mindestens 8 Zeichen' }, 400);
+  if (next.length > 200) return json({ error: 'Das neue Passwort ist zu lang' }, 400);
+  if (next === current) return json({ error: 'Das neue Passwort muss sich vom alten unterscheiden' }, 400);
+
+  // Neues Sitzungs-Token: andere angemeldete Geräte werden abgemeldet, dieses bleibt drin
+  const token = randomToken();
+  await env.DB.prepare('UPDATE stempel_shops SET password_hash = ?, session_token_hash = ? WHERE id = ?')
+    .bind(await hashPassword(next), await sha256(token), shop.id).run();
+
+  sendMail(env, shop.email, 'Dein Tapstempel-Passwort wurde geändert',
+    'Passwort geändert',
+    `Das Passwort für dein Tapstempel-Konto (${shop.name}) wurde gerade geändert. Andere angemeldete Geräte wurden abgemeldet. Warst du das nicht? Dann melde dich bitte sofort bei webmaster@tapstern.de.`
+  ).catch(() => {});
+
+  return json({ success: true }, 200, stempelCookie(shop.id, token));
+}
+
+/* Das Sitzungs-Cookie ist HttpOnly — abmelden geht nur über den Server */
+async function handleStempelLogout(request, env) {
+  const raw = stempelSessionFromRequest(request);
+  const [shopId, token] = raw.split(':');
+  if (shopId && token) {
+    await env.DB.prepare('UPDATE stempel_shops SET session_token_hash = NULL WHERE id = ? AND session_token_hash = ?')
+      .bind(shopId, await sha256(token)).run();
+  }
+  return json({ success: true }, 200, 'stempel_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
 }
 
 async function handleStempelSettings(request, env, ctx) {
@@ -5735,8 +5824,10 @@ async function handleAdminTapstempelShops(request, env) {
   const ctx = await adminSession(env, request);
   if (ctx.denied) return ctx.denied;
   await ensureAccessTable(env);
+  await ensureShopProfileColumns(env);
   const rows = await q(env,
-    `SELECT s.id, s.slug, s.name, s.email, s.first_name, s.last_name, s.phone, s.branche, s.plan, s.billing_interval,
+    `SELECT s.id, s.slug, s.name, s.email, s.first_name, s.last_name, s.phone, s.branche,
+            s.address_street, s.address_zip, s.address_city, s.plan, s.billing_interval,
             s.subscription_status, s.verified, s.created_at, a.trial_ends_at, a.override, a.note,
             (SELECT COUNT(*) FROM stempel_customers c WHERE c.shop_id = s.id) AS customers
      FROM stempel_shops s LEFT JOIN stempel_shop_access a ON a.shop_id = s.id ORDER BY s.created_at DESC`);

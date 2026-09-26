@@ -6047,11 +6047,34 @@ function printHtmlResponse(html) {
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Content-Security-Policy': STICKER_CSP } });
 }
 
-/* GET /api/admin/tapstempel/sticker — die Vorlage für alle Läden */
+/* GET /api/admin/tapstempel/sticker[?laden=<id>] — Vorlage für alle Läden,
+   optional mit dem Logo eines Ladens im Feld oben rechts */
 async function handleAdminSticker(request, env) {
   const ctx = await adminSession(env, request);
   if (ctx.denied) return ctx.denied;
-  return printHtmlResponse(renderStickerHtml({ guides: new URL(request.url).searchParams.get('hilfslinien') === '1' }));
+  const url = new URL(request.url);
+  const toDataUri = (bytes, type) => {
+    let bin = ''; const b = new Uint8Array(bytes);
+    for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    return `data:${type};base64,${btoa(bin)}`;
+  };
+  let brandIcon = null, customerLogo = null;
+  try {
+    const res = await env.ASSETS.fetch(new Request(url.origin + '/pwa/tapstempel-512.png'));
+    if (res.ok) brandIcon = toDataUri(await res.arrayBuffer(), 'image/png');
+  } catch (e) { /* ohne Icon weiter */ }
+  const shopId = url.searchParams.get('laden');
+  if (shopId) {
+    const shop = await env.DB.prepare('SELECT id, logo_key FROM stempel_shops WHERE id = ?').bind(shopId).first();
+    if (!shop) return new Response('Laden nicht gefunden', { status: 404 });
+    try {
+      const obj = shop.logo_key ? await env.PHOTOS.get(shop.logo_key) : null;
+      const type = obj?.httpMetadata?.contentType || '';
+      // Nur Rasterbilder: ein hochgeladenes SVG könnte Skripte enthalten
+      if (obj && /^image\/(png|jpe?g|webp|gif)$/.test(type)) customerLogo = toDataUri(await obj.arrayBuffer(), type);
+    } catch (e) { /* ohne Logo weiter */ }
+  }
+  return printHtmlResponse(renderStickerHtml({ guides: url.searchParams.get('hilfslinien') === '1', brandIcon, customerLogo, logoMissing: !!shopId && !customerLogo }));
 }
 
 /* GET /api/admin/tapstempel/shops/:id/qr-etikett — QR-Etikett 40 × 40 mm für einen Laden */
@@ -6070,57 +6093,92 @@ const STICKER_BASE_CSS = `
   @media print { html,body{background:none;} .page{margin:0 !important; box-shadow:none !important;} .no-print{display:none;} }
   .hint{max-width:140mm; margin:0 auto 10mm; color:#fff; font:13px/1.5 system-ui, sans-serif;}`;
 
-function renderStickerHtml({ guides = false } = {}) {
+/* Wallet-Symbole: vereinfachte, gut erkennbare Zeichen (keine Original-Logos) */
+const ICON_APPLE_WALLET = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#111"/><rect x="4.5" y="5" width="15" height="4" rx="1.3" fill="#2f9bff"/><rect x="4.5" y="7.6" width="15" height="4" rx="1.3" fill="#ffb627"/><rect x="4.5" y="10.2" width="15" height="4" rx="1.3" fill="#34c759"/><rect x="4.5" y="12.8" width="15" height="4" rx="1.3" fill="#ff5a4f"/><path d="M3.5 15.2h5.2c.8 0 1.2.5 1.6 1 .5.8 1.3 1.3 2.2 1.3s1.7-.5 2.2-1.3c.4-.5.8-1 1.6-1h5.2V19a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z" fill="#2b2b2b"/></svg>`;
+const ICON_GOOGLE_WALLET = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#fff" stroke="#e3e3e3" stroke-width=".8"/><rect x="4" y="5" width="16" height="5.4" rx="2" fill="#ea4335"/><rect x="4" y="8.4" width="16" height="5.4" rx="2" fill="#fbbc04"/><rect x="4" y="11.8" width="16" height="5.4" rx="2" fill="#34a853"/><path d="M4 16c0-.9.7-1.4 1.5-1.1l6.2 2.3c.2.1.4.1.6 0L18.5 15c.8-.3 1.5.2 1.5 1.1V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#4285f4"/></svg>`;
+const STEP_ICONS = {
+  phone: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M9.5 12.5l2 2 3.5-4"/></svg>`,
+  stamp: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z"/></svg>`,
+  gift: `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8.5" width="17" height="4.5" rx="1"/><path d="M5 13v7.5h14V13M12 8.5v12M12 8.5c-1.5-3.5-5.5-4-5.5-1.5 0 1.5 2.5 1.5 5.5 1.5zm0 0c1.5-3.5 5.5-4 5.5-1.5 0 1.5-2.5 1.5-5.5 1.5z"/></svg>`,
+};
+
+function renderStickerHtml({ guides = false, brandIcon = null, customerLogo = null, logoMissing = false } = {}) {
   return `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
-<title>Tapstempel Sticker 120×140 mm — für alle Läden</title>
+<title>Tapstempel Sticker 120×140 mm${customerLogo ? ' mit Kundenlogo' : ' — für alle Läden'}</title>
 <style>
   @page { size: 126mm 146mm; margin: 0; }
   ${STICKER_BASE_CSS}
   .page{width:126mm; height:146mm; margin:10mm auto; position:relative; overflow:hidden; background:#fbf8f3; color:#17151c; box-shadow:0 10px 40px rgba(0,0,0,.25);}
-  /* Hell und ruhig mit warmem Akzent — passt zu Café, Friseur, Bäckerei, Studio … */
   .glow{position:absolute; inset:0;
-    background:radial-gradient(75mm 55mm at 100% 0%, rgba(229,84,61,.16), transparent 70%),
+    background:radial-gradient(75mm 55mm at 100% 0%, rgba(229,84,61,.14), transparent 70%),
                radial-gradient(60mm 45mm at 0% 100%, rgba(229,84,61,.10), transparent 70%);}
   .dots{position:absolute; inset:0; opacity:.5; background-image:radial-gradient(#e6ddd0 .28mm, transparent .32mm); background-size:4mm 4mm;}
   .safe{position:absolute; left:9mm; right:9mm; top:9mm; bottom:9mm; display:flex; flex-direction:column;}
+  .head{display:flex; justify-content:space-between; align-items:flex-start; gap:4mm;}
+  .head-text{flex:1; min-width:0;}
   .eyebrow{display:inline-flex; align-items:center; gap:1.4mm; font-size:2.6mm; font-weight:800; letter-spacing:.45mm; text-transform:uppercase; color:#d9472f;}
   .eyebrow i{width:1.6mm; height:1.6mm; border-radius:50%; background:#e5543d; display:inline-block;}
-  h1{font-size:9.4mm; line-height:.98; font-weight:900; letter-spacing:-.35mm; margin-top:3.5mm;}
+  h1{font-size:8.3mm; line-height:.98; font-weight:900; letter-spacing:-.32mm; margin-top:3.2mm;}
   h1 em{font-style:normal; color:#e5543d;}
-  .lead{font-size:3.1mm; line-height:1.35; color:#5d5750; margin-top:2.6mm; max-width:92mm;}
-  .row{display:flex; align-items:flex-start; justify-content:space-between; margin-top:6mm;}
+  .lead{font-size:3mm; line-height:1.35; color:#5d5750; margin-top:2.4mm; max-width:74mm;}
+  /* Feld oben rechts für das Logo des Ladens (26 × 26 mm) */
+  .logo-slot{width:26mm; height:26mm; flex:none; display:grid; place-items:center; border-radius:3mm;}
+  .logo-slot img{max-width:100%; max-height:100%; object-fit:contain; display:block;}
+  .logo-slot.filled{background:#fff; padding:2mm; box-shadow:0 .4mm 1.6mm rgba(23,21,28,.10);}
+  .logo-slot.guide{border:.25mm dashed #c9bfb1; color:#b3a998; font-size:2.3mm; text-align:center; line-height:1.3;}
+  .row{display:flex; align-items:flex-start; justify-content:space-between; margin-top:3.2mm;}
   .col{display:flex; flex-direction:column; align-items:center; text-align:center; width:48mm;}
-  .visual{height:46mm; display:grid; place-items:center;}
+  .visual{height:43mm; display:grid; place-items:center;}
   .or{align-self:center; margin-top:-8mm; font-size:3mm; font-weight:800; color:#a39a8f; text-transform:uppercase; letter-spacing:.3mm;}
-  /* NFC-Feld: Mitte = Position des Chips auf der Rückseite */
-  .nfc{width:44mm; height:44mm; border-radius:50%; display:grid; place-items:center; background:#fff; border:.9mm solid #e5543d;
+  .nfc{width:42mm; height:42mm; border-radius:50%; display:grid; place-items:center; background:#fff; border:.9mm solid #e5543d;
     box-shadow:0 0 0 2.4mm rgba(229,84,61,.14), 0 0 0 4.6mm rgba(229,84,61,.06);}
-  .nfc svg{width:24mm; height:24mm;}
-  /* Weißes Feld für das QR-Etikett des Ladens (40 × 40 mm) */
-  .qrslot{width:42mm; height:42mm; border-radius:3.6mm; background:#fff; border:.35mm solid #e4dccf; position:relative; display:grid; place-items:center;}
+  .nfc svg{width:23mm; height:23mm;}
+  .qrslot{width:42mm; height:42mm; border-radius:3.6mm; background:#fff; border:.35mm solid #e4dccf; position:relative;}
   .qrslot .corner{position:absolute; width:5mm; height:5mm; border:.7mm solid #e5543d;}
   .qrslot .tl{left:-.9mm; top:-.9mm; border-right:0; border-bottom:0; border-radius:2mm 0 0 0;}
   .qrslot .tr{right:-.9mm; top:-.9mm; border-left:0; border-bottom:0; border-radius:0 2mm 0 0;}
   .qrslot .bl{left:-.9mm; bottom:-.9mm; border-right:0; border-top:0; border-radius:0 0 0 2mm;}
   .qrslot .br{right:-.9mm; bottom:-.9mm; border-left:0; border-top:0; border-radius:0 0 2mm 0;}
-  .label{margin-top:3.2mm; font-size:3.4mm; font-weight:800; line-height:1.2;}
-  .label small{display:block; font-size:2.6mm; font-weight:500; color:#7a736a; margin-top:.6mm;}
+  .label{margin-top:2.8mm; font-size:3.3mm; font-weight:800; line-height:1.2;}
+  .label small{display:block; font-size:2.55mm; font-weight:500; color:#7a736a; margin-top:.5mm;}
   .num{display:inline-grid; place-items:center; width:4.6mm; height:4.6mm; border-radius:50%; background:#e5543d; color:#fff; font-size:2.8mm; font-weight:800; margin-right:1.2mm; vertical-align:.3mm;}
-  .steps{margin-top:auto; display:flex; gap:2.5mm;}
-  .step{flex:1; background:#fff; border:.25mm solid #ebe3d7; border-radius:2.8mm; padding:2.4mm 2.2mm; font-size:2.55mm; line-height:1.3; color:#5d5750;}
-  .step b{display:block; color:#17151c; font-size:2.8mm; margin-bottom:.4mm;}
-  .foot{display:flex; justify-content:space-between; align-items:center; margin-top:3mm; font-size:2.35mm; color:#8a8278;}
-  .brand{display:flex; align-items:center; gap:1.4mm; color:#17151c; font-weight:800; font-size:2.9mm; letter-spacing:.1mm;}
-  .seal{width:4.6mm; height:4.6mm; border:.35mm solid #e5543d; border-radius:50%; display:grid; place-items:center; color:#e5543d; font-size:1.7mm; font-weight:900; transform:rotate(-10deg);}
+  /* Drei Schritte: glänzende Karten mit Symbol, gut sichtbar aus der Entfernung */
+  .steps{margin-top:auto; padding-top:3.5mm; display:flex; gap:2.4mm;}
+  .step{flex:1; position:relative; overflow:hidden; border-radius:3mm; padding:2.4mm 2.2mm; display:grid; grid-template-columns:6.2mm 1fr; column-gap:1.7mm; align-items:start; font-size:2.5mm; line-height:1.3; color:#4e4841;
+    background:linear-gradient(160deg, #ffffff 0%, #fff6f2 100%); border:.3mm solid #f1d4ca;
+    box-shadow:0 .6mm 1.8mm rgba(229,84,61,.16), inset 0 .3mm 0 #fff;}
+  .step::before{content:''; position:absolute; left:0; right:0; top:0; height:45%; background:linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,0));}
+  .step > *{position:relative;}
+  .step .ic{width:6.2mm; height:6.2mm; border-radius:1.8mm; background:linear-gradient(150deg, #ef6a4f, #d63f27); display:grid; place-items:center;
+    box-shadow:0 .5mm 1.2mm rgba(214,63,39,.35);}
+  .step .ic svg{width:4.2mm; height:4.2mm;}
+  .step b{display:block; color:#17151c; font-size:2.85mm; margin-bottom:.4mm;}
+  /* Fuß: Tapstempel · by Tapstern mit Logo | Wallet-Symbole */
+  .foot{display:flex; justify-content:space-between; align-items:center; margin-top:3mm; gap:3mm;}
+  .brand{display:flex; align-items:center; gap:1.8mm;}
+  .brand img, .brand .ph{width:7.4mm; height:7.4mm; border-radius:1.8mm; display:block; box-shadow:0 .4mm 1mm rgba(214,63,39,.3);}
+  .brand .ph{background:linear-gradient(150deg,#ef6a4f,#d63f27);}
+  .brand b{display:block; font-size:3.2mm; font-weight:900; letter-spacing:.05mm; line-height:1.05;}
+  .brand small{display:block; font-size:2.2mm; color:#7a736a; margin-top:.3mm;}
+  .brand small strong{color:#d9472f;}
+  .wallets{display:flex; align-items:center; gap:1.6mm; font-size:2.25mm; color:#6d665d; text-align:right;}
+  .wallets .w{display:flex; align-items:center; gap:.9mm; font-weight:700; color:#2c2a30;}
+  .wallets svg{width:4.6mm; height:4.6mm; display:block;}
   .g-trim{position:absolute; inset:3mm; border:.2mm dashed #ff2d2d;}
   .g-safe{position:absolute; inset:9mm; border:.2mm dashed #1fae63;}
 </style></head><body>
 <div class="page">
   <div class="glow"></div><div class="dots"></div>
   <div class="safe">
-    <div class="eyebrow"><i></i>Digitale Stempelkarte</div>
-    <h1>Stempel sammeln.<br><em>Belohnung holen.</em></h1>
-    <p class="lead">Deine Treuekarte direkt aufs Handy — ohne App, ohne Anmeldung, ohne Papier.</p>
+    <div class="head">
+      <div class="head-text">
+        <div class="eyebrow"><i></i>Digitale Stempelkarte</div>
+        <h1>Stempel sammeln.<br><em>Belohnung holen.</em></h1>
+        <p class="lead">Deine Treuekarte direkt aufs Handy — ohne App, ohne Anmeldung, ohne Papier.</p>
+      </div>
+      ${customerLogo ? `<div class="logo-slot filled"><img src="${customerLogo}" alt=""></div>`
+        : guides || logoMissing ? `<div class="logo-slot guide">${logoMissing ? 'Laden hat<br>noch kein Logo' : 'Platz für<br>Kundenlogo<br>26 × 26 mm'}</div>` : '<div class="logo-slot"></div>'}
+    </div>
     <div class="row">
       <div class="col">
         <div class="visual"><div class="nfc">
@@ -6138,16 +6196,19 @@ function renderStickerHtml({ guides = false } = {}) {
       </div>
     </div>
     <div class="steps">
-      <div class="step"><b>Keine App</b>Deine Karte öffnet sich sofort</div>
-      <div class="step"><b>Bei jedem Besuch</b>einen Stempel sammeln</div>
-      <div class="step"><b>Karte voll?</b>An der Kasse zeigen &amp; Belohnung holen</div>
+      <div class="step"><div class="ic">${STEP_ICONS.phone}</div><div><b>Keine App</b>Karte öffnet sich sofort</div></div>
+      <div class="step"><div class="ic">${STEP_ICONS.stamp}</div><div><b>Jeder Besuch</b>zählt als Stempel</div></div>
+      <div class="step"><div class="ic">${STEP_ICONS.gift}</div><div><b>Karte voll?</b>Belohnung an der Kasse holen</div></div>
     </div>
-    <div class="foot"><span class="brand"><span class="seal">TS</span>tapstempel</span><span>Auch in Apple Wallet &amp; Google Wallet</span></div>
+    <div class="foot">
+      <div class="brand">${brandIcon ? `<img src="${brandIcon}" alt="Tapstern">` : '<span class="ph"></span>'}<div><b>Tapstempel</b><small>by <strong>Tapstern</strong> · tapstern.de</small></div></div>
+      <div class="wallets"><span>Auch in</span><span class="w">${ICON_APPLE_WALLET}Apple Wallet</span><span class="w">${ICON_GOOGLE_WALLET}Google Wallet</span></div>
+    </div>
   </div>
   ${guides ? '<div class="g-trim"></div><div class="g-safe"></div>' : ''}
 </div>
-<p class="hint no-print"><b>Druckdatei für alle Läden:</b> Strg/Cmd + P → „Als PDF speichern“ (126 × 146 mm = 120 × 140 mm + 3 mm Beschnitt, Ränder „Keine“, Hintergrundgrafiken an).
-Pro Laden: QR-Etikett (40 × 40 mm) ins weiße Feld kleben, NFC-Chip mittig hinter den roten Kreis.</p>
+<p class="hint no-print"><b>Druckdatei:</b> Strg/Cmd + P → „Als PDF speichern“ (126 × 146 mm = 120 × 140 mm + 3 mm Beschnitt, Ränder „Keine“, Hintergrundgrafiken an).
+Pro Laden: QR-Etikett (40 × 40 mm) ins weiße Feld kleben, NFC-Chip mittig hinter den roten Kreis. <code>?hilfslinien=1</code> zeigt Schnitt, Sicherheitsabstand und Logo-Feld.</p>
 </body></html>`;
 }
 
